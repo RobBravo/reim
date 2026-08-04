@@ -1,0 +1,184 @@
+# REIM source catalog
+#
+# Declarative registry of every economic data source REIM knows about. This file
+# is the source of truth: `reim db seed` materialises it into the `data_sources`
+# table and `reim pipeline run` resolves connectors through it.
+#
+# Validated by reim.domain.sources.catalog.SourceCatalog. An invalid catalog is
+# a hard startup failure, never a silent skip.
+#
+# Fields
+#   key             unique snake_case identifier; must equal the connector's
+#                   `connector_key`
+#   country         ISO-3166 alpha-2, or omitted for country-agnostic sources
+#   organization    code from reim.domain.sources.organizations
+#   indicators      REIM indicator codes this source feeds
+#   connector       dotted module path exposing exactly one BaseConnector subclass
+#   enabled         false requires a documented `disabled_reason`
+#
+# See docs/sources.md for the research notes behind each entry.
+
+version: 1
+
+sources:
+  # ------------------------------------------------------------------------
+  # Nicaragua — World Bank Indicators API v2
+  #
+  # Open, keyless, stable JSON API. Verified reachable and returning data for
+  # Nicaragua on 2026-08-04. Annual frequency only.
+  # ------------------------------------------------------------------------
+  - key: worldbank_ni_exchange_rate
+    name: Nicaragua official exchange rate (annual average)
+    description: >-
+      World Bank series PA.NUS.FCRF: official exchange rate, local currency
+      units per US dollar, period average.
+    country: NI
+    organization: WORLDBANK
+    category: exchange_rate
+    access_type: http_api
+    frequency: annual
+    format: json
+    base_url: https://api.worldbank.org/v2
+    documentation_url: https://datahelpdesk.worldbank.org/knowledgebase/articles/889392
+    connector: reim.ingestion.connectors.nicaragua.worldbank_exchange_rate
+    indicators:
+      - ni_exchange_rate_official_annual_avg
+    license: CC-BY-4.0
+    official: true
+    enabled: true
+
+  - key: worldbank_ni_cpi_inflation
+    name: Nicaragua consumer price inflation (annual)
+    description: >-
+      World Bank series FP.CPI.TOTL.ZG: annual percentage change of the
+      consumer price index.
+    country: NI
+    organization: WORLDBANK
+    category: prices
+    access_type: http_api
+    frequency: annual
+    format: json
+    base_url: https://api.worldbank.org/v2
+    documentation_url: https://datahelpdesk.worldbank.org/knowledgebase/articles/889392
+    connector: reim.ingestion.connectors.nicaragua.worldbank_cpi_inflation
+    indicators:
+      - ni_cpi_inflation_annual
+    license: CC-BY-4.0
+    official: true
+    enabled: true
+
+  - key: worldbank_ni_remittances
+    name: Nicaragua personal remittances received
+    description: >-
+      World Bank series BX.TRF.PWKR.CD.DT: personal remittances received,
+      current US dollars.
+    country: NI
+    organization: WORLDBANK
+    category: external_sector
+    access_type: http_api
+    frequency: annual
+    format: json
+    base_url: https://api.worldbank.org/v2
+    documentation_url: https://datahelpdesk.worldbank.org/knowledgebase/articles/889392
+    connector: reim.ingestion.connectors.nicaragua.worldbank_remittances
+    indicators:
+      - ni_remittances_received
+    license: CC-BY-4.0
+    official: true
+    enabled: true
+
+  - key: worldbank_ni_reserves
+    name: Nicaragua total international reserves
+    description: >-
+      World Bank series FI.RES.TOTL.CD: total reserves including gold,
+      current US dollars.
+    country: NI
+    organization: WORLDBANK
+    category: external_sector
+    access_type: http_api
+    frequency: annual
+    format: json
+    base_url: https://api.worldbank.org/v2
+    documentation_url: https://datahelpdesk.worldbank.org/knowledgebase/articles/889392
+    connector: reim.ingestion.connectors.nicaragua.worldbank_reserves
+    indicators:
+      - ni_international_reserves
+    license: CC-BY-4.0
+    official: true
+    enabled: true
+
+  - key: worldbank_ni_exports
+    name: Nicaragua exports of goods and services
+    description: >-
+      World Bank series NE.EXP.GNFS.CD: exports of goods and services,
+      current US dollars.
+    country: NI
+    organization: WORLDBANK
+    category: external_sector
+    access_type: http_api
+    frequency: annual
+    format: json
+    base_url: https://api.worldbank.org/v2
+    documentation_url: https://datahelpdesk.worldbank.org/knowledgebase/articles/889392
+    connector: reim.ingestion.connectors.nicaragua.worldbank_exports
+    indicators:
+      - ni_exports_goods_services
+    license: CC-BY-4.0
+    official: true
+    enabled: true
+
+  - key: worldbank_ni_imports
+    name: Nicaragua imports of goods and services
+    description: >-
+      World Bank series NE.IMP.GNFS.CD: imports of goods and services,
+      current US dollars.
+    country: NI
+    organization: WORLDBANK
+    category: external_sector
+    access_type: http_api
+    frequency: annual
+    format: json
+    base_url: https://api.worldbank.org/v2
+    documentation_url: https://datahelpdesk.worldbank.org/knowledgebase/articles/889392
+    connector: reim.ingestion.connectors.nicaragua.worldbank_imports
+    indicators:
+      - ni_imports_goods_services
+    license: CC-BY-4.0
+    official: true
+    enabled: true
+
+  # ------------------------------------------------------------------------
+  # Nicaragua — Banco Central de Nicaragua
+  #
+  # DISABLED. The service description is public and the connector is
+  # implemented, but the endpoint could not be reached during development and
+  # its response contract has never been observed. Enabling it without that
+  # verification would mean shipping a connector whose parsing is a guess.
+  # See docs/sources.md and the connector module docstring.
+  # ------------------------------------------------------------------------
+  - key: bcn_exchange_rate
+    name: Nicaragua official exchange rate (daily)
+    description: >-
+      Official NIO/USD rate published daily by the Banco Central de Nicaragua
+      through its public SOAP service, covering January 2012 onwards.
+    country: NI
+    organization: BCN
+    category: exchange_rate
+    access_type: soap
+    frequency: daily
+    format: xml
+    base_url: https://servicios.bcn.gob.ni/Tc_Servicio/ServicioTC.asmx
+    documentation_url: https://www.bcn.gob.ni/servicio-web-tipo-de-cambio
+    connector: reim.ingestion.connectors.nicaragua.bcn_exchange_rate
+    indicators:
+      - ni_exchange_rate_official_daily
+    license: public_official_data
+    official: true
+    enabled: false
+    disabled_reason: >-
+      The host only negotiates a pre-TLS 1.2 handshake, which OpenSSL 3.x
+      rejects under a modern system crypto policy
+      (error:0A000102:SSL routines::unsupported protocol). No live response was
+      ever observed, so the SOAP response contract is unverified. Verify the
+      WSDL and the *Result element shape from a host that can complete the
+      handshake, record a fixture, then enable.

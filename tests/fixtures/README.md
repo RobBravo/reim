@@ -1,0 +1,20 @@
+# Test fixtures
+
+## Recorded from live official sources
+
+| File | Origin | Recorded |
+|------|--------|----------|
+| `worldbank_ni_cpi_inflation.json` | `GET https://api.worldbank.org/v2/country/NIC/indicator/FP.CPI.TOTL.ZG?format=json&per_page=500`, trimmed to 2015–2024 with the metadata block adjusted to match | 2026-08-04 |
+
+These are **real** responses. Tests replay them through `respx` so the suite
+never calls an official source.
+
+## Synthetic
+
+| File | Why it is synthetic |
+|------|---------------------|
+| `bcn_exchange_rate_soap.xml` | The BCN SOAP endpoint could not be reached during development (legacy TLS), so no real response was ever observed. This envelope follows the published service description; it is a **plausible shape, not a recording**, and exists only to exercise the parser. It must be replaced with a genuine recording before `bcn_exchange_rate` is enabled. See `docs/sources.md`. |
+| `worldbank_error.json` | Reproduces the documented World Bank error envelope. |
+
+Synthetic data lives here and nowhere else. It is never seeded, never ingested
+and never reaches a production database.

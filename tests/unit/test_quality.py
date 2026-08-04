@@ -1,0 +1,304 @@
+"""Quality checks and the rule configuration."""
+
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+import yaml
+
+from reim.core.constants import CheckSeverity, CheckStatus, Frequency
+from reim.core.exceptions import ConfigurationError
+from reim.domain.quality.checks import (
+    check_dataset_not_empty,
+    check_expected_frequency,
+    check_freshness,
+    check_no_duplicate_periods,
+    check_period_change,
+    check_period_validity,
+    check_referential_consistency,
+    check_temporal_monotonicity,
+    check_value_range,
+    check_values_numeric,
+    check_values_present,
+    run_standard_checks,
+)
+from reim.domain.quality.rules import IndicatorRule, QualityRuleSet, load_quality_rules
+
+
+def _failed(results, name):  # type: ignore[no-untyped-def]
+    return [r for r in results if r.check_name == name and r.status is CheckStatus.FAILED]
+
+
+# --------------------------------------------------------------------------
+# Completeness / uniqueness
+# --------------------------------------------------------------------------
+def test_empty_dataset_fails_critically(permissive_rule: IndicatorRule) -> None:
+    """A source that returns nothing is treated as broken, not as empty history."""
+    results = check_dataset_not_empty([], permissive_rule)
+    assert results[0].status is CheckStatus.FAILED
+    assert results[0].severity is CheckSeverity.CRITICAL
+
+
+def test_dataset_meeting_the_minimum_passes(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    results = check_dataset_not_empty([make_observation()], permissive_rule)
+    assert results[0].status is CheckStatus.PASSED
+
+
+def test_min_observations_is_configurable(make_observation) -> None:  # type: ignore[no-untyped-def]
+    rule = IndicatorRule(min_observations=5)
+    assert check_dataset_not_empty([make_observation()], rule)[0].failed
+
+
+def test_duplicate_natural_keys_fail_critically(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    batch = [make_observation("2024", "1"), make_observation("2024", "2")]
+    results = check_no_duplicate_periods(batch, permissive_rule)
+    assert results[0].severity is CheckSeverity.CRITICAL
+    assert results[0].failed
+
+
+def test_distinct_periods_pass(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    batch = [make_observation("2023"), make_observation("2024")]
+    assert check_no_duplicate_periods(batch, permissive_rule)[0].status is CheckStatus.PASSED
+
+
+def test_missing_values_are_rejected_not_imputed(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    """REIM never fills a gap; the observation is simply rejected."""
+    batch = [make_observation("2024", None)]
+    failures = _failed(check_values_present(batch, permissive_rule), "value_present")
+    assert failures and failures[0].severity is CheckSeverity.ERROR
+    assert failures[0].observation_index == 0
+
+
+def test_text_only_values_are_accepted(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    batch = [make_observation("2024", None, value_text="not available")]
+    assert not _failed(check_values_present(batch, permissive_rule), "value_present")
+
+
+def test_non_finite_values_are_rejected(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    observation = make_observation("2024", "1")
+    observation.value_numeric = Decimal("NaN")
+    failures = _failed(check_values_numeric([observation], permissive_rule), "value_numeric_finite")
+    assert failures and failures[0].severity is CheckSeverity.ERROR
+
+
+# --------------------------------------------------------------------------
+# Ranges
+# --------------------------------------------------------------------------
+def test_value_below_minimum_is_rejected(make_observation) -> None:  # type: ignore[no-untyped-def]
+    rule = IndicatorRule(min_value=Decimal("0"))
+    failures = _failed(check_value_range([make_observation("2024", "-1")], rule), "value_range")
+    assert failures and failures[0].observation_index == 0
+
+
+def test_value_above_maximum_is_rejected(make_observation) -> None:  # type: ignore[no-untyped-def]
+    rule = IndicatorRule(max_value=Decimal("100"))
+    assert _failed(check_value_range([make_observation("2024", "101")], rule), "value_range")
+
+
+def test_value_inside_bounds_passes(make_observation) -> None:  # type: ignore[no-untyped-def]
+    rule = IndicatorRule(min_value=Decimal("0"), max_value=Decimal("100"))
+    assert not _failed(check_value_range([make_observation("2024", "50")], rule), "value_range")
+
+
+def test_tiny_positive_values_pass_a_zero_lower_bound(make_observation) -> None:  # type: ignore[no-untyped-def]
+    """Pre-redenomination exchange rates (~2e-9) are legitimate figures."""
+    rule = IndicatorRule(min_value=Decimal("0"), allow_zero=False, allow_negative=False)
+    observation = make_observation("1975", "2.06064418965517E-9")
+    assert not _failed(check_value_range([observation], rule), "value_range")
+
+
+def test_negative_value_rejected_when_disallowed(make_observation) -> None:  # type: ignore[no-untyped-def]
+    rule = IndicatorRule(allow_negative=False)
+    assert _failed(check_value_range([make_observation("2024", "-5")], rule), "value_range")
+
+
+def test_zero_rejected_when_disallowed(make_observation) -> None:  # type: ignore[no-untyped-def]
+    rule = IndicatorRule(allow_zero=False)
+    assert _failed(check_value_range([make_observation("2024", "0")], rule), "value_range")
+
+
+def test_range_severity_is_configurable(make_observation) -> None:  # type: ignore[no-untyped-def]
+    rule = IndicatorRule(max_value=Decimal("1"), range_severity=CheckSeverity.WARNING)
+    failures = _failed(check_value_range([make_observation("2024", "5")], rule), "value_range")
+    assert failures[0].severity is CheckSeverity.WARNING
+
+
+# --------------------------------------------------------------------------
+# Periods and time
+# --------------------------------------------------------------------------
+def test_future_period_is_rejected(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    results = check_period_validity(
+        [make_observation("2030")], permissive_rule, today=date(2026, 8, 4)
+    )
+    failures = _failed(results, "period_not_future")
+    assert failures and failures[0].severity is CheckSeverity.ERROR
+
+
+def test_future_period_allowed_within_the_configured_horizon(make_observation) -> None:  # type: ignore[no-untyped-def]
+    rule = IndicatorRule(max_future_days=400)
+    results = check_period_validity([make_observation("2026")], rule, today=date(2026, 8, 4))
+    assert not _failed(results, "period_not_future")
+
+
+def test_current_period_passes(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    results = check_period_validity(
+        [make_observation("2024")], permissive_rule, today=date(2026, 8, 4)
+    )
+    assert not _failed(results, "period_not_future")
+
+
+def test_frequency_mismatch_warns(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    batch = [make_observation("2024-03", frequency=Frequency.MONTHLY)]
+    failures = _failed(
+        check_expected_frequency(batch, permissive_rule, Frequency.ANNUAL), "expected_frequency"
+    )
+    assert failures and failures[0].severity is CheckSeverity.WARNING
+
+
+def test_stale_data_is_flagged(make_observation) -> None:  # type: ignore[no-untyped-def]
+    rule = IndicatorRule(freshness_max_age_days=30)
+    results = check_freshness([make_observation("2020")], rule, today=date(2026, 8, 4))
+    assert results[0].failed
+
+
+def test_fresh_data_passes(make_observation) -> None:  # type: ignore[no-untyped-def]
+    rule = IndicatorRule(freshness_max_age_days=800)
+    results = check_freshness([make_observation("2025")], rule, today=date(2026, 8, 4))
+    assert results[0].status is CheckStatus.PASSED
+
+
+def test_freshness_is_skipped_without_a_threshold(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    results = check_freshness([make_observation("1990")], permissive_rule)
+    assert results[0].status is CheckStatus.SKIPPED
+
+
+def test_monotonic_series_breach_warns(make_observation) -> None:  # type: ignore[no-untyped-def]
+    rule = IndicatorRule(monotonic_increasing=True)
+    batch = [make_observation("2023", "100"), make_observation("2024", "90")]
+    results = check_temporal_monotonicity(batch, rule)
+    assert results[0].failed and results[0].severity is CheckSeverity.WARNING
+
+
+def test_monotonic_check_skipped_when_not_declared(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    batch = [make_observation("2023", "100"), make_observation("2024", "90")]
+    assert check_temporal_monotonicity(batch, permissive_rule)[0].status is CheckStatus.SKIPPED
+
+
+def test_anomalous_period_change_is_flagged(make_observation) -> None:  # type: ignore[no-untyped-def]
+    rule = IndicatorRule(max_period_change_pct=Decimal("10"))
+    batch = [make_observation("2023", "100"), make_observation("2024", "150")]
+    failures = _failed(check_period_change(batch, rule), "period_change")
+    assert failures and failures[0].actual_value == "50.00%"
+
+
+def test_small_period_change_passes(make_observation) -> None:  # type: ignore[no-untyped-def]
+    rule = IndicatorRule(max_period_change_pct=Decimal("10"))
+    batch = [make_observation("2023", "100"), make_observation("2024", "105")]
+    assert not _failed(check_period_change(batch, rule), "period_change")
+
+
+def test_period_change_skipped_without_a_threshold(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    batch = [make_observation("2023", "1"), make_observation("2024", "1000")]
+    assert check_period_change(batch, permissive_rule)[0].status is CheckStatus.SKIPPED
+
+
+def test_period_change_ignores_a_zero_baseline(make_observation) -> None:  # type: ignore[no-untyped-def]
+    """Dividing by a zero previous value must not blow up."""
+    rule = IndicatorRule(max_period_change_pct=Decimal("10"))
+    batch = [make_observation("2023", "0"), make_observation("2024", "5")]
+    assert not _failed(check_period_change(batch, rule), "period_change")
+
+
+# --------------------------------------------------------------------------
+# Integrity
+# --------------------------------------------------------------------------
+def test_mixed_sources_in_one_batch_fail_critically(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    batch = [
+        make_observation("2023", source_key="worldbank_ni_cpi_inflation"),
+        make_observation("2024", source_key="bcn_exchange_rate"),
+    ]
+    failures = _failed(
+        check_referential_consistency(batch, permissive_rule), "single_source_per_batch"
+    )
+    assert failures and failures[0].severity is CheckSeverity.CRITICAL
+
+
+def test_single_source_batch_passes(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    batch = [make_observation("2023"), make_observation("2024")]
+    assert not _failed(
+        check_referential_consistency(batch, permissive_rule), "single_source_per_batch"
+    )
+
+
+# --------------------------------------------------------------------------
+# Standard battery
+# --------------------------------------------------------------------------
+def test_standard_battery_runs_every_check(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    batch = [make_observation("2023"), make_observation("2024")]
+    names = {r.check_name for r in run_standard_checks(batch, permissive_rule, Frequency.ANNUAL)}
+    assert {
+        "dataset_not_empty",
+        "no_duplicate_periods",
+        "single_source_per_batch",
+        "value_present",
+        "value_numeric_finite",
+        "value_range",
+        "period_validity",
+        "expected_frequency",
+        "period_length",
+        "period_change",
+        "temporal_monotonicity",
+        "freshness",
+    } <= names
+
+
+def test_clean_batch_produces_no_failures(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]
+    batch = [make_observation("2023"), make_observation("2024")]
+    results = run_standard_checks(batch, permissive_rule, Frequency.ANNUAL, today=date(2026, 8, 4))
+    assert [r for r in results if r.failed] == []
+
+
+# --------------------------------------------------------------------------
+# Rule configuration
+# --------------------------------------------------------------------------
+def test_repository_rules_load(quality_rules: QualityRuleSet) -> None:
+    assert quality_rules.indicators
+
+
+def test_repository_rules_do_not_reject_historical_exchange_rates(
+    quality_rules: QualityRuleSet,
+) -> None:
+    """Regression: min_value=1 once rejected 31 real pre-redenomination figures."""
+    rule = quality_rules.for_indicator("ni_exchange_rate_official_annual_avg")
+    assert rule.min_value is not None
+    assert rule.min_value <= Decimal("2.06064418965517E-9")
+
+
+def test_unknown_indicator_falls_back_to_defaults(quality_rules: QualityRuleSet) -> None:
+    assert quality_rules.for_indicator("not_an_indicator") is quality_rules.defaults
+
+
+def test_missing_rules_file_yields_defaults(tmp_path: Path) -> None:
+    assert load_quality_rules(tmp_path / "absent.yml").indicators == {}
+
+
+def test_rules_for_unknown_indicator_are_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "rules.yml"
+    path.write_text(yaml.safe_dump({"indicators": {"nope": {"min_value": 1}}}), encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="unknown indicator"):
+        load_quality_rules(path)
+
+
+def test_malformed_rules_yaml_is_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "rules.yml"
+    path.write_text("indicators: [\n", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="not valid YAML"):
+        load_quality_rules(path)
+
+
+def test_inverted_bounds_are_rejected() -> None:
+    with pytest.raises(ValueError, match="exceeds max_value"):
+        IndicatorRule(min_value=Decimal("10"), max_value=Decimal("1"))

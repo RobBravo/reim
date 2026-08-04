@@ -1,0 +1,183 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  # Never a real credential: this is an ephemeral service container.
+  DATABASE_URL: postgresql+psycopg://reim:reim@localhost:5432/reim_ci
+
+jobs:
+  quality:
+    name: Lint, types and catalog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff lint
+        run: ruff check --output-format=github .
+
+      - name: Ruff format
+        run: ruff format --check .
+
+      - name: MyPy (strict)
+        run: mypy reim apps
+
+      - name: Validate source catalog and connectors
+        run: python -m reim.cli catalog validate
+
+  test:
+    name: Tests (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: reim
+          POSTGRES_PASSWORD: reim
+          POSTGRES_DB: reim_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U reim -d reim_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Verify migrations build the schema from scratch
+        env:
+          REIM_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: alembic upgrade head
+
+      - name: Verify migrations round-trip
+        env:
+          REIM_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: Verify models match the migrations
+        env:
+          REIM_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: alembic check
+
+      - name: Seed reference data
+        env:
+          REIM_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: python -m reim.cli db seed
+
+      - name: Run tests
+        env:
+          REIM_DATABASE_URL: ${{ env.DATABASE_URL }}
+          REIM_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: pytest --cov --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  docker:
+    name: Container build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: reim-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start PostgreSQL
+        run: |
+          docker run -d --name pg --network host \
+            -e POSTGRES_USER=reim -e POSTGRES_PASSWORD=reim -e POSTGRES_DB=reim \
+            postgres:16-alpine
+          for _ in $(seq 1 30); do
+            docker exec pg pg_isready -U reim -d reim && break
+            sleep 1
+          done
+
+      - name: Migrate, seed and boot the API from the image
+        run: |
+          docker run --rm --network host \
+            -e REIM_DATABASE_URL=postgresql+psycopg://reim:reim@localhost:5432/reim \
+            reim-api:ci sh -c "alembic upgrade head && python -m reim.cli db seed"
+
+          docker run -d --name api --network host \
+            -e REIM_DATABASE_URL=postgresql+psycopg://reim:reim@localhost:5432/reim \
+            reim-api:ci
+
+      - name: Verify the API answers
+        run: |
+          for _ in $(seq 1 30); do
+            curl -fsS http://localhost:8000/health && break
+            sleep 2
+          done
+          echo
+          curl -fsS http://localhost:8000/health
+          curl -fsS http://localhost:8000/ready
+          curl -fsS "http://localhost:8000/api/v1/countries?limit=1" > /dev/null
+          curl -fsS "http://localhost:8000/api/v1/indicators?limit=1" > /dev/null
+          curl -fsS "http://localhost:8000/api/v1/observations/export.csv?limit=1" > /dev/null
+          echo "API smoke checks passed"
+
+      - name: API logs on failure
+        if: failure()
+        run: docker logs api || true
+
+  secrets-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

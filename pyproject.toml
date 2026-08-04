@@ -1,0 +1,146 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reim"
+version = "0.1.0"
+description = "Regional Economic Intelligence Monitor - economic data platform for Central America"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "REIM contributors" }]
+keywords = ["economics", "central-america", "nicaragua", "open-data", "etl"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14",
+    "psycopg[binary]>=3.2",
+    "httpx>=0.28",
+    "tenacity>=9.0",
+    "structlog>=24.4",
+    "prometheus-client>=0.21",
+    "PyYAML>=6.0",
+    "typer>=0.15",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "respx>=0.22",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "types-PyYAML>=6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/reim-project/reim"
+Repository = "https://github.com/reim-project/reim"
+
+[project.scripts]
+reim = "reim.cli.main:app"
+
+[tool.setuptools.packages.find]
+include = ["reim*", "apps*"]
+
+[tool.setuptools.package-data]
+reim = ["py.typed"]
+
+# --------------------------------------------------------------------------
+# Ruff
+# --------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["reim", "apps", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "N",    # pep8-naming
+    "SIM",  # flake8-simplify
+    "TID",  # flake8-tidy-imports
+    "RUF",  # ruff-specific
+    "D",    # pydocstyle
+    "ANN",  # flake8-annotations
+]
+ignore = [
+    "D100",  # missing docstring in public module (covered selectively)
+    "D104",  # missing docstring in public package
+    "D107",  # missing docstring in __init__
+    "D203",  # incompatible with D211
+    "D213",  # incompatible with D212
+    "ANN401",  # allow Any in narrowly-scoped signatures
+    "B008",  # FastAPI Depends() in defaults is idiomatic
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "ANN"]
+"alembic/**" = ["D", "ANN", "N", "E501"]
+"scripts/**" = ["D", "ANN"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["reim", "apps", "tests"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+docstring-code-format = true
+
+# --------------------------------------------------------------------------
+# MyPy
+# --------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+disallow_any_generics = true
+plugins = ["pydantic.mypy"]
+exclude = ["^alembic/versions/", "^\\.venv/"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+module = ["alembic.*"]
+ignore_errors = true
+
+# --------------------------------------------------------------------------
+# Pytest
+# --------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: requires a live PostgreSQL database (REIM_TEST_DATABASE_URL)",
+    "live: performs real network calls against official sources (opt-in)",
+]
+filterwarnings = ["error::DeprecationWarning:reim.*"]
+
+[tool.coverage.run]
+source = ["reim", "apps"]
+omit = ["*/__main__.py"]

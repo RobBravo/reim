@@ -1,0 +1,97 @@
+# Per-indicator data-quality rules.
+#
+# Validated by reim.domain.quality.rules.QualityRuleSet. Thresholds live here
+# rather than in code so tuning them is a reviewable data change.
+#
+# Severity semantics enforced by the pipeline runner:
+#   critical  aborts the load and rolls the transaction back
+#   error     rejects the affected observation, the rest of the batch is written
+#   warning   recorded, data still stored and marked passed_with_warnings
+#   info      recorded only
+#
+# Bounds are deliberately wide: they are tripwires for a broken feed, not
+# economic forecasts. A legitimate value must never be rejected because a
+# threshold was set too tightly.
+
+version: 1
+
+defaults:
+  max_future_days: 0
+  min_observations: 1
+  range_severity: error
+  change_severity: warning
+  freshness_severity: warning
+
+indicators:
+  # Exchange rate ---------------------------------------------------------
+  ni_exchange_rate_official_daily:
+    min_value: 1
+    max_value: 1000
+    allow_negative: false
+    allow_zero: false
+    # The córdoba was under a pre-announced crawling peg; a >5% daily move
+    # would be a regime change worth a human look.
+    max_period_change_pct: 5
+    monotonic_increasing: false
+    freshness_max_age_days: 7
+
+  ni_exchange_rate_official_annual_avg:
+    # NOT bounded below by 1. The World Bank restates the whole series in
+    # current córdobas, so the 1979 and 1988/1991 redenominations push genuine
+    # pre-1991 figures down to ~2e-9 NIO per USD. An earlier `min_value: 1`
+    # wrongly rejected 31 real official observations; only the sign is
+    # constrained now.
+    min_value: 0
+    max_value: 1000
+    allow_negative: false
+    allow_zero: false
+    # Those same redenominations produce period-over-period jumps of several
+    # thousand percent between 1987 and 1991. They are real, so this stays a
+    # `warning`: the observations are stored and marked passed_with_warnings
+    # rather than rejected.
+    max_period_change_pct: 200
+    # World Bank annual data for year Y appears during Y+1; allow ~2 years.
+    freshness_max_age_days: 800
+
+  # Prices ----------------------------------------------------------------
+  ni_cpi_inflation_annual:
+    # Deflation is real; hyperinflation upper bound is a sanity tripwire.
+    min_value: -30
+    max_value: 500
+    allow_negative: true
+    allow_zero: true
+    max_period_change_pct: 1000
+    freshness_max_age_days: 800
+
+  # External sector -------------------------------------------------------
+  ni_remittances_received:
+    min_value: 0
+    max_value: 100000000000
+    allow_negative: false
+    allow_zero: false
+    max_period_change_pct: 60
+    freshness_max_age_days: 800
+
+  ni_international_reserves:
+    min_value: 0
+    max_value: 100000000000
+    allow_negative: false
+    allow_zero: false
+    max_period_change_pct: 80
+    freshness_max_age_days: 800
+
+  ni_exports_goods_services:
+    min_value: 0
+    max_value: 100000000000
+    allow_negative: false
+    allow_zero: false
+    max_period_change_pct: 60
+    freshness_max_age_days: 800
+
+  ni_imports_goods_services:
+    min_value: 0
+    max_value: 100000000000
+    allow_negative: false
+    allow_zero: false
+    max_period_change_pct: 60
+    freshness_max_age_days: 800
