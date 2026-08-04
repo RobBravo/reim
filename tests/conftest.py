@@ -7,6 +7,7 @@ so ``pytest`` always runs on a bare checkout.
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import uuid
@@ -66,6 +67,24 @@ def worldbank_cpi_payload() -> list[Any]:
 def worldbank_error_payload() -> list[Any]:
     """The documented World Bank error envelope."""
     return json.loads((FIXTURES / "worldbank_error.json").read_text())
+
+
+@pytest.fixture(scope="session")
+def inide_workbook_bytes() -> bytes:
+    """Real INIDE IPC workbook for June 2026 (stored gzipped)."""
+    return gzip.decompress((FIXTURES / "inide_ipc_junio_2026.xls.gz").read_bytes())
+
+
+@pytest.fixture(scope="session")
+def inide_index_html() -> str:
+    """Excerpt of the INIDE IPC index page, with its real workbook links."""
+    return (FIXTURES / "inide_ipc_index.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def inide_source(catalog: SourceCatalog) -> SourceEntry:
+    """Catalog entry for the INIDE monthly CPI source."""
+    return catalog.get("inide_cpi_monthly")
 
 
 @pytest.fixture(scope="session")

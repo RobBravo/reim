@@ -74,6 +74,80 @@ Two consequences, both learned the hard way during development:
 
 ---
 
+### INIDE — monthly consumer price index
+
+| | |
+|---|---|
+| **Organization** | Instituto Nacional de Información de Desarrollo (`INIDE`) — national statistics office |
+| **Index page** | <https://www.inide.gob.ni/Home/ipc> |
+| **Example workbook** | `https://www.inide.gob.ni/docs/ipc/ipc_2026/ipc_jun26/Cuadros_Estadisticas_IPC_junio_2026.xls` |
+| **Auth** | None |
+| **Format** | Legacy BIFF `.xls` (OLE2 compound document), ~400 KB |
+| **Frequency** | Monthly |
+| **Coverage** | January 2007 onward (see the gap below) |
+| **Licence** | Public official data |
+| **Status** | ✅ Verified reachable and parseable |
+
+REIM's **first national primary source** and **first monthly series**. INIDE is
+the official producer of Nicaragua's IPC.
+
+**Each release contains the full history.** A monthly workbook is not an
+increment — it carries the entire series — so one download per run yields
+everything, and the run is cheap for INIDE's servers.
+
+**Series ingested**, all from sheet `2-1-06` ("Cuadro II-1-06"), national aggregate:
+
+| REIM indicator | Sheet column | Points | Coverage |
+|----------------|--------------|--------|----------|
+| `ni_cpi_index_monthly` | 2 — IPC nacional, base 2006=100 | 198 | 2007-01..2026-06 |
+| `ni_cpi_inflation_monthly` | 3 — variación % mensual | 186 | 2011-01..2026-06 |
+| `ni_cpi_inflation_yoy` | 5 — variación % interanual | 198 | 2007-01..2026-06 |
+
+The month-on-month series starts in 2011 rather than 2007: all twelve 2007 rows
+carry `-` in that column, so no observation is produced for them.
+
+**URL discovery, not URL construction.** File naming drifts between releases —
+`ipc_2025/ipc_abr25/` vs `ipc_2024/ipc_abril24/` vs `ipc_2023/ipc_Ene2023/`, and
+March 2026 is `Estadisticas_del_IPC_a_marzo_de_2026.xls` instead of the usual
+`Cuadros_Estadisticas_IPC_marzo_2026.xls`. No template covers all of them, so
+the connector reads the index page and picks the newest workbook by the month it
+reports on. This is HTML parsing, but only to *locate a document*: every value
+comes from the structured spreadsheet.
+
+**Known limitations**
+
+- **No monthly detail for 2008-2010.** Sheet `2-1-06` carries annual rows only
+  for 2001-2006 and 2008-2010, with monthly figures for 2007 and then
+  continuously from January 2011. This is a property of INIDE's table, not a
+  parsing fault, and REIM does not fill it. The connector enforces continuity
+  only from 2011 onward, where the source is genuinely unbroken.
+- **2007 has no month-on-month variation.** Those cells contain `-` because the
+  rebased series has no December 2006. Those observations are not produced.
+- **The series is spliced.** Footnote 2 of the sheet states the 2006=100 index is
+  "enlazado con base 1999=100 en el período enero 2001 a diciembre 2009". Values
+  before 2010 therefore come from a linked, not directly measured, base.
+- **Annual rows are deliberately not ingested.** Footnote 1 states "los índices
+  anuales corresponden al promedio del año" — for the current year that is a
+  partial-year average that changes with every release, which would manufacture
+  a stream of false revisions.
+- **Precision.** INIDE stores the index to six decimals but *displays* it to one,
+  and the variation columns are formula results carrying full binary precision.
+  REIM quantises to six decimals: that keeps the index's entire published
+  precision and discards IEEE-754 noise (Excel returns `321.00426699999997` for
+  a stored `321.004267`).
+- **Publication date.** The workbook carries no machine-readable publication
+  timestamp, so `published_at` comes from the HTTP `Last-Modified` header.
+- **Regional breakdowns not yet ingested.** Sheet `2-1-06` also holds Managua
+  (columns 6-9) and rest-of-country (10-13) series; sheets `2-3-06` and `2-4-06`
+  expand them. A documented future extension.
+
+**Guards against silent corruption.** Before reading any value the connector
+asserts the base-year note still says `2006 = 100` and that the four column
+headers are unchanged. If INIDE rebases the index or reorders the table, the run
+fails loudly rather than mixing incompatible bases.
+
+---
+
 ## Implemented but disabled
 
 ### Banco Central de Nicaragua — daily official exchange rate
@@ -146,7 +220,7 @@ catalog entries can reference them as soon as an endpoint is identified.
 
 | Organization | What REIM wants from it | Current blocker |
 |---|---|---|
-| **INIDE** (statistics office) | Monthly IPC, employment, population | No stable machine-readable endpoint identified; releases are PDF/XLSX at changing URLs |
+| **INIDE** (beyond the IPC) | Employment, poverty, population projections | Not yet researched; the IPC is now automated (see above) |
 | **BCN** (beyond exchange rate) | Monthly monetary statistics, remittances, trade, reserves | Published as XLSX bulletins; layout stability not yet assessed |
 | **MHCP** (ministry of finance) | Fiscal execution, public debt | Not yet researched |
 | **SIBOIF** (banking supervisor) | Banking system aggregates | Not yet researched |

@@ -282,9 +282,13 @@ def check_period_change(
         key=lambda o: o.period.start,
     )
     results: CheckList = []
+    skipped_gaps = 0
     for previous, current in pairwise(ordered):
         prior = previous.value_numeric
         assert prior is not None and current.value_numeric is not None
+        if (current.period.start - previous.period.end).days != 1:
+            skipped_gaps += 1
+            continue
         if prior == 0:
             continue
         change_pct = abs((current.value_numeric - prior) / prior) * Decimal(100)
@@ -308,6 +312,7 @@ def check_period_change(
                 "period_change",
                 CheckType.ACCURACY,
                 f"All period-over-period changes within {rule.max_period_change_pct}%",
+                details={"comparisons_skipped_across_gaps": skipped_gaps},
             )
         )
     return results

@@ -36,13 +36,16 @@ Nicaragua, foundations, correctness.
 The most important gap in v0.1.0: every working connector reads a multilateral
 aggregator rather than the Nicaraguan publisher itself.
 
+- ~~**INIDE monthly IPC**~~ ✅ **done** — the national CPI is live at monthly
+  resolution (index, month-on-month and year-on-year), replacing reliance on the
+  World Bank's annual restatement. See `docs/sources.md`.
 - **Unblock the BCN exchange-rate connector.** Verify the SOAP contract from an
   environment that can complete the legacy TLS handshake, record a real fixture,
   enable it. Gets REIM its first daily-frequency series.
 - **BCN monthly statistics** — monetary aggregates, remittances, trade and
   reserves from the published bulletins, once XLSX layout stability is assessed.
-- **INIDE monthly IPC** — the national CPI, replacing reliance on the World
-  Bank's annual restatement.
+- **INIDE regional CPI** — the Managua and rest-of-country breakdowns that sit
+  in the same workbook alongside the national series already ingested.
 - **XLSX ingestion support** in the shared connector toolkit (pandas is already
   an approved dependency for exactly this).
 - Monthly and quarterly frequency exercised end to end. The period model already

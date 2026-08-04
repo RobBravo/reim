@@ -148,6 +148,38 @@ sources:
     enabled: true
 
   # ------------------------------------------------------------------------
+  # Nicaragua — Instituto Nacional de Información de Desarrollo
+  #
+  # National primary source, monthly frequency. Each release ships the complete
+  # historical series as a legacy .xls workbook, so one download covers
+  # everything. File URLs are NOT derivable — naming drifts between releases —
+  # so the connector discovers the newest workbook from the index page.
+  # Verified reachable and parseable on 2026-08-04.
+  # ------------------------------------------------------------------------
+  - key: inide_cpi_monthly
+    name: Nicaragua consumer price index (monthly)
+    description: >-
+      National consumer price index (base 2006=100) with month-on-month and
+      year-on-year variation, published monthly by INIDE as an Excel workbook
+      containing the full historical series from January 2007.
+    country: NI
+    organization: INIDE
+    category: prices
+    access_type: file_download
+    frequency: monthly
+    format: xls
+    base_url: https://www.inide.gob.ni
+    documentation_url: https://www.inide.gob.ni/Home/ipc
+    connector: reim.ingestion.connectors.nicaragua.inide_cpi_monthly
+    indicators:
+      - ni_cpi_index_monthly
+      - ni_cpi_inflation_monthly
+      - ni_cpi_inflation_yoy
+    license: public_official_data
+    official: true
+    enabled: true
+
+  # ------------------------------------------------------------------------
   # Nicaragua — Banco Central de Nicaragua
   #
   # DISABLED. The service description is public and the connector is

@@ -54,10 +54,15 @@ See [ROADMAP.md](./ROADMAP.md).
 
 ### Data available in v0.1.0
 
-Six live pipelines, all verified against the source on 2026-08-04:
+Seven live pipelines, all verified against the source on 2026-08-04. INIDE is
+Nicaragua's national statistics office — a primary national source, at monthly
+resolution:
 
 | Indicator | Source | Frequency | Coverage |
 |-----------|--------|-----------|----------|
+| **CPI index (2006=100)** | **INIDE** | **monthly** | **2007–2026** |
+| **CPI inflation, month on month** | **INIDE** | **monthly** | **2011–2026** |
+| **CPI inflation, year on year** | **INIDE** | **monthly** | **2007–2026** |
 | Official exchange rate (annual avg) | World Bank `PA.NUS.FCRF` | annual | 1960–2025 |
 | Consumer price inflation | World Bank `FP.CPI.TOTL.ZG` | annual | 2000–2025 |
 | Personal remittances received | World Bank `BX.TRF.PWKR.CD.DT` | annual | 1977–2024 |
@@ -395,11 +400,12 @@ python scripts/smoke_test_sources.py --source worldbank_ni_cpi_inflation
 
 Stated plainly, because a data platform that hides its gaps is worse than none:
 
-- **Annual frequency only.** Every enabled source is annual. Higher-resolution
-  national data needs national endpoints that are not yet automatable.
-- **No national primary source is live.** All six working connectors read the
-  World Bank, which compiles from national statistics but is one step removed
-  from BCN/INIDE. The BCN connector exists but is disabled and unverified.
+- **One national primary source, six multilateral.** INIDE's monthly CPI is
+  live, but the remaining six connectors read the World Bank, which compiles
+  from national statistics and is one step removed from the publisher. The BCN
+  connector exists but is disabled and unverified.
+- **INIDE publishes no monthly CPI for 2008-2010.** That gap is in the source
+  itself; REIM reports it rather than filling it.
 - **World Bank data lags.** Annual figures for year *Y* land during *Y+1*, so
   freshness thresholds are measured in hundreds of days, not days.
 - **Only Nicaragua.** Other Central American countries are registered but

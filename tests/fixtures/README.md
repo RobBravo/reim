@@ -2,12 +2,19 @@
 
 ## Recorded from live official sources
 
+These are **real** responses. Tests replay them through `respx` so the suite
+never calls an official source.
+
 | File | Origin | Recorded |
 |------|--------|----------|
 | `worldbank_ni_cpi_inflation.json` | `GET https://api.worldbank.org/v2/country/NIC/indicator/FP.CPI.TOTL.ZG?format=json&per_page=500`, trimmed to 2015–2024 with the metadata block adjusted to match | 2026-08-04 |
+| `inide_ipc_junio_2026.xls.gz` | `GET https://www.inide.gob.ni/docs/ipc/ipc_2026/ipc_jun26/Cuadros_Estadisticas_IPC_junio_2026.xls`, byte-for-byte, gzipped only to keep the repo small (402 KB → 157 KB). Tests decompress it before parsing. | 2026-08-04 |
 
-These are **real** responses. Tests replay them through `respx` so the suite
-never calls an official source.
+## Excerpted from a live source
+
+| File | What was changed |
+|------|------------------|
+| `inide_ipc_index.html` | Excerpt of `https://www.inide.gob.ni/Home/ipc`. All 74 `<a href>` workbook links are **verbatim** from the live page; only the surrounding site chrome was removed, because the real page is ~220 KB of navigation markup. The link set — which is what the connector parses — is unmodified. |
 
 ## Synthetic
 

@@ -146,7 +146,14 @@ class PipelineRunner:
             )
             inserted, updated = report.inserted, report.updated
             unchanged, rejected = report.unchanged, report.rejected
-            status = PipelineStatus.PARTIAL if rejected else PipelineStatus.SUCCESS
+            # A dataset-level `error` check cannot point at a single row, so it
+            # rejects nothing — but it still means something an operator must
+            # look at went wrong, so the run is not a clean success.
+            status = (
+                PipelineStatus.PARTIAL
+                if rejected or self._has_dataset_error(results)
+                else PipelineStatus.SUCCESS
+            )
             self._record_extraction_metadata(run, raw)
 
         except CriticalQualityError as exc:
@@ -297,6 +304,16 @@ class PipelineRunner:
                 f"{', '.join(sorted(set(critical)))}"
             )
             raise CriticalQualityError(msg, failed_checks=sorted(set(critical)))
+
+    @staticmethod
+    def _has_dataset_error(results: list[QualityResult]) -> bool:
+        """True when an ``error``-severity check failed without naming a row."""
+        return any(
+            result.failed
+            and result.severity is CheckSeverity.ERROR
+            and result.observation_index is None
+            for result in results
+        )
 
     @staticmethod
     def _rejected_indices(results: list[QualityResult]) -> set[int]:

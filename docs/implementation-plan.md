@@ -111,6 +111,7 @@ Full detail lives in [`docs/sources.md`](./sources.md). Summary:
 | Source | Status | Notes |
 |--------|--------|-------|
 | World Bank Indicators API v2 | **Verified, enabled** | `https://api.worldbank.org/v2/country/NIC/indicator/{code}?format=json`. Open, no auth, JSON, annual frequency, stable pagination. Covers all five MVP indicators. |
+| INIDE monthly IPC (`www.inide.gob.ni/Home/ipc`) | **Verified, enabled** | Monthly CPI index, month-on-month and year-on-year variation, from the legacy `.xls` workbook. First national primary source and first monthly series. Added after the initial MVP; see §11. |
 | BCN exchange-rate SOAP service | **Implemented, disabled** | `https://servicios.bcn.gob.ni/Tc_Servicio/ServicioTC.asmx`. The host only negotiates a pre-TLS 1.2 handshake, which modern OpenSSL 3.x / Fedora crypto policies reject (`unsupported protocol`). Transform logic is unit-tested against a fixture, but the response shape is **not** verified against the live service, so the source ships `enabled: false`. |
 | BCN statistics portal (`www.bcn.gob.ni`) | Reachable, unstructured | Drupal site; the exchange-rate page renders no server-side table and exposes no CSV/XLSX export at a stable URL. Not automatable reliably yet. |
 | INIDE, MHCP, SIBOIF, SIECA, BCIE, CEPAL, IMF | Deferred | Registered in the catalog only where a stable machine-readable endpoint exists. Not implemented in v0.1.0. |
@@ -185,6 +186,46 @@ regression tests.
    1960–1990 figure as invalid. The rule now constrains only the sign. This is
    exactly the failure mode `sources/quality_rules.yml` warns against: thresholds
    are tripwires for a broken feed, not economic priors.
+
+## 11. Post-MVP increment — INIDE monthly CPI (2026-08-04)
+
+Added `inide_cpi_monthly`, closing the "no national primary source" gap the MVP
+shipped with.
+
+**Verification**
+
+| Check | Result |
+|-------|--------|
+| Live `pipeline run inide_cpi_monthly` | ✅ 582 observations (198 index + 186 m/m + 198 y/y) |
+| Second run | ✅ 0 inserted, 582 unchanged |
+| Full `run-all` from an empty database | ✅ 7/7 pipelines, 904 observations |
+| Unit tests | ✅ 38 new, replayed against a real recorded workbook |
+| `pytest` / `ruff` / `mypy --strict` | ✅ 285 passed / clean / clean (78 files) |
+| Container rebuild with `xlrd` | ✅ builds and serves |
+
+**Two shared-layer defects the new source exposed**
+
+1. **`check_period_change` compared across holes in a series.** INIDE publishes
+   no monthly CPI for 2008-2010, and the check measured 2011-01 against 2007-12
+   as a single "25.25% monthly change". It now compares only genuinely adjacent
+   periods — two closed intervals one day apart, which is the adjacency test at
+   every frequency. This also removed pre-existing false positives on the World
+   Bank series, which have missing years.
+2. **Dataset-level `error` checks had no effect on the run outcome.** An `error`
+   result that names no specific row rejected nothing and left the run reporting
+   `success`. Such a run is now `partial`: the data is still written (an error is
+   not critical), but the outcome no longer hides a problem.
+
+**Judgement calls, all documented in `docs/sources.md`**
+
+* Annual rows are not ingested — they are year averages, and the current year's
+  is a partial average that would churn as a false revision every month.
+* Continuity is enforced only from 2011, where INIDE actually publishes without
+  gaps; the sparse 2001-2010 history is reported, not flagged as a fault.
+* Values are quantised to six decimals: the index's full published precision,
+  minus Excel's IEEE-754 noise.
+* The connector reads the index page to *discover* the newest workbook, because
+  file naming drifts between releases and no URL template covers them all.
 
 ## 10. Follow-up work (not in v0.1.0)
 

@@ -79,6 +79,48 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         methodology_url=_WB_METHODOLOGY,
     ),
     IndicatorDefinition(
+        code="ni_cpi_index_monthly",
+        name="Nicaragua — consumer price index (monthly, 2006=100)",
+        description=(
+            "National consumer price index published monthly by INIDE, base "
+            "year 2006 = 100. This is the national aggregate; INIDE also "
+            "publishes Managua and rest-of-country breakdowns."
+        ),
+        category=IndicatorCategory.PRICES,
+        frequency=Frequency.MONTHLY,
+        unit="index (2006=100)",
+        value_type=ValueType.INDEX,
+        methodology_url="https://www.inide.gob.ni/Home/ipc",
+    ),
+    IndicatorDefinition(
+        code="ni_cpi_inflation_monthly",
+        name="Nicaragua — consumer price inflation (month-on-month)",
+        description=(
+            "Percentage change of the national consumer price index versus the "
+            "previous month, as published by INIDE."
+        ),
+        category=IndicatorCategory.PRICES,
+        frequency=Frequency.MONTHLY,
+        unit="percent",
+        value_type=ValueType.PERCENT_CHANGE,
+        methodology_url="https://www.inide.gob.ni/Home/ipc",
+    ),
+    IndicatorDefinition(
+        code="ni_cpi_inflation_yoy",
+        name="Nicaragua — consumer price inflation (year-on-year)",
+        description=(
+            "Percentage change of the national consumer price index versus the "
+            "same month of the previous year ('variación interanual'), as "
+            "published by INIDE. Monthly counterpart of the annual World Bank "
+            "series ni_cpi_inflation_annual."
+        ),
+        category=IndicatorCategory.PRICES,
+        frequency=Frequency.MONTHLY,
+        unit="percent",
+        value_type=ValueType.PERCENT_CHANGE,
+        methodology_url="https://www.inide.gob.ni/Home/ipc",
+    ),
+    IndicatorDefinition(
         code="ni_remittances_received",
         name="Nicaragua — personal remittances received",
         description=(

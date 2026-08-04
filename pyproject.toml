@@ -33,6 +33,8 @@ dependencies = [
     "prometheus-client>=0.21",
     "PyYAML>=6.0",
     "typer>=0.15",
+    # INIDE publishes the IPC only as legacy BIFF .xls; xlrd is the reader.
+    "xlrd>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -117,6 +119,12 @@ warn_unreachable = true
 disallow_any_generics = true
 plugins = ["pydantic.mypy"]
 exclude = ["^alembic/versions/", "^\\.venv/"]
+
+[[tool.mypy.overrides]]
+# xlrd publishes no type stubs; its use is confined to the INIDE connector,
+# which wraps every call behind typed helpers.
+module = ["xlrd.*"]
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]

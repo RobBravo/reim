@@ -252,6 +252,35 @@ async def test_error_level_check_rejects_only_the_offending_row(
 
 
 @respx.mock
+async def test_dataset_level_error_marks_the_run_partial(
+    seeded_session: Session, catalog, worldbank_cpi_payload
+) -> None:  # type: ignore[no-untyped-def]
+    """An `error` check that names no row still means the run is not clean.
+
+    It rejects nothing (there is no single row to blame), but silently reporting
+    `success` would hide a problem an operator needs to see.
+    """
+    rules = QualityRuleSet(
+        indicators={
+            "ni_cpi_inflation_annual": IndicatorRule(
+                freshness_max_age_days=1, freshness_severity=CheckSeverity.ERROR
+            )
+        }
+    )
+    respx.get(CPI_URL).mock(return_value=httpx.Response(200, json=worldbank_cpi_payload))
+
+    outcome = await PipelineRunner(ConnectorRegistry(catalog), rules).run(
+        PIPELINE, session=seeded_session
+    )
+
+    assert outcome.status is PipelineStatus.PARTIAL
+    assert outcome.records_rejected == 0
+    # The data is still written: an error is not a critical failure.
+    assert outcome.records_inserted == 10
+    assert _observations(seeded_session) == 10
+
+
+@respx.mock
 async def test_warning_stores_data_and_marks_it(
     seeded_session: Session, catalog, worldbank_cpi_payload
 ) -> None:  # type: ignore[no-untyped-def]

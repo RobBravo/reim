@@ -205,6 +205,48 @@ def test_period_change_skipped_without_a_threshold(make_observation, permissive_
     assert check_period_change(batch, permissive_rule)[0].status is CheckStatus.SKIPPED
 
 
+def test_period_change_ignores_non_adjacent_periods(make_observation) -> None:
+    """Regression: INIDE has no monthly CPI for 2008-2010.
+
+    Comparing 2011-01 straight against 2007-12 reported a bogus "25.25% monthly
+    change". Only genuinely consecutive periods may be compared.
+    """
+    rule = IndicatorRule(max_period_change_pct=Decimal("10"))
+    batch = [
+        make_observation("2007-12", "115", frequency=Frequency.MONTHLY),
+        make_observation("2011-01", "144", frequency=Frequency.MONTHLY),
+    ]
+    assert not _failed(check_period_change(batch, rule), "period_change")
+
+
+def test_period_change_still_compares_adjacent_periods(make_observation) -> None:
+    """The gap guard must not disable the check for contiguous months."""
+    rule = IndicatorRule(max_period_change_pct=Decimal("10"))
+    batch = [
+        make_observation("2026-01", "100", frequency=Frequency.MONTHLY),
+        make_observation("2026-02", "150", frequency=Frequency.MONTHLY),
+    ]
+    failures = _failed(check_period_change(batch, rule), "period_change")
+    assert failures and failures[0].actual_value == "50.00%"
+
+
+def test_period_change_adjacency_holds_across_frequencies(make_observation) -> None:
+    """Consecutive annual periods are one day apart, just like months."""
+    rule = IndicatorRule(max_period_change_pct=Decimal("10"))
+    adjacent = [make_observation("2023", "100"), make_observation("2024", "150")]
+    assert _failed(check_period_change(adjacent, rule), "period_change")
+
+    with_hole = [make_observation("2020", "100"), make_observation("2024", "150")]
+    assert not _failed(check_period_change(with_hole, rule), "period_change")
+
+
+def test_period_change_reports_how_many_comparisons_it_skipped(make_observation) -> None:
+    rule = IndicatorRule(max_period_change_pct=Decimal("10"))
+    batch = [make_observation("2020", "100"), make_observation("2024", "101")]
+    result = check_period_change(batch, rule)[0]
+    assert result.details["comparisons_skipped_across_gaps"] == 1
+
+
 def test_period_change_ignores_a_zero_baseline(make_observation) -> None:  # type: ignore[no-untyped-def]
     """Dividing by a zero previous value must not blow up."""
     rule = IndicatorRule(max_period_change_pct=Decimal("10"))

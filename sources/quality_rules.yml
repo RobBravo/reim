@@ -63,6 +63,39 @@ indicators:
     max_period_change_pct: 1000
     freshness_max_age_days: 800
 
+  # INIDE monthly CPI ------------------------------------------------------
+  ni_cpi_index_monthly:
+    min_value: 0
+    allow_negative: false
+    allow_zero: false
+    # NOT monotonic_increasing: a CPI legitimately falls month to month
+    # (May 2026 fell from 326.246 to 325.982).
+    max_period_change_pct: 15
+    # INIDE publishes month M during the first half of M+1; allow for the lag
+    # plus a missed release before flagging staleness.
+    freshness_max_age_days: 90
+    # The published series runs from January 2007; a much shorter result means
+    # the workbook was truncated or a column stopped parsing.
+    min_observations: 100
+
+  ni_cpi_inflation_monthly:
+    min_value: -20
+    max_value: 50
+    allow_negative: true
+    allow_zero: true
+    # No max_period_change_pct: this series crosses zero, so a percentage change
+    # OF it is unbounded and meaningless as a tripwire.
+    freshness_max_age_days: 90
+    min_observations: 100
+
+  ni_cpi_inflation_yoy:
+    min_value: -30
+    max_value: 500
+    allow_negative: true
+    allow_zero: true
+    freshness_max_age_days: 90
+    min_observations: 100
+
   # External sector -------------------------------------------------------
   ni_remittances_received:
     min_value: 0
