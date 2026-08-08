@@ -9,7 +9,9 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
+import httpx
 import pytest
+import respx
 
 from reim.core.constants import CheckSeverity, CheckStatus
 from reim.core.exceptions import ExtractionError, TransformationError
@@ -395,3 +397,83 @@ def test_future_rows_discarded_reports_zero_for_a_closed_month() -> None:
     ]
 
     assert check.actual_value == "0"
+
+
+# --------------------------------------------------------------------------
+# extract
+# --------------------------------------------------------------------------
+@respx.mock
+async def test_extract_requests_one_envelope_per_month(pinned_today: date) -> None:
+    connector = build_connector(start_month="2012-01", end_month="2012-01")
+    fixture = (FIXTURES / "bcn_tc_mes_2012_01.xml").read_text(encoding="utf-8")
+    route = respx.post(SOAP_URL).mock(
+        return_value=httpx.Response(
+            200, text=fixture, headers={"Content-Type": "text/xml; charset=utf-8"}
+        )
+    )
+
+    raw = await connector.extract()
+
+    assert route.call_count == 1
+    assert raw.http_status == 200
+    assert raw.metadata["months"] == ["2012-01"]
+    assert raw.payload == [{"ano": 2012, "mes": 1, "xml": fixture}]
+
+
+@respx.mock
+async def test_extract_sends_the_documented_soap_contract(pinned_today: date) -> None:
+    connector = build_connector(start_month="2012-01", end_month="2012-01")
+    fixture = (FIXTURES / "bcn_tc_mes_2012_01.xml").read_text(encoding="utf-8")
+    route = respx.post(SOAP_URL).mock(return_value=httpx.Response(200, text=fixture))
+
+    await connector.extract()
+    request = route.calls.last.request
+
+    assert request.headers["SOAPAction"] == "http://servicios.bcn.gob.ni/RecuperaTC_Mes"
+    assert request.headers["Content-Type"] == "text/xml; charset=utf-8"
+    body = request.content.decode("utf-8")
+    assert '<RecuperaTC_Mes xmlns="http://servicios.bcn.gob.ni/">' in body
+    assert "<Ano>2012</Ano><Mes>1</Mes>" in body
+
+
+@respx.mock
+async def test_extract_walks_the_whole_requested_range(pinned_today: date) -> None:
+    connector = build_connector(start_month="2012-01", end_month="2012-03")
+    fixture = (FIXTURES / "bcn_tc_mes_2012_01.xml").read_text(encoding="utf-8")
+    route = respx.post(SOAP_URL).mock(return_value=httpx.Response(200, text=fixture))
+
+    raw = await connector.extract()
+
+    assert route.call_count == 3
+    assert raw.metadata["months"] == ["2012-01", "2012-02", "2012-03"]
+
+
+@respx.mock
+async def test_extract_raises_when_the_service_errors(pinned_today: date) -> None:
+    connector = build_connector(start_month="2012-01", end_month="2012-01")
+    # 404 rather than 500: a real answer, so ensure_ok raises immediately
+    # instead of burning four attempts of exponential backoff.
+    respx.post(SOAP_URL).mock(return_value=httpx.Response(404, text="not found"))
+
+    with pytest.raises(ExtractionError, match="HTTP 404"):
+        await connector.extract()
+
+
+async def test_extract_rejects_bad_options_before_touching_the_network() -> None:
+    connector = build_connector(start_month="2011-01")
+
+    with pytest.raises(ExtractionError, match="2012-01"):
+        await connector.extract()
+
+
+@pytest.mark.live
+async def test_live_service_answers_the_documented_contract() -> None:
+    """Opt-in: hits the real BCN service. Run with `pytest -m live`."""
+    connector = build_connector(months_back=1)
+
+    raw = await connector.extract()
+    observations = connector.transform(raw)
+
+    assert observations, "the current month must contain at least one rate"
+    assert all(obs.value_numeric is not None and obs.value_numeric > 0 for obs in observations)
+    assert all(obs.period.start <= raw.retrieved_at.date() for obs in observations)

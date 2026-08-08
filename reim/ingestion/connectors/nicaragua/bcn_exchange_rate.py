@@ -25,10 +25,11 @@ from __future__ import annotations
 import re
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import ClassVar
+from typing import Any, ClassVar
+from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
-from reim.core.constants import CheckSeverity, CheckType, Frequency
+from reim.core.constants import CheckSeverity, CheckType, Frequency, TlsProfile
 from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
@@ -37,6 +38,7 @@ from reim.domain.pipelines.models import (
     RawDataset,
 )
 from reim.ingestion.base import BaseConnector
+from reim.ingestion.http import ensure_ok, http_client, post
 
 SOAP_NAMESPACE = "http://servicios.bcn.gob.ni/"
 SOAP_ACTION = f"{SOAP_NAMESPACE}RecuperaTC_Mes"
@@ -160,8 +162,64 @@ class BcnExchangeRateConnector(BaseConnector):
         return (int(match["year"]), int(match["month"]))
 
     async def extract(self) -> RawDataset:
-        """Not yet implemented; see Task 8 of the implementation plan."""
-        raise NotImplementedError
+        """Fetch one ``RecuperaTC_Mes`` envelope per resolved month.
+
+        Requests are issued sequentially rather than concurrently: this is an
+        official service on a legacy stack, and a backfill can span years.
+
+        Raises:
+            ExtractionError: The options are unusable, or the service was
+                unreachable or kept failing.
+        """
+        months = self.resolve_months(_utc_today())
+        url = str(self.source.base_url)
+        retrieved_at = datetime.now(UTC)
+
+        if self.source.tls_profile is TlsProfile.LEGACY:
+            self.logger.warning(
+                "bcn.legacy_tls",
+                host=urlsplit(url).hostname,
+                tls_note=self.source.tls_note,
+            )
+
+        payload: list[dict[str, Any]] = []
+        status: int | None = None
+        content_type: str | None = None
+
+        async with http_client(tls_profile=self.source.tls_profile) as client:
+            for year, month in months:
+                body = _SOAP_ENVELOPE.format(
+                    envelope_ns=SOAP_ENVELOPE_NS,
+                    namespace=SOAP_NAMESPACE,
+                    year=year,
+                    month=month,
+                )
+                response = await post(
+                    client,
+                    url,
+                    content=body.encode("utf-8"),
+                    headers={
+                        "Content-Type": "text/xml; charset=utf-8",
+                        "SOAPAction": SOAP_ACTION,
+                    },
+                )
+                ensure_ok(response)
+                payload.append({"ano": year, "mes": month, "xml": response.text})
+                status = response.status_code
+                content_type = response.headers.get("content-type")
+
+        return RawDataset(
+            source_key=self.source.key,
+            retrieved_at=retrieved_at,
+            source_url=url,
+            payload=payload,
+            content_type=content_type,
+            http_status=status,
+            metadata={
+                "operation": "RecuperaTC_Mes",
+                "months": [f"{year}-{month:02d}" for year, month in months],
+            },
+        )
 
     def transform(self, raw: RawDataset) -> list[NormalizedObservation]:
         """Normalize the per-month envelopes into one observation per day.
