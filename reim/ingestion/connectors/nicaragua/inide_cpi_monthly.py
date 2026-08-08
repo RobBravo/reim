@@ -95,13 +95,67 @@ CONTIGUOUS_FROM_YEAR = 2011
 #: matching and the connector refuses to mix incompatible bases.
 EXPECTED_BASE_NOTE = "2006 = 100"
 
-#: Column headers asserted in row 3 before any value is read.
-EXPECTED_HEADERS: dict[int, str] = {
-    2: "nacional",
-    3: "mensual",
-    4: "acumulada",
-    5: "interanual",
-}
+
+class RegionBlock(NamedTuple):
+    """One of sheet 2-1-06's four-column regional blocks.
+
+    The sheet repeats the same four columns — index, month-on-month,
+    year-to-date, year-on-year — once per geographic breakdown, at a fixed
+    offset. Describing the blocks rather than flattening them into a column
+    map keeps the reason the columns fall where they do visible, and makes
+    adding a breakdown a one-line change.
+    """
+
+    #: Region slug, recorded on every observation for provenance.
+    key: str
+    #: Header asserted in row 3 above the index column, lowercased.
+    header: str
+    #: Column of this block's index series.
+    index_column: int
+    #: Appended to the base indicator codes. Empty for the national block, so
+    #: the national series keeps the codes it has always had.
+    indicator_suffix: str
+
+
+REGION_BLOCKS: tuple[RegionBlock, ...] = (RegionBlock("national", "nacional", 2, ""),)
+
+#: Offsets within a block that REIM ingests, and the base indicator each
+#: feeds. Offset 2 ("Acumulada", year-to-date) is deliberately absent: it is a
+#: within-year cumulative that restates every month, and REIM does not publish
+#: it for any region.
+BLOCK_COLUMNS: tuple[tuple[int, str, str], ...] = (
+    (0, "ni_cpi_index_monthly", "index (2006=100)"),
+    (1, "ni_cpi_inflation_monthly", "percent"),
+    (3, "ni_cpi_inflation_yoy", "percent"),
+)
+
+#: Headers of a block's non-index columns, identical in every block. Offset 2
+#: appears here although it is never ingested: asserting it still guards
+#: against an inserted or reordered column.
+BLOCK_HEADERS: dict[int, str] = {1: "mensual", 2: "acumulada", 3: "interanual"}
+
+
+def _derive_column_maps() -> tuple[dict[int, tuple[str, str]], dict[int, str], dict[int, str]]:
+    """Expand :data:`REGION_BLOCKS` into the flat maps the parser walks."""
+    indicators: dict[int, tuple[str, str]] = {}
+    regions: dict[int, str] = {}
+    headers: dict[int, str] = {}
+
+    for block in REGION_BLOCKS:
+        headers[block.index_column] = block.header
+        for offset, header in BLOCK_HEADERS.items():
+            headers[block.index_column + offset] = header
+        for offset, base_code, unit in BLOCK_COLUMNS:
+            column = block.index_column + offset
+            indicators[column] = (f"{base_code}{block.indicator_suffix}", unit)
+            regions[column] = block.key
+
+    return indicators, regions, headers
+
+
+#: Columns mapped to the REIM indicator they feed, to their region, and the
+#: headers asserted in row 3 before any value is read.
+COLUMN_INDICATORS, COLUMN_REGIONS, EXPECTED_HEADERS = _derive_column_maps()
 
 #: INIDE stores the index to six decimal places and displays it to one; the
 #: variation columns are spreadsheet formula results carrying full binary
@@ -129,13 +183,6 @@ MONTH_NUMBERS: dict[str, int] = {
 _HREF = re.compile(r'href\s*=\s*"([^"]+\.xlsx?)"', re.IGNORECASE)
 _YEAR = re.compile(r"(20\d{2})")
 _MONTH_NAME = re.compile("|".join(sorted(MONTH_NUMBERS, key=len, reverse=True)), re.IGNORECASE)
-
-#: Columns mapped to the REIM indicator they feed.
-COLUMN_INDICATORS: dict[int, tuple[str, str]] = {
-    2: ("ni_cpi_index_monthly", "index (2006=100)"),
-    3: ("ni_cpi_inflation_monthly", "percent"),
-    5: ("ni_cpi_inflation_yoy", "percent"),
-}
 
 
 class Release(NamedTuple):
@@ -337,7 +384,7 @@ class InideCpiMonthly(BaseConnector):
                         raw_metadata={
                             "inide_sheet": SHEET_NAME,
                             "inide_column": column,
-                            "inide_series": "nacional",
+                            "inide_region": COLUMN_REGIONS[column],
                             "inide_base_year": 2006,
                             "inide_release": str(raw.metadata.get("release_label", "")),
                         },

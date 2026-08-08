@@ -17,6 +17,9 @@ from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.pipelines.models import RawDataset
 from reim.domain.sources.catalog import SourceEntry
 from reim.ingestion.connectors.nicaragua.inide_cpi_monthly import (
+    COLUMN_INDICATORS,
+    COLUMN_REGIONS,
+    EXPECTED_HEADERS,
     SHEET_NAME,
     InideCpiMonthly,
     Release,
@@ -131,6 +134,32 @@ def test_release_label_formats_month() -> None:
 # --------------------------------------------------------------------------
 # Transform
 # --------------------------------------------------------------------------
+def test_column_maps_are_derived_from_the_national_block() -> None:
+    """The derived maps must reproduce the hand-written ones exactly."""
+    assert COLUMN_INDICATORS == {
+        2: ("ni_cpi_index_monthly", "index (2006=100)"),
+        3: ("ni_cpi_inflation_monthly", "percent"),
+        5: ("ni_cpi_inflation_yoy", "percent"),
+    }
+    assert EXPECTED_HEADERS == {
+        2: "nacional",
+        3: "mensual",
+        4: "acumulada",
+        5: "interanual",
+    }
+
+
+def test_the_year_to_date_column_is_asserted_but_not_ingested() -> None:
+    """Column 4 guards the layout; its values are deliberately not read."""
+    assert 4 in EXPECTED_HEADERS
+    assert 4 not in COLUMN_INDICATORS
+
+
+def test_every_ingested_column_knows_its_region() -> None:
+    assert set(COLUMN_REGIONS) >= set(COLUMN_INDICATORS)
+    assert COLUMN_REGIONS[2] == "national"
+
+
 def test_transform_parses_the_real_workbook(
     connector: InideCpiMonthly, inide_workbook_bytes: bytes
 ) -> None:
