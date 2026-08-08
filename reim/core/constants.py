@@ -57,6 +57,18 @@ class SourceFormat(StrEnum):
     PDF = "pdf"
 
 
+class TlsProfile(StrEnum):
+    """TLS policy a source requires.
+
+    ``LEGACY`` relaxes the protocol version and the cipher security level for
+    hosts that never modernised. It never relaxes certificate or hostname
+    verification.
+    """
+
+    MODERN = "modern"
+    LEGACY = "legacy"
+
+
 class OrganizationType(StrEnum):
     """Institutional category of a publishing organization."""
 

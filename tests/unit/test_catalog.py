@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 import yaml
 
+from reim.core.constants import TlsProfile
 from reim.core.exceptions import CatalogError, CatalogValidationError
 from reim.domain.sources.catalog import SourceCatalog, load_catalog
 
@@ -151,6 +152,37 @@ def test_disabled_source_may_use_a_placeholder_host(tmp_path: Path) -> None:
 def test_disabled_source_without_a_reason_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(CatalogValidationError, match="disabled_reason"):
         load_catalog(_write(tmp_path, _catalog(enabled=False)))
+
+
+def test_source_defaults_to_the_modern_tls_profile(tmp_path: Path) -> None:
+    loaded = load_catalog(_write(tmp_path, _catalog()))
+    entry = loaded.sources[0]
+    assert entry.tls_profile is TlsProfile.MODERN
+    assert entry.tls_note is None
+
+
+def test_legacy_tls_profile_without_a_note_is_rejected(tmp_path: Path) -> None:
+    """A downgraded handshake must justify itself, like a disabled source must."""
+    with pytest.raises(CatalogValidationError, match="tls_note"):
+        load_catalog(_write(tmp_path, _catalog(tls_profile="legacy")))
+
+
+def test_legacy_tls_profile_is_accepted_with_a_note(tmp_path: Path) -> None:
+    loaded = load_catalog(
+        _write(
+            tmp_path,
+            _catalog(
+                tls_profile="legacy",
+                tls_note="Host negotiates TLS 1.0 only; verification stays enforced.",
+            ),
+        )
+    )
+    assert loaded.sources[0].tls_profile is TlsProfile.LEGACY
+
+
+def test_unknown_tls_profile_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(CatalogValidationError):
+        load_catalog(_write(tmp_path, _catalog(tls_profile="ancient")))
 
 
 def test_unknown_field_is_rejected(tmp_path: Path) -> None:

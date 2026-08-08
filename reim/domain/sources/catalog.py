@@ -22,6 +22,7 @@ from reim.core.constants import (
     Frequency,
     IndicatorCategory,
     SourceFormat,
+    TlsProfile,
 )
 from reim.core.exceptions import CatalogError, CatalogValidationError
 from reim.domain.countries.registry import COUNTRIES_BY_ISO2
@@ -57,6 +58,9 @@ class SourceEntry(BaseModel):
     official: bool = True
     enabled: bool = True
     disabled_reason: str | None = None
+    #: TLS policy this host requires. ``LEGACY`` must justify itself.
+    tls_profile: TlsProfile = TlsProfile.MODERN
+    tls_note: str | None = None
     #: Free-form connector configuration, passed through unchanged.
     options: dict[str, Any] = Field(default_factory=dict)
 
@@ -89,6 +93,10 @@ class SourceEntry(BaseModel):
 
         if not self.enabled and not self.disabled_reason:
             msg = "a disabled source must document 'disabled_reason'"
+            raise ValueError(msg)
+
+        if self.tls_profile is TlsProfile.LEGACY and not self.tls_note:
+            msg = "a source with tls_profile 'legacy' must document 'tls_note'"
             raise ValueError(msg)
 
         return self
