@@ -24,10 +24,13 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, date, datetime
+from decimal import Decimal, InvalidOperation
 from typing import ClassVar
+from xml.etree import ElementTree
 
 from reim.core.constants import Frequency
-from reim.core.exceptions import ExtractionError
+from reim.core.exceptions import ExtractionError, TransformationError
+from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
     NormalizedObservation,
     QualityResult,
@@ -154,8 +157,96 @@ class BcnExchangeRateConnector(BaseConnector):
         raise NotImplementedError
 
     def transform(self, raw: RawDataset) -> list[NormalizedObservation]:
-        """Not yet implemented; see Task 6 of the implementation plan."""
-        raise NotImplementedError
+        """Normalize the per-month envelopes into one observation per day.
+
+        Pure function of ``raw``. Rows are sorted, deduplicated and truncated
+        at ``raw.retrieved_at``: the service answers for future months, and a
+        projected rate is not an observation.
+
+        Raises:
+            TransformationError: The payload is not the expected shape, an
+                envelope is malformed or carries a SOAP fault, a value is not
+                numeric, or one day arrives with two different values.
+        """
+        payload = raw.payload
+        if not isinstance(payload, list):
+            msg = "BCN payload must be a list of per-month envelopes"
+            raise TransformationError(msg, source_key=self.source.key)
+
+        today = raw.retrieved_at.date()
+        values: dict[date, Decimal] = {}
+        months: dict[date, str] = {}
+
+        for entry in payload:
+            month_label = f"{int(entry['ano'])}-{int(entry['mes']):02d}"
+            root = self._parse_envelope(str(entry["xml"]), month_label)
+            for node in root.iter("Tc"):
+                day, value = self._read_row(node, month_label)
+                previous = values.get(day)
+                if previous is not None and previous != value:
+                    msg = (
+                        f"BCN returned {day.isoformat()} with two different values: "
+                        f"{previous} and {value}"
+                    )
+                    raise TransformationError(msg, source_key=self.source.key)
+                values[day] = value
+                months[day] = month_label
+
+        return [
+            NormalizedObservation(
+                country_iso3="NIC",
+                indicator_code=self.indicator_code,
+                source_key=self.source.key,
+                period=parse_period(day.isoformat(), Frequency.DAILY),
+                unit=self.unit,
+                currency_code="NIO",
+                value_numeric=values[day],
+                retrieved_at=raw.retrieved_at,
+                source_url=raw.source_url,
+                source_record_id=f"tc_dia:{day.isoformat()}",
+                raw_metadata={
+                    "bcn_operation": "RecuperaTC_Mes",
+                    "bcn_requested_month": months[day],
+                    "contract_status": "verified",
+                },
+            )
+            for day in sorted(values)
+            if day <= today
+        ]
+
+    def _parse_envelope(self, xml: str, month_label: str) -> ElementTree.Element:
+        """Parse one SOAP envelope, surfacing a fault as a transformation error."""
+        try:
+            root = ElementTree.fromstring(xml)
+        except ElementTree.ParseError as exc:
+            msg = f"BCN returned malformed XML for {month_label}: {exc}"
+            raise TransformationError(msg, source_key=self.source.key) from exc
+
+        fault = root.find(f".//{{{SOAP_ENVELOPE_NS}}}Fault")
+        if fault is not None:
+            detail = (fault.findtext("faultstring") or "no faultstring").strip()
+            msg = f"BCN returned a SOAP fault for {month_label}: {detail}"
+            raise TransformationError(msg, source_key=self.source.key)
+        return root
+
+    def _read_row(self, node: ElementTree.Element, month_label: str) -> tuple[date, Decimal]:
+        """Read one ``<Tc>`` element into a date and an exact Decimal."""
+        raw_date = (node.findtext("Fecha") or "").strip()
+        raw_value = (node.findtext("Valor") or "").strip()
+
+        try:
+            day = date.fromisoformat(raw_date[:10])
+        except ValueError as exc:
+            msg = f"BCN returned an unparseable date {raw_date!r} in {month_label}"
+            raise TransformationError(msg, source_key=self.source.key) from exc
+
+        try:
+            value = Decimal(raw_value)
+        except InvalidOperation as exc:
+            msg = f"BCN returned a non-numeric rate {raw_value!r} for {raw_date}"
+            raise TransformationError(msg, source_key=self.source.key) from exc
+
+        return day, value
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
         """Not yet implemented; see Task 7 of the implementation plan."""
