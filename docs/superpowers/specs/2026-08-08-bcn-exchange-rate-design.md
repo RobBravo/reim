@@ -116,6 +116,7 @@ tls_note: str | None = None
 ```python
 def legacy_tls_context() -> ssl.SSLContext: ...
 
+
 @asynccontextmanager
 async def http_client(
     settings: Settings | None = None,

@@ -67,6 +67,7 @@ Expected: FAIL — the catalog lists three indicators, and `SourceEntry` would r
 In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation_yoy` entry:
 
 ```python
+(
     IndicatorDefinition(
         code="ni_cpi_index_monthly_managua",
         name="Nicaragua — consumer price index, Managua (monthly, 2006=100)",
@@ -81,6 +82,8 @@ In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation
         value_type=ValueType.INDEX,
         methodology_url="https://www.inide.gob.ni/Home/ipc",
     ),
+)
+(
     IndicatorDefinition(
         code="ni_cpi_inflation_monthly_managua",
         name="Nicaragua — consumer price inflation, Managua (month-on-month)",
@@ -94,6 +97,8 @@ In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation
         value_type=ValueType.PERCENT_CHANGE,
         methodology_url="https://www.inide.gob.ni/Home/ipc",
     ),
+)
+(
     IndicatorDefinition(
         code="ni_cpi_inflation_yoy_managua",
         name="Nicaragua — consumer price inflation, Managua (year-on-year)",
@@ -107,6 +112,8 @@ In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation
         value_type=ValueType.PERCENT_CHANGE,
         methodology_url="https://www.inide.gob.ni/Home/ipc",
     ),
+)
+(
     IndicatorDefinition(
         code="ni_cpi_index_monthly_rest_of_country",
         name="Nicaragua — consumer price index, rest of the country (monthly, 2006=100)",
@@ -122,6 +129,8 @@ In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation
         value_type=ValueType.INDEX,
         methodology_url="https://www.inide.gob.ni/Home/ipc",
     ),
+)
+(
     IndicatorDefinition(
         code="ni_cpi_inflation_monthly_rest_of_country",
         name="Nicaragua — consumer price inflation, rest of the country (month-on-month)",
@@ -135,6 +144,8 @@ In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation
         value_type=ValueType.PERCENT_CHANGE,
         methodology_url="https://www.inide.gob.ni/Home/ipc",
     ),
+)
+(
     IndicatorDefinition(
         code="ni_cpi_inflation_yoy_rest_of_country",
         name="Nicaragua — consumer price inflation, rest of the country (year-on-year)",
@@ -148,6 +159,7 @@ In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation
         value_type=ValueType.PERCENT_CHANGE,
         methodology_url="https://www.inide.gob.ni/Home/ipc",
     ),
+)
 ```
 
 Then update the existing `ni_cpi_index_monthly` description, which currently ends "INIDE also publishes Managua and rest-of-country breakdowns." Replace that sentence with:
@@ -695,8 +707,7 @@ def test_a_hole_in_one_region_does_not_implicate_the_others(
         obs
         for obs in connector.transform(_raw(inide_workbook_bytes))
         if not (
-            obs.indicator_code == "ni_cpi_index_monthly_managua"
-            and obs.period.label == "2015-05"
+            obs.indicator_code == "ni_cpi_index_monthly_managua" and obs.period.label == "2015-05"
         )
     ]
     results = {r.check_name: r for r in connector.validate(observations)}
@@ -740,26 +751,24 @@ indicator code and a per-region check name. Its signature and first lines
 become:
 
 ```python
-    def _check_index_series_complete(
-        self, observations: list[NormalizedObservation], block: RegionBlock
-    ) -> QualityResult:
-        """The index must be unbroken from :data:`CONTIGUOUS_FROM_YEAR` onward.
+def _check_index_series_complete(
+    self, observations: list[NormalizedObservation], block: RegionBlock
+) -> QualityResult:
+    """The index must be unbroken from :data:`CONTIGUOUS_FROM_YEAR` onward.
 
-        INIDE's own table is sparse before that: sheet ``2-1-06`` carries annual
-        rows only for 2001-2006 and 2008-2010, with monthly detail for 2007 and
-        then continuously from 2011. That history is a property of the source,
-        not a parsing fault, so it is not treated as a failure. The modern
-        stretch, however, must never develop a hole — one there would mean the
-        workbook was truncated or the row scan broke.
+    INIDE's own table is sparse before that: sheet ``2-1-06`` carries annual
+    rows only for 2001-2006 and 2008-2010, with monthly detail for 2007 and
+    then continuously from 2011. That history is a property of the source,
+    not a parsing fault, so it is not treated as a failure. The modern
+    stretch, however, must never develop a hole — one there would mean the
+    workbook was truncated or the row scan broke.
 
-        Run once per region; all three blocks share the same coverage, so the
-        same threshold applies to each.
-        """
-        check_name = f"inide_index_continuity_{block.key}"
-        index_code = f"{BLOCK_COLUMNS[0][1]}{block.indicator_suffix}"
-        months = sorted(
-            obs.period.start for obs in observations if obs.indicator_code == index_code
-        )
+    Run once per region; all three blocks share the same coverage, so the
+    same threshold applies to each.
+    """
+    check_name = f"inide_index_continuity_{block.key}"
+    index_code = f"{BLOCK_COLUMNS[0][1]}{block.indicator_suffix}"
+    months = sorted(obs.period.start for obs in observations if obs.indicator_code == index_code)
 ```
 
 Then replace every remaining literal `"inide_index_continuity"` inside the

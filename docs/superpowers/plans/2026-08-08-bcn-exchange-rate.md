@@ -513,12 +513,14 @@ async def _send_with_retries(
 Replace the body of `fetch` (keep its docstring) with:
 
 ```python
-    resolved = settings or get_settings()
+resolved = settings or get_settings()
 
-    async def send() -> httpx.Response:
-        return await client.get(url, params=params, headers=dict(headers or {}))
 
-    return await _send_with_retries(send, url, resolved)
+async def send() -> httpx.Response:
+    return await client.get(url, params=params, headers=dict(headers or {}))
+
+
+return await _send_with_retries(send, url, resolved)
 ```
 
 Add `post` after `fetch`:
@@ -975,10 +977,7 @@ class BcnExchangeRateConnector(BaseConnector):
             raise ExtractionError(msg, source_key=self.source.key)
 
         if end < start:
-            msg = (
-                f"end_month {end[0]}-{end[1]:02d} precedes "
-                f"start_month {start[0]}-{start[1]:02d}"
-            )
+            msg = f"end_month {end[0]}-{end[1]:02d} precedes start_month {start[0]}-{start[1]:02d}"
             raise ExtractionError(msg, source_key=self.source.key)
 
         months = _month_span(start, end)
@@ -1026,14 +1025,16 @@ Expected: PASS, 10 tests.
 The old `extract`/`transform`/`validate` below will now reference removed names. That is expected; Tasks 6–8 replace them. If the module fails to import, temporarily leave the old methods raising `NotImplementedError` so the tests can run:
 
 ```python
-    async def extract(self) -> RawDataset:
-        raise NotImplementedError
+async def extract(self) -> RawDataset:
+    raise NotImplementedError
 
-    def transform(self, raw: RawDataset) -> list[NormalizedObservation]:
-        raise NotImplementedError
 
-    def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
-        raise NotImplementedError
+def transform(self, raw: RawDataset) -> list[NormalizedObservation]:
+    raise NotImplementedError
+
+
+def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
+    raise NotImplementedError
 ```
 
 - [ ] **Step 5: Commit**
@@ -1269,97 +1270,99 @@ from reim.domain.observations.periods import parse_period
 Then replace the placeholder `transform` in the connector with:
 
 ```python
-    def transform(self, raw: RawDataset) -> list[NormalizedObservation]:
-        """Normalize the per-month envelopes into one observation per day.
+def transform(self, raw: RawDataset) -> list[NormalizedObservation]:
+    """Normalize the per-month envelopes into one observation per day.
 
-        Pure function of ``raw``. Rows are sorted, deduplicated and truncated
-        at ``raw.retrieved_at``: the service answers for future months, and a
-        projected rate is not an observation.
+    Pure function of ``raw``. Rows are sorted, deduplicated and truncated
+    at ``raw.retrieved_at``: the service answers for future months, and a
+    projected rate is not an observation.
 
-        Raises:
-            TransformationError: The payload is not the expected shape, an
-                envelope is malformed or carries a SOAP fault, a value is not
-                numeric, or one day arrives with two different values.
-        """
-        payload = raw.payload
-        if not isinstance(payload, list):
-            msg = "BCN payload must be a list of per-month envelopes"
-            raise TransformationError(msg, source_key=self.source.key)
+    Raises:
+        TransformationError: The payload is not the expected shape, an
+            envelope is malformed or carries a SOAP fault, a value is not
+            numeric, or one day arrives with two different values.
+    """
+    payload = raw.payload
+    if not isinstance(payload, list):
+        msg = "BCN payload must be a list of per-month envelopes"
+        raise TransformationError(msg, source_key=self.source.key)
 
-        today = raw.retrieved_at.date()
-        values: dict[date, Decimal] = {}
-        months: dict[date, str] = {}
+    today = raw.retrieved_at.date()
+    values: dict[date, Decimal] = {}
+    months: dict[date, str] = {}
 
-        for entry in payload:
-            month_label = f"{int(entry['ano'])}-{int(entry['mes']):02d}"
-            root = self._parse_envelope(str(entry["xml"]), month_label)
-            for node in root.iter("Tc"):
-                day, value = self._read_row(node, month_label)
-                previous = values.get(day)
-                if previous is not None and previous != value:
-                    msg = (
-                        f"BCN returned {day.isoformat()} with two different values: "
-                        f"{previous} and {value}"
-                    )
-                    raise TransformationError(msg, source_key=self.source.key)
-                values[day] = value
-                months[day] = month_label
+    for entry in payload:
+        month_label = f"{int(entry['ano'])}-{int(entry['mes']):02d}"
+        root = self._parse_envelope(str(entry["xml"]), month_label)
+        for node in root.iter("Tc"):
+            day, value = self._read_row(node, month_label)
+            previous = values.get(day)
+            if previous is not None and previous != value:
+                msg = (
+                    f"BCN returned {day.isoformat()} with two different values: "
+                    f"{previous} and {value}"
+                )
+                raise TransformationError(msg, source_key=self.source.key)
+            values[day] = value
+            months[day] = month_label
 
-        return [
-            NormalizedObservation(
-                country_iso3="NIC",
-                indicator_code=self.indicator_code,
-                source_key=self.source.key,
-                period=parse_period(day.isoformat(), Frequency.DAILY),
-                unit=self.unit,
-                currency_code="NIO",
-                value_numeric=values[day],
-                retrieved_at=raw.retrieved_at,
-                source_url=raw.source_url,
-                source_record_id=f"tc_dia:{day.isoformat()}",
-                raw_metadata={
-                    "bcn_operation": "RecuperaTC_Mes",
-                    "bcn_requested_month": months[day],
-                    "contract_status": "verified",
-                },
-            )
-            for day in sorted(values)
-            if day <= today
-        ]
+    return [
+        NormalizedObservation(
+            country_iso3="NIC",
+            indicator_code=self.indicator_code,
+            source_key=self.source.key,
+            period=parse_period(day.isoformat(), Frequency.DAILY),
+            unit=self.unit,
+            currency_code="NIO",
+            value_numeric=values[day],
+            retrieved_at=raw.retrieved_at,
+            source_url=raw.source_url,
+            source_record_id=f"tc_dia:{day.isoformat()}",
+            raw_metadata={
+                "bcn_operation": "RecuperaTC_Mes",
+                "bcn_requested_month": months[day],
+                "contract_status": "verified",
+            },
+        )
+        for day in sorted(values)
+        if day <= today
+    ]
 
-    def _parse_envelope(self, xml: str, month_label: str) -> ElementTree.Element:
-        """Parse one SOAP envelope, surfacing a fault as a transformation error."""
-        try:
-            root = ElementTree.fromstring(xml)
-        except ElementTree.ParseError as exc:
-            msg = f"BCN returned malformed XML for {month_label}: {exc}"
-            raise TransformationError(msg, source_key=self.source.key) from exc
 
-        fault = root.find(f".//{{{SOAP_ENVELOPE_NS}}}Fault")
-        if fault is not None:
-            detail = (fault.findtext("faultstring") or "no faultstring").strip()
-            msg = f"BCN returned a SOAP fault for {month_label}: {detail}"
-            raise TransformationError(msg, source_key=self.source.key)
-        return root
+def _parse_envelope(self, xml: str, month_label: str) -> ElementTree.Element:
+    """Parse one SOAP envelope, surfacing a fault as a transformation error."""
+    try:
+        root = ElementTree.fromstring(xml)
+    except ElementTree.ParseError as exc:
+        msg = f"BCN returned malformed XML for {month_label}: {exc}"
+        raise TransformationError(msg, source_key=self.source.key) from exc
 
-    def _read_row(self, node: ElementTree.Element, month_label: str) -> tuple[date, Decimal]:
-        """Read one ``<Tc>`` element into a date and an exact Decimal."""
-        raw_date = (node.findtext("Fecha") or "").strip()
-        raw_value = (node.findtext("Valor") or "").strip()
+    fault = root.find(f".//{{{SOAP_ENVELOPE_NS}}}Fault")
+    if fault is not None:
+        detail = (fault.findtext("faultstring") or "no faultstring").strip()
+        msg = f"BCN returned a SOAP fault for {month_label}: {detail}"
+        raise TransformationError(msg, source_key=self.source.key)
+    return root
 
-        try:
-            day = date.fromisoformat(raw_date[:10])
-        except ValueError as exc:
-            msg = f"BCN returned an unparseable date {raw_date!r} in {month_label}"
-            raise TransformationError(msg, source_key=self.source.key) from exc
 
-        try:
-            value = Decimal(raw_value)
-        except InvalidOperation as exc:
-            msg = f"BCN returned a non-numeric rate {raw_value!r} for {raw_date}"
-            raise TransformationError(msg, source_key=self.source.key) from exc
+def _read_row(self, node: ElementTree.Element, month_label: str) -> tuple[date, Decimal]:
+    """Read one ``<Tc>`` element into a date and an exact Decimal."""
+    raw_date = (node.findtext("Fecha") or "").strip()
+    raw_value = (node.findtext("Valor") or "").strip()
 
-        return day, value
+    try:
+        day = date.fromisoformat(raw_date[:10])
+    except ValueError as exc:
+        msg = f"BCN returned an unparseable date {raw_date!r} in {month_label}"
+        raise TransformationError(msg, source_key=self.source.key) from exc
+
+    try:
+        value = Decimal(raw_value)
+    except InvalidOperation as exc:
+        msg = f"BCN returned a non-numeric rate {raw_value!r} for {raw_date}"
+        raise TransformationError(msg, source_key=self.source.key) from exc
+
+    return day, value
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
@@ -1468,9 +1471,7 @@ def test_calendar_continuity_passes_on_an_unbroken_run(pinned_today: date) -> No
     connector = build_connector(start_month="2012-01", end_month="2012-01")
     raw = build_raw((2012, 1), retrieved_at=datetime(2012, 1, 20, tzinfo=UTC))
 
-    check = results_by_name(connector.validate(connector.transform(raw)))[
-        "bcn_calendar_continuity"
-    ]
+    check = results_by_name(connector.validate(connector.transform(raw)))["bcn_calendar_continuity"]
 
     assert check.status is CheckStatus.PASSED
 
@@ -1523,109 +1524,112 @@ def _days_in_month(month: tuple[int, int]) -> list[date]:
 Then replace the placeholder `validate` with:
 
 ```python
-    def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
-        """Assert BCN-specific expectations beyond the standard battery.
+def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
+    """Assert BCN-specific expectations beyond the standard battery.
 
-        The checks re-derive the requested window rather than carrying state
-        out of :meth:`transform`, which must stay a pure function of its input.
-        """
-        today = _utc_today()
-        months = self.resolve_months(today)
-        days = {obs.period.start for obs in observations}
-        return [
-            self._check_month_coverage(days, months, today),
-            self._check_calendar_continuity(days),
-            self._check_future_rows_discarded(months, today),
-        ]
+    The checks re-derive the requested window rather than carrying state
+    out of :meth:`transform`, which must stay a pure function of its input.
+    """
+    today = _utc_today()
+    months = self.resolve_months(today)
+    days = {obs.period.start for obs in observations}
+    return [
+        self._check_month_coverage(days, months, today),
+        self._check_calendar_continuity(days),
+        self._check_future_rows_discarded(months, today),
+    ]
 
-    def _check_month_coverage(
-        self,
-        days: set[date],
-        months: list[tuple[int, int]],
-        today: date,
-    ) -> QualityResult:
-        """Every requested month that has already begun must have produced rows."""
-        started = [month for month in months if month <= _month_of(today)]
-        empty = [
-            f"{year}-{month:02d}"
-            for year, month in started
-            if not any(day.year == year and day.month == month for day in days)
-        ]
 
-        if not empty:
-            return QualityResult.passed(
-                "bcn_month_coverage",
-                CheckType.COMPLETENESS,
-                f"All {len(started)} requested month(s) returned rates",
-                expected_value=str(len(started)),
-                actual_value=str(len(started)),
-            )
-        return QualityResult.failure(
+def _check_month_coverage(
+    self,
+    days: set[date],
+    months: list[tuple[int, int]],
+    today: date,
+) -> QualityResult:
+    """Every requested month that has already begun must have produced rows."""
+    started = [month for month in months if month <= _month_of(today)]
+    empty = [
+        f"{year}-{month:02d}"
+        for year, month in started
+        if not any(day.year == year and day.month == month for day in days)
+    ]
+
+    if not empty:
+        return QualityResult.passed(
             "bcn_month_coverage",
             CheckType.COMPLETENESS,
-            CheckSeverity.ERROR,
-            f"No rates returned for {len(empty)} requested month(s): {', '.join(empty)}",
+            f"All {len(started)} requested month(s) returned rates",
             expected_value=str(len(started)),
-            actual_value=", ".join(empty),
+            actual_value=str(len(started)),
         )
+    return QualityResult.failure(
+        "bcn_month_coverage",
+        CheckType.COMPLETENESS,
+        CheckSeverity.ERROR,
+        f"No rates returned for {len(empty)} requested month(s): {', '.join(empty)}",
+        expected_value=str(len(started)),
+        actual_value=", ".join(empty),
+    )
 
-    def _check_calendar_continuity(self, days: set[date]) -> QualityResult:
-        """The BCN publishes a rate for every calendar day, so gaps are suspect."""
-        if len(days) < 2:
-            return QualityResult.passed(
-                "bcn_calendar_continuity",
-                CheckType.CONSISTENCY,
-                "Too few days ingested to assess continuity",
-                actual_value=str(len(days)),
-            )
 
-        first, last = min(days), max(days)
-        expected = (last - first).days + 1
-        missing = sorted(
-            date.fromordinal(o)
-            for o in range(first.toordinal(), last.toordinal() + 1)
-            if date.fromordinal(o) not in days
-        )
-
-        if not missing:
-            return QualityResult.passed(
-                "bcn_calendar_continuity",
-                CheckType.CONSISTENCY,
-                f"{expected} consecutive days from {first} to {last}",
-                expected_value=str(expected),
-                actual_value=str(len(days)),
-            )
-
-        shown = ", ".join(day.isoformat() for day in missing[:5])
-        suffix = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
-        return QualityResult.failure(
+def _check_calendar_continuity(self, days: set[date]) -> QualityResult:
+    """The BCN publishes a rate for every calendar day, so gaps are suspect."""
+    if len(days) < 2:
+        return QualityResult.passed(
             "bcn_calendar_continuity",
             CheckType.CONSISTENCY,
-            CheckSeverity.WARNING,
-            f"{len(missing)} calendar day(s) missing between {first} and {last}: {shown}{suffix}",
+            "Too few days ingested to assess continuity",
+            actual_value=str(len(days)),
+        )
+
+    first, last = min(days), max(days)
+    expected = (last - first).days + 1
+    missing = sorted(
+        date.fromordinal(o)
+        for o in range(first.toordinal(), last.toordinal() + 1)
+        if date.fromordinal(o) not in days
+    )
+
+    if not missing:
+        return QualityResult.passed(
+            "bcn_calendar_continuity",
+            CheckType.CONSISTENCY,
+            f"{expected} consecutive days from {first} to {last}",
             expected_value=str(expected),
             actual_value=str(len(days)),
         )
 
-    def _check_future_rows_discarded(
-        self,
-        months: list[tuple[int, int]],
-        today: date,
-    ) -> QualityResult:
-        """Report how many projected rows were dropped, so the discard is visible.
+    shown = ", ".join(day.isoformat() for day in missing[:5])
+    suffix = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
+    return QualityResult.failure(
+        "bcn_calendar_continuity",
+        CheckType.CONSISTENCY,
+        CheckSeverity.WARNING,
+        f"{len(missing)} calendar day(s) missing between {first} and {last}: {shown}{suffix}",
+        expected_value=str(expected),
+        actual_value=str(len(days)),
+    )
 
-        The service returns a row for every calendar day of a requested month,
-        including days that have not happened. This never fails: it records
-        what was thrown away.
-        """
-        discarded = sum(1 for month in months for day in _days_in_month(month) if day > today)
-        return QualityResult.passed(
-            "bcn_future_rows_discarded",
-            CheckType.VALIDITY,
-            f"{discarded} projected row(s) after {today.isoformat()} were discarded",
-            expected_value="0 ingested",
-            actual_value=str(discarded),
-        )
+
+def _check_future_rows_discarded(
+    self,
+    months: list[tuple[int, int]],
+    today: date,
+) -> QualityResult:
+    """Report how many projected rows were dropped, so the discard is visible.
+
+    The service returns a row for every calendar day of a requested month,
+    including days that have not happened. This never fails: it records
+    what was thrown away.
+    """
+    discarded = sum(1 for month in months for day in _days_in_month(month) if day > today)
+    return QualityResult.passed(
+        "bcn_future_rows_discarded",
+        CheckType.VALIDITY,
+        f"{discarded} projected row(s) after {today.isoformat()} were discarded",
+        expected_value="0 ingested",
+        actual_value=str(discarded),
+    )
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**

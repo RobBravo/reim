@@ -67,9 +67,9 @@ the header assertions are derived from them:
 class RegionBlock(NamedTuple):
     """One of the sheet's three four-column regional blocks."""
 
-    key: str               # "national" | "managua" | "rest_of_country"
-    header: str            # index-column header asserted in row 3, lowercased
-    index_column: int      # 2, 6, 10
+    key: str  # "national" | "managua" | "rest_of_country"
+    header: str  # index-column header asserted in row 3, lowercased
+    index_column: int  # 2, 6, 10
     indicator_suffix: str  # "", "_managua", "_rest_of_country"
 
 
