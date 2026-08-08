@@ -842,118 +842,115 @@ Expected: FAIL — `NotImplementedError`.
 
 Replace the placeholder `validate` with:
 
-```python
-def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
-    """Assert IMF-specific expectations beyond the standard battery."""
-    return [
-        self._check_world_aggregate_present(observations),
-        self._check_all_indicators_present(observations),
-        self._check_balance_identity(observations),
-    ]
+```text
+    def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
+        """Assert IMF-specific expectations beyond the standard battery."""
+        return [
+            self._check_world_aggregate_present(observations),
+            self._check_all_indicators_present(observations),
+            self._check_balance_identity(observations),
+        ]
 
+    def _check_world_aggregate_present(
+        self, observations: list[NormalizedObservation]
+    ) -> QualityResult:
+        """Without the world aggregate there are no totals to publish.
 
-def _check_world_aggregate_present(
-    self, observations: list[NormalizedObservation]
-) -> QualityResult:
-    """Without the world aggregate there are no totals to publish.
-
-    Critical rather than error: the alternative to having ``G001`` is
-    summing 103 overlapping counterpart groups, which double-counts. A run
-    without it must not be committed at all.
-    """
-    kept = [
-        obs for obs in observations if obs.raw_metadata.get("imf_counterpart") == COUNTERPART_WORLD
-    ]
-    if kept:
-        return QualityResult.passed(
+        Critical rather than error: the alternative to having ``G001`` is
+        summing 103 overlapping counterpart groups, which double-counts. A run
+        without it must not be committed at all.
+        """
+        kept = [
+            obs for obs in observations if obs.raw_metadata.get("imf_counterpart") == COUNTERPART_WORLD
+        ]
+        if kept:
+            return QualityResult.passed(
+                "imf_imts_world_aggregate_present",
+                CheckType.COMPLETENESS,
+                f"{len(kept)} observation(s) carry the {COUNTERPART_WORLD} world aggregate",
+                expected_value=f">0 {COUNTERPART_WORLD} rows",
+                actual_value=str(len(kept)),
+            )
+        return QualityResult.failure(
             "imf_imts_world_aggregate_present",
             CheckType.COMPLETENESS,
-            f"{len(kept)} observation(s) carry the {COUNTERPART_WORLD} world aggregate",
+            CheckSeverity.CRITICAL,
+            f"No {COUNTERPART_WORLD} rows: the response carries no world totals",
             expected_value=f">0 {COUNTERPART_WORLD} rows",
-            actual_value=str(len(kept)),
-        )
-    return QualityResult.failure(
-        "imf_imts_world_aggregate_present",
-        CheckType.COMPLETENESS,
-        CheckSeverity.CRITICAL,
-        f"No {COUNTERPART_WORLD} rows: the response carries no world totals",
-        expected_value=f">0 {COUNTERPART_WORLD} rows",
-        actual_value="0",
-    )
-
-
-def _check_all_indicators_present(self, observations: list[NormalizedObservation]) -> QualityResult:
-    """All three series must arrive, or a column stopped mapping."""
-    expected = {code for code, _ in INDICATORS.values()}
-    found = {obs.indicator_code for obs in observations}
-    missing = sorted(expected - found)
-
-    if not missing:
-        return QualityResult.passed(
-            "imf_imts_all_indicators_present",
-            CheckType.COMPLETENESS,
-            f"All {len(expected)} indicators received data",
-            expected_value=str(len(expected)),
-            actual_value=str(len(found)),
-        )
-    return QualityResult.failure(
-        "imf_imts_all_indicators_present",
-        CheckType.COMPLETENESS,
-        CheckSeverity.ERROR,
-        f"No data parsed for: {', '.join(missing)}",
-        expected_value=str(sorted(expected)),
-        actual_value=str(sorted(found)),
-    )
-
-
-def _check_balance_identity(self, observations: list[NormalizedObservation]) -> QualityResult:
-    """The published balance must equal exports minus imports.
-
-    Not an exact equality: the IMF publishes ``TBG`` rounded to about 16
-    significant digits, so 12 of the 436 recorded months differ from
-    ``XG - MG`` in their last digit. The largest deviation measured across the
-    whole series is 5e-8 USD. :data:`BALANCE_TOLERANCE` sits four orders of
-    magnitude above that noise, so it still catches a real misalignment, which
-    would be off by millions rather than fractions of a cent.
-    """
-    by_period: dict[str, dict[str, Decimal]] = {}
-    for obs in observations:
-        if obs.value_numeric is None:
-            continue
-        by_period.setdefault(obs.period.label, {})[obs.indicator_code] = obs.value_numeric
-
-    breaks: list[str] = []
-    checked = 0
-    for label in sorted(by_period):
-        series = by_period[label]
-        exports = series.get("ni_exports_goods_monthly")
-        imports = series.get("ni_imports_goods_monthly")
-        balance = series.get("ni_trade_balance_goods_monthly")
-        if exports is None or imports is None or balance is None:
-            continue
-        checked += 1
-        if abs(balance - (exports - imports)) > BALANCE_TOLERANCE:
-            breaks.append(label)
-
-    if not breaks:
-        return QualityResult.passed(
-            "imf_imts_balance_identity",
-            CheckType.CONSISTENCY,
-            f"Balance equals exports minus imports in all {checked} complete month(s)",
-            expected_value="0",
             actual_value="0",
         )
 
-    shown = ", ".join(breaks[:5])
-    suffix = f" (+{len(breaks) - 5} more)" if len(breaks) > 5 else ""
-    return QualityResult.failure(
-        "imf_imts_balance_identity",
-        CheckType.CONSISTENCY,
-        CheckSeverity.ERROR,
-        f"{len(breaks)} of {checked} month(s) break TBG = XG - MG: {shown}{suffix}",
-        expected_value="0",
-        actual_value=str(len(breaks)),
-    )
+    def _check_all_indicators_present(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """All three series must arrive, or a column stopped mapping."""
+        expected = {code for code, _ in INDICATORS.values()}
+        found = {obs.indicator_code for obs in observations}
+        missing = sorted(expected - found)
+
+        if not missing:
+            return QualityResult.passed(
+                "imf_imts_all_indicators_present",
+                CheckType.COMPLETENESS,
+                f"All {len(expected)} indicators received data",
+                expected_value=str(len(expected)),
+                actual_value=str(len(found)),
+            )
+        return QualityResult.failure(
+            "imf_imts_all_indicators_present",
+            CheckType.COMPLETENESS,
+            CheckSeverity.ERROR,
+            f"No data parsed for: {', '.join(missing)}",
+            expected_value=str(sorted(expected)),
+            actual_value=str(sorted(found)),
+        )
+
+    def _check_balance_identity(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """The published balance must equal exports minus imports.
+
+        Not an exact equality: the IMF publishes ``TBG`` rounded to about 16
+        significant digits, so 12 of the 436 recorded months differ from
+        ``XG - MG`` in their last digit. The largest deviation measured across the
+        whole series is 5e-8 USD. :data:`BALANCE_TOLERANCE` sits four orders of
+        magnitude above that noise, so it still catches a real misalignment, which
+        would be off by millions rather than fractions of a cent.
+        """
+        by_period: dict[str, dict[str, Decimal]] = {}
+        for obs in observations:
+            if obs.value_numeric is None:
+                continue
+            by_period.setdefault(obs.period.label, {})[obs.indicator_code] = obs.value_numeric
+
+        breaks: list[str] = []
+        checked = 0
+        for label in sorted(by_period):
+            series = by_period[label]
+            exports = series.get("ni_exports_goods_monthly")
+            imports = series.get("ni_imports_goods_monthly")
+            balance = series.get("ni_trade_balance_goods_monthly")
+            if exports is None or imports is None or balance is None:
+                continue
+            checked += 1
+            if abs(balance - (exports - imports)) > BALANCE_TOLERANCE:
+                breaks.append(label)
+
+        if not breaks:
+            return QualityResult.passed(
+                "imf_imts_balance_identity",
+                CheckType.CONSISTENCY,
+                f"Balance equals exports minus imports in all {checked} complete month(s)",
+                expected_value="0",
+                actual_value="0",
+            )
+
+        shown = ", ".join(breaks[:5])
+        suffix = f" (+{len(breaks) - 5} more)" if len(breaks) > 5 else ""
+        return QualityResult.failure(
+            "imf_imts_balance_identity",
+            CheckType.CONSISTENCY,
+            CheckSeverity.ERROR,
+            f"{len(breaks)} of {checked} month(s) break TBG = XG - MG: {shown}{suffix}",
+            expected_value="0",
+            actual_value=str(len(breaks)),
+        )
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
@@ -1102,7 +1099,7 @@ from reim.ingestion.http import ensure_ok, fetch, http_client
 
 Replace the placeholder `extract` with:
 
-```python
+```text
     async def extract(self) -> RawDataset:
         """Fetch the whole series as one CSV response.
 

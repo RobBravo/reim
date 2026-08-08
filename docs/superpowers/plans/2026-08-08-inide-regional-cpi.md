@@ -394,13 +394,13 @@ Add `NamedTuple` to the `typing` import if it is not already there — the modul
 
 In `transform`, in the `raw_metadata` dict, replace the hard-coded line:
 
-```python
+```text
                             "inide_series": "nacional",
 ```
 
 with:
 
-```python
+```text
                             "inide_region": COLUMN_REGIONS[column],
 ```
 
@@ -629,7 +629,7 @@ The header `"resto del país"` carries an accent. `_assert_layout` lowercases an
 
 Bump the connector version:
 
-```python
+```text
     version = "1.1.0"
 ```
 
@@ -724,7 +724,7 @@ Expected: FAIL — `StopIteration` looking up the per-region names.
 
 In the connector, replace `validate` with:
 
-```python
+```text
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
         """Assert INIDE-specific expectations beyond the standard battery."""
         results: list[QualityResult] = [self._check_all_indicators_present(observations)]
@@ -738,25 +738,25 @@ Change `_check_index_series_complete` to take the block and use its index
 indicator code and a per-region check name. Its signature and first lines
 become:
 
-```python
-def _check_index_series_complete(
-    self, observations: list[NormalizedObservation], block: RegionBlock
-) -> QualityResult:
-    """The index must be unbroken from :data:`CONTIGUOUS_FROM_YEAR` onward.
+```text
+    def _check_index_series_complete(
+        self, observations: list[NormalizedObservation], block: RegionBlock
+    ) -> QualityResult:
+        """The index must be unbroken from :data:`CONTIGUOUS_FROM_YEAR` onward.
 
-    INIDE's own table is sparse before that: sheet ``2-1-06`` carries annual
-    rows only for 2001-2006 and 2008-2010, with monthly detail for 2007 and
-    then continuously from 2011. That history is a property of the source,
-    not a parsing fault, so it is not treated as a failure. The modern
-    stretch, however, must never develop a hole — one there would mean the
-    workbook was truncated or the row scan broke.
+        INIDE's own table is sparse before that: sheet ``2-1-06`` carries annual
+        rows only for 2001-2006 and 2008-2010, with monthly detail for 2007 and
+        then continuously from 2011. That history is a property of the source,
+        not a parsing fault, so it is not treated as a failure. The modern
+        stretch, however, must never develop a hole — one there would mean the
+        workbook was truncated or the row scan broke.
 
-    Run once per region; all three blocks share the same coverage, so the
-    same threshold applies to each.
-    """
-    check_name = f"inide_index_continuity_{block.key}"
-    index_code = f"{BLOCK_COLUMNS[0][1]}{block.indicator_suffix}"
-    months = sorted(obs.period.start for obs in observations if obs.indicator_code == index_code)
+        Run once per region; all three blocks share the same coverage, so the
+        same threshold applies to each.
+        """
+        check_name = f"inide_index_continuity_{block.key}"
+        index_code = f"{BLOCK_COLUMNS[0][1]}{block.indicator_suffix}"
+        months = sorted(obs.period.start for obs in observations if obs.indicator_code == index_code)
 ```
 
 Then replace every remaining literal `"inide_index_continuity"` inside the
