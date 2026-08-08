@@ -393,7 +393,7 @@ def test_transform_keeps_the_negative_balance_exact(imf_imts_csv: str) -> None:
     }
 
     assert balance["2026-04"] == Decimal("-274932625")
-    assert balance["1990-01"] == Decimal("-50033856.9")
+    assert balance["1990-01"] == Decimal("-50033856.85436923")
 
 
 def test_transform_records_provenance(imf_imts_csv: str) -> None:
@@ -483,10 +483,10 @@ def test_transform_rejects_a_non_string_payload() -> None:
         connector.transform(raw)
 ```
 
-Note for the implementer: the doctored-row tests slice `lines[2]` because
-`lines[0]` is the header and `lines[1]` is the dataflow metadata row. Confirm
-that with `head -3` on the decompressed fixture before relying on it; if the
-metadata row is absent, use `lines[1]`.
+Note for the implementer, **confirmed against the recording**: the dataflow
+metadata row is the **last** row (index 1308 of 1309), not the first. `lines[0]`
+is the header and `lines[1]` is already a data row, so the doctored-row tests
+slice `lines[1]`.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -570,6 +570,11 @@ INDICATORS: dict[str, tuple[str, str]] = {
     "MG_CIF_USD": ("ni_imports_goods_monthly", "current USD"),
     "TBG_USD": ("ni_trade_balance_goods_monthly", "current USD"),
 }
+
+#: Largest accepted gap between the published balance and exports minus
+#: imports. The IMF rounds TBG, so 12 of 436 recorded months differ in their
+#: last digit; the worst deviation measured is 5e-8 USD.
+BALANCE_TOLERANCE = Decimal("0.01")
 
 #: Columns the parser cannot work without.
 REQUIRED_COLUMNS = ("INDICATOR", "COUNTERPART_COUNTRY", "TIME_PERIOD", "OBS_VALUE")
@@ -904,9 +909,12 @@ def _check_all_indicators_present(self, observations: list[NormalizedObservation
 def _check_balance_identity(self, observations: list[NormalizedObservation]) -> QualityResult:
     """The published balance must equal exports minus imports.
 
-    Verified exact at both ends of the series, so any break means the rows
-    were misaligned or a value was misparsed rather than a rounding
-    difference.
+    Not an exact equality: the IMF publishes ``TBG`` rounded to about 16
+    significant digits, so 12 of the 436 recorded months differ from
+    ``XG - MG`` in their last digit. The largest deviation measured across the
+    whole series is 5e-8 USD. :data:`BALANCE_TOLERANCE` sits four orders of
+    magnitude above that noise, so it still catches a real misalignment, which
+    would be off by millions rather than fractions of a cent.
     """
     by_period: dict[str, dict[str, Decimal]] = {}
     for obs in observations:
@@ -924,7 +932,7 @@ def _check_balance_identity(self, observations: list[NormalizedObservation]) -> 
         if exports is None or imports is None or balance is None:
             continue
         checked += 1
-        if balance != exports - imports:
+        if abs(balance - (exports - imports)) > BALANCE_TOLERANCE:
             breaks.append(label)
 
     if not breaks:
