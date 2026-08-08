@@ -383,7 +383,7 @@ make test-cov       # with coverage
 make check          # lint + typecheck + catalog + tests (what CI runs)
 ```
 
-371 tests. Integration tests skip cleanly when `REIM_TEST_DATABASE_URL` is unset,
+379 tests. Integration tests skip cleanly when `REIM_TEST_DATABASE_URL` is unset,
 so `pytest` works on a bare checkout.
 
 **No test calls a live official source.** Connector tests replay recorded
@@ -424,8 +424,11 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   itself; REIM reports it rather than filling it.
 - **World Bank data lags.** Annual figures for year *Y* land during *Y+1*, so
   freshness thresholds are measured in hundreds of days, not days.
-- **Only Nicaragua.** Other Central American countries are registered but
-  inactive; no connectors exist for them yet.
+- **Six countries, but only one of them deeply.** Nicaragua has national
+  primary sources — the BCN's daily exchange rate and INIDE's monthly CPI.
+  Guatemala, El Salvador, Honduras, Costa Rica and Panama have **merchandise
+  trade only**, from the IMF. Belize has nothing: it reports nothing to that
+  dataflow at any frequency, and stays inactive in the registry.
 - **No authentication or rate limiting.** Do not expose this publicly without
   putting a gateway in front and narrowing `REIM_CORS_ALLOW_ORIGINS`.
 - **Revisions are recorded, not reconciled.** REIM keeps the history but does

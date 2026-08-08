@@ -372,6 +372,59 @@ licensed: it carries "All Rights Reserved". The catalog says
 rather than disguising it. The IMF's terms page could not be retrieved
 programmatically, so its contents are not summarised anywhere in this repo.
 
+## 15. Post-MVP increment — regional IMF trade (2026-08-08)
+
+REIM's **first data for more than one country**, and the first piece of v0.3.0.
+
+**v0.3.0 was decomposed before anything was built.** As written it is five
+independent subsystems, one of which is really six separate investigations:
+
+| Piece | Status |
+|---|---|
+| **A. Regional IMF trade** | ✅ this increment |
+| **B. Cross-country comparison endpoints** | open — now has something to compare |
+| **C. National central banks** (six countries) | open, six independent investigations |
+| **D. SIECA** | open, unresearched |
+| **E. CEPALSTAT** | open; a probe of its API returned 404 |
+| **F. Currency handling** | open, and not needed yet — everything multi-country is USD |
+
+A was chosen because it was measured rather than hoped: the connector shipped
+hours earlier already read this dataflow, and all six countries carry identical
+coverage.
+
+**Verification**
+
+| Check | Result |
+|-------|--------|
+| `reim catalog validate` | ✅ 14 sources, 14 enabled, 19 rule sets |
+| Six live pipeline runs | ✅ 1,308 observations each, 0 rejected |
+| Second run of all six | ✅ 0 inserted, 1,308 unchanged each |
+| **Six countries are distinct series** | ✅ mean monthly exports 730 M (CRI) / 618 M (GTM) / 318 M (SLV) / 246 M (HND) / 157 M (NIC) / 93 M (PAN) |
+| Quality checks | ✅ all four IMF checks pass; 0 failures at `error` or `critical` |
+| Superseded rows cleared | ✅ 1,308 rows under the old prefixed codes deleted once |
+| Total held | 14,928 observations |
+| `pytest` / `ruff` / `mypy` | ✅ 379 passed / clean / clean |
+
+**Judgement calls**
+
+* Indicator codes lost their country prefix, because `observations` already
+  carries a country. The rule: prefix for national sources whose methodology
+  differs, none for shared multilateral ones. The 16 `ni_*` codes were left
+  alone — renaming all 19 would have marked 8,388 observations as revised.
+* Six catalog entries rather than one regional source. A single SDMX key does
+  return all 7,848 rows in 1.38 s, but `source_key` is part of an observation's
+  natural key, so it would have duplicated Nicaragua's stored series.
+* The connector is a shared base plus six eight-line subclasses, following the
+  World Bank pattern. An earlier design loosened `BaseConnector`'s guard that
+  the catalog key matches the connector key; that was rejected in review.
+* Belize gets no entry: it reports nothing to IMTS at any frequency.
+
+**The check that mattered.** All six countries return 436 identically shaped
+months, so a country-mapping bug would have produced plausible figures under
+the wrong flag with every count intact. A `critical` check asserts each row
+belongs to the declared country, and a test compares Guatemala's exports
+against Nicaragua's for the same month.
+
 ## 10. Follow-up work (not in v0.1.0)
 
 - Verify the BCN SOAP contract from a network/TLS environment that can reach it, then enable it.

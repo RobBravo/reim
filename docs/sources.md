@@ -270,25 +270,45 @@ publisher's infrastructure.
 
 ---
 
-### IMF — Nicaragua monthly merchandise trade
+### IMF — Central American monthly merchandise trade
 
 | | |
 |---|---|
 | **Organization** | International Monetary Fund (`IMF`) |
 | **Endpoint** | `https://api.imf.org/external/sdmx/2.1` |
 | **Dataflow** | `IMF.STA,IMTS` — International Merchandise Trade Statistics |
-| **Key** | `NIC..G001.M` (`COUNTRY.INDICATOR.COUNTERPART_COUNTRY.FREQUENCY`) |
+| **Key** | `{ISO3}..G001.M` (`COUNTRY.INDICATOR.COUNTERPART_COUNTRY.FREQUENCY`) |
 | **Format** | CSV, `Accept: application/vnd.sdmx.data+csv;version=2.0.0` |
 | **Frequency** | Monthly |
-| **Coverage** | 1990-01 … 2026-04, verified — 436 months |
+| **Coverage** | 1990-01 … 2026-04, verified — 436 months, **identical for all six countries** |
 | **Licence** | ⚠️ **Not open.** See below. |
-| **Status** | ✅ Enabled — 1,308 observations from one 789 KB request |
+| **Status** | ✅ Enabled — 7,848 observations across six countries |
 
-Three REIM indicators: `ni_exports_goods_monthly` (`XG_FOB_USD`),
-`ni_imports_goods_monthly` (`MG_CIF_USD`) and
-`ni_trade_balance_goods_monthly` (`TBG_USD`). These are **merchandise** flows
-and do not replace the annual World Bank `ni_exports_goods_services` /
-`ni_imports_goods_services`, which also cover services.
+REIM's first data for more than one country. Six catalog entries — Nicaragua,
+Guatemala, El Salvador, Honduras, Costa Rica and Panama — share one connector
+base, each fetching ~789 KB.
+
+| Country | Observations | Span |
+|---|---|---|
+| Nicaragua, Guatemala, El Salvador, Honduras, Costa Rica, Panama | 1,308 each | 1990-M01 … 2026-M04 |
+| **Belize** | **0 — reports nothing** | — |
+
+Belize was probed at monthly, quarterly and annual frequency and without any
+counterpart filter. It returns nothing in every case, so it has **no catalog
+entry** and stays inactive in the country registry.
+
+**The indicator codes carry no country prefix**: `exports_goods_monthly`
+(`XG_FOB_USD`), `imports_goods_monthly` (`MG_CIF_USD`) and
+`trade_balance_goods_monthly` (`TBG_USD`). The country is carried by the
+observation, not the code. The rule REIM follows: prefix by country when the
+source is national and the methodology differs — a Guatemalan CPI is not a
+Nicaraguan one — and drop the prefix when the source is multilateral and every
+country shares the methodology. The country each connector requests comes from
+its **catalog entry**, so one module serves all six.
+
+These are **merchandise** flows and do not replace the annual World Bank
+`ni_exports_goods_services` / `ni_imports_goods_services`, which also cover
+services.
 
 **Why the IMF and not the BCN.** The BCN publishes these figures in its monthly
 bulletins, but `www.bcn.gob.ni` is behind a **Radware Bot Manager**: every HTTP

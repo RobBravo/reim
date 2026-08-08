@@ -77,9 +77,17 @@ aggregator rather than the Nicaraguan publisher itself.
 
 ## v0.3.0 — Central America
 
-- Connectors for **Guatemala (Banguat), El Salvador (BCR), Honduras (BCH),
-  Costa Rica (BCCR), Panama (INEC) and Belize (Central Bank of Belize)**.
-  Country registry entries already exist and are inactive.
+This release is five independent pieces, not one increment. The first is done.
+
+- ~~**Regional merchandise trade**~~ ✅ **done** — REIM's first data for more
+  than one country: 7,848 monthly observations for Nicaragua, Guatemala, El
+  Salvador, Honduras, Costa Rica and Panama, from the IMF's IMTS dataflow, all
+  six with identical coverage back to 1990-01. **Belize is excluded**: it
+  reports nothing to that dataflow at any frequency. See `docs/sources.md`.
+- Connectors for the **national central banks** — Banguat, BCR, BCH, BCCR,
+  INEC and the Central Bank of Belize. Six independent investigations, each the
+  size of the BCN work, and one of those six publishers has already been found
+  to block automated access. Worth taking one country at a time.
 - **SIECA** regional trade series.
 - **CEPALSTAT** for cross-country comparable series.
 - Cross-country comparison endpoints: one indicator, many countries, aligned
