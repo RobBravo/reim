@@ -11,9 +11,11 @@ from pathlib import Path
 
 import pytest
 
+from reim.core.constants import CheckSeverity, CheckStatus
 from reim.core.exceptions import ExtractionError, TransformationError
-from reim.domain.pipelines.models import RawDataset
+from reim.domain.pipelines.models import QualityResult, RawDataset
 from reim.domain.sources.catalog import SourceEntry
+from reim.ingestion.connectors.nicaragua import bcn_exchange_rate
 from reim.ingestion.connectors.nicaragua.bcn_exchange_rate import (
     BcnExchangeRateConnector,
 )
@@ -286,3 +288,110 @@ def test_transform_rejects_a_payload_that_is_not_a_list() -> None:
 
     with pytest.raises(TransformationError, match="list of per-month"):
         connector.transform(raw)
+
+
+# --------------------------------------------------------------------------
+# validate
+# --------------------------------------------------------------------------
+@pytest.fixture
+def pinned_today(monkeypatch: pytest.MonkeyPatch) -> date:
+    """Pin the connector's notion of today so validate is deterministic."""
+    today = date(2012, 1, 20)
+    monkeypatch.setattr(bcn_exchange_rate, "_utc_today", lambda: today)
+    return today
+
+
+def results_by_name(results: list[QualityResult]) -> dict[str, QualityResult]:
+    return {result.check_name: result for result in results}
+
+
+def test_validate_returns_the_three_source_checks(pinned_today: date) -> None:
+    connector = build_connector(start_month="2012-01", end_month="2012-01")
+    raw = build_raw((2012, 1), retrieved_at=datetime(2012, 1, 20, tzinfo=UTC))
+
+    results = connector.validate(connector.transform(raw))
+
+    assert set(results_by_name(results)) == {
+        "bcn_month_coverage",
+        "bcn_calendar_continuity",
+        "bcn_future_rows_discarded",
+    }
+
+
+def test_month_coverage_passes_when_every_started_month_has_rows(pinned_today: date) -> None:
+    connector = build_connector(start_month="2012-01", end_month="2012-01")
+    raw = build_raw((2012, 1), retrieved_at=datetime(2012, 1, 20, tzinfo=UTC))
+
+    check = results_by_name(connector.validate(connector.transform(raw)))["bcn_month_coverage"]
+
+    assert check.status is CheckStatus.PASSED
+
+
+def test_month_coverage_fails_when_a_started_month_returned_nothing(
+    pinned_today: date,
+) -> None:
+    connector = build_connector(start_month="2012-01", end_month="2012-01")
+
+    check = results_by_name(connector.validate([]))["bcn_month_coverage"]
+
+    assert check.status is CheckStatus.FAILED
+    assert check.severity is CheckSeverity.ERROR
+    assert check.actual_value is not None
+    assert "2012-01" in check.actual_value
+
+
+def test_month_coverage_ignores_a_month_that_has_not_started(pinned_today: date) -> None:
+    """A wholly future month legitimately yields nothing once truncated."""
+    connector = build_connector(start_month="2012-01", end_month="2012-03")
+    raw = build_raw((2012, 1), retrieved_at=datetime(2012, 1, 20, tzinfo=UTC))
+
+    check = results_by_name(connector.validate(connector.transform(raw)))["bcn_month_coverage"]
+
+    assert check.status is CheckStatus.PASSED
+
+
+def test_calendar_continuity_warns_on_a_missing_day(pinned_today: date) -> None:
+    connector = build_connector(start_month="2012-01", end_month="2012-01")
+    raw = build_raw((2012, 1), retrieved_at=datetime(2012, 1, 20, tzinfo=UTC))
+    observations = connector.transform(raw)
+    del observations[5]
+
+    check = results_by_name(connector.validate(observations))["bcn_calendar_continuity"]
+
+    assert check.status is CheckStatus.FAILED
+    assert check.severity is CheckSeverity.WARNING
+    assert "2012-01-06" in check.message
+
+
+def test_calendar_continuity_passes_on_an_unbroken_run(pinned_today: date) -> None:
+    connector = build_connector(start_month="2012-01", end_month="2012-01")
+    raw = build_raw((2012, 1), retrieved_at=datetime(2012, 1, 20, tzinfo=UTC))
+
+    check = results_by_name(connector.validate(connector.transform(raw)))["bcn_calendar_continuity"]
+
+    assert check.status is CheckStatus.PASSED
+
+
+def test_future_rows_discarded_reports_the_count(pinned_today: date) -> None:
+    connector = build_connector(start_month="2012-01", end_month="2012-01")
+    raw = build_raw((2012, 1), retrieved_at=datetime(2012, 1, 20, tzinfo=UTC))
+
+    check = results_by_name(connector.validate(connector.transform(raw)))[
+        "bcn_future_rows_discarded"
+    ]
+
+    # January has 31 days; today is the 20th, so 11 days are still ahead.
+    assert check.status is CheckStatus.PASSED
+    assert check.actual_value == "11"
+
+
+def test_future_rows_discarded_reports_zero_for_a_closed_month() -> None:
+    """Deliberately unpinned: with the real today far past 2012, nothing is ahead."""
+    connector = build_connector(start_month="2012-01", end_month="2012-01")
+    raw = build_raw((2012, 1), retrieved_at=datetime(2026, 8, 8, tzinfo=UTC))
+
+    check = results_by_name(connector.validate(connector.transform(raw)))[
+        "bcn_future_rows_discarded"
+    ]
+
+    assert check.actual_value == "0"

@@ -28,7 +28,7 @@ from decimal import Decimal, InvalidOperation
 from typing import ClassVar
 from xml.etree import ElementTree
 
-from reim.core.constants import Frequency
+from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
@@ -78,6 +78,13 @@ def _month_span(start: tuple[int, int], end: tuple[int, int]) -> list[tuple[int,
     """Return every month from ``start`` to ``end`` inclusive, ascending."""
     count = (end[0] * 12 + end[1]) - (start[0] * 12 + start[1]) + 1
     return [_shift_month(start, offset) for offset in range(count)]
+
+
+def _days_in_month(month: tuple[int, int]) -> list[date]:
+    """Return every calendar day of ``month``."""
+    first = date(month[0], month[1], 1)
+    following = date(*_shift_month(month, 1), 1)
+    return [date.fromordinal(o) for o in range(first.toordinal(), following.toordinal())]
 
 
 class BcnExchangeRateConnector(BaseConnector):
@@ -249,5 +256,105 @@ class BcnExchangeRateConnector(BaseConnector):
         return day, value
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
-        """Not yet implemented; see Task 7 of the implementation plan."""
-        raise NotImplementedError
+        """Assert BCN-specific expectations beyond the standard battery.
+
+        The checks re-derive the requested window rather than carrying state
+        out of :meth:`transform`, which must stay a pure function of its input.
+        """
+        today = _utc_today()
+        months = self.resolve_months(today)
+        days = {obs.period.start for obs in observations}
+        return [
+            self._check_month_coverage(days, months, today),
+            self._check_calendar_continuity(days),
+            self._check_future_rows_discarded(months, today),
+        ]
+
+    def _check_month_coverage(
+        self,
+        days: set[date],
+        months: list[tuple[int, int]],
+        today: date,
+    ) -> QualityResult:
+        """Every requested month that has already begun must have produced rows."""
+        started = [month for month in months if month <= _month_of(today)]
+        empty = [
+            f"{year}-{month:02d}"
+            for year, month in started
+            if not any(day.year == year and day.month == month for day in days)
+        ]
+
+        if not empty:
+            return QualityResult.passed(
+                "bcn_month_coverage",
+                CheckType.COMPLETENESS,
+                f"All {len(started)} requested month(s) returned rates",
+                expected_value=str(len(started)),
+                actual_value=str(len(started)),
+            )
+        return QualityResult.failure(
+            "bcn_month_coverage",
+            CheckType.COMPLETENESS,
+            CheckSeverity.ERROR,
+            f"No rates returned for {len(empty)} requested month(s): {', '.join(empty)}",
+            expected_value=str(len(started)),
+            actual_value=", ".join(empty),
+        )
+
+    def _check_calendar_continuity(self, days: set[date]) -> QualityResult:
+        """The BCN publishes a rate for every calendar day, so gaps are suspect."""
+        if len(days) < 2:
+            return QualityResult.passed(
+                "bcn_calendar_continuity",
+                CheckType.CONSISTENCY,
+                "Too few days ingested to assess continuity",
+                actual_value=str(len(days)),
+            )
+
+        first, last = min(days), max(days)
+        expected = (last - first).days + 1
+        missing = sorted(
+            date.fromordinal(ordinal)
+            for ordinal in range(first.toordinal(), last.toordinal() + 1)
+            if date.fromordinal(ordinal) not in days
+        )
+
+        if not missing:
+            return QualityResult.passed(
+                "bcn_calendar_continuity",
+                CheckType.CONSISTENCY,
+                f"{expected} consecutive days from {first} to {last}",
+                expected_value=str(expected),
+                actual_value=str(len(days)),
+            )
+
+        shown = ", ".join(day.isoformat() for day in missing[:5])
+        suffix = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
+        return QualityResult.failure(
+            "bcn_calendar_continuity",
+            CheckType.CONSISTENCY,
+            CheckSeverity.WARNING,
+            f"{len(missing)} calendar day(s) missing between {first} and {last}: {shown}{suffix}",
+            expected_value=str(expected),
+            actual_value=str(len(days)),
+        )
+
+    def _check_future_rows_discarded(
+        self,
+        months: list[tuple[int, int]],
+        today: date,
+    ) -> QualityResult:
+        """Report how many projected rows were dropped, so the discard is visible.
+
+        The service returns a row for every calendar day of a requested month,
+        including days that have not happened. This never fails: it records
+        what was thrown away.
+        """
+        discarded = sum(1 for month in months for day in _days_in_month(month) if day > today)
+        return QualityResult.passed(
+            "bcn_future_rows_discarded",
+            CheckType.VALIDITY,
+            f"{discarded} projected row(s) after {today.isoformat()} were discarded",
+            expected_value="0 ingested",
+            actual_value=str(discarded),
+        )
