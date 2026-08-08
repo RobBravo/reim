@@ -83,8 +83,9 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         name="Nicaragua — consumer price index (monthly, 2006=100)",
         description=(
             "National consumer price index published monthly by INIDE, base "
-            "year 2006 = 100. This is the national aggregate; INIDE also "
-            "publishes Managua and rest-of-country breakdowns."
+            "year 2006 = 100. This is the national aggregate; the Managua and "
+            "rest-of-country breakdowns are ni_cpi_index_monthly_managua and "
+            "ni_cpi_index_monthly_rest_of_country."
         ),
         category=IndicatorCategory.PRICES,
         frequency=Frequency.MONTHLY,
@@ -113,6 +114,87 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
             "same month of the previous year ('variación interanual'), as "
             "published by INIDE. Monthly counterpart of the annual World Bank "
             "series ni_cpi_inflation_annual."
+        ),
+        category=IndicatorCategory.PRICES,
+        frequency=Frequency.MONTHLY,
+        unit="percent",
+        value_type=ValueType.PERCENT_CHANGE,
+        methodology_url="https://www.inide.gob.ni/Home/ipc",
+    ),
+    IndicatorDefinition(
+        code="ni_cpi_index_monthly_managua",
+        name="Nicaragua — consumer price index, Managua (monthly, 2006=100)",
+        description=(
+            "Consumer price index for Managua published monthly by INIDE, base "
+            "year 2006 = 100. Published by INIDE in the same table as the "
+            "national aggregate; not derived by REIM."
+        ),
+        category=IndicatorCategory.PRICES,
+        frequency=Frequency.MONTHLY,
+        unit="index (2006=100)",
+        value_type=ValueType.INDEX,
+        methodology_url="https://www.inide.gob.ni/Home/ipc",
+    ),
+    IndicatorDefinition(
+        code="ni_cpi_inflation_monthly_managua",
+        name="Nicaragua — consumer price inflation, Managua (month-on-month)",
+        description=(
+            "Percentage change of the Managua consumer price index versus the "
+            "previous month, as published by INIDE."
+        ),
+        category=IndicatorCategory.PRICES,
+        frequency=Frequency.MONTHLY,
+        unit="percent",
+        value_type=ValueType.PERCENT_CHANGE,
+        methodology_url="https://www.inide.gob.ni/Home/ipc",
+    ),
+    IndicatorDefinition(
+        code="ni_cpi_inflation_yoy_managua",
+        name="Nicaragua — consumer price inflation, Managua (year-on-year)",
+        description=(
+            "Percentage change of the Managua consumer price index versus the "
+            "same month of the previous year, as published by INIDE."
+        ),
+        category=IndicatorCategory.PRICES,
+        frequency=Frequency.MONTHLY,
+        unit="percent",
+        value_type=ValueType.PERCENT_CHANGE,
+        methodology_url="https://www.inide.gob.ni/Home/ipc",
+    ),
+    IndicatorDefinition(
+        code="ni_cpi_index_monthly_rest_of_country",
+        name="Nicaragua — consumer price index, rest of the country (monthly, 2006=100)",
+        description=(
+            "Consumer price index for Nicaragua excluding Managua ('resto del "
+            "país'), published monthly by INIDE, base year 2006 = 100. "
+            "Published by INIDE in the same table as the national aggregate; "
+            "not derived by REIM."
+        ),
+        category=IndicatorCategory.PRICES,
+        frequency=Frequency.MONTHLY,
+        unit="index (2006=100)",
+        value_type=ValueType.INDEX,
+        methodology_url="https://www.inide.gob.ni/Home/ipc",
+    ),
+    IndicatorDefinition(
+        code="ni_cpi_inflation_monthly_rest_of_country",
+        name="Nicaragua — consumer price inflation, rest of the country (month-on-month)",
+        description=(
+            "Percentage change of the rest-of-country consumer price index "
+            "versus the previous month, as published by INIDE."
+        ),
+        category=IndicatorCategory.PRICES,
+        frequency=Frequency.MONTHLY,
+        unit="percent",
+        value_type=ValueType.PERCENT_CHANGE,
+        methodology_url="https://www.inide.gob.ni/Home/ipc",
+    ),
+    IndicatorDefinition(
+        code="ni_cpi_inflation_yoy_rest_of_country",
+        name="Nicaragua — consumer price inflation, rest of the country (year-on-year)",
+        description=(
+            "Percentage change of the rest-of-country consumer price index "
+            "versus the same month of the previous year, as published by INIDE."
         ),
         category=IndicatorCategory.PRICES,
         frequency=Frequency.MONTHLY,

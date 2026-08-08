@@ -96,6 +96,58 @@ indicators:
     freshness_max_age_days: 90
     min_observations: 100
 
+  # Regional CPI. Thresholds are deliberately identical to the national
+  # series above: a Managua index has the same plausible range as the
+  # national one, and inventing tighter bounds "because it is a region"
+  # is exactly how v0.1.0 rejected 31 legitimate exchange-rate figures.
+  ni_cpi_index_monthly_managua:
+    min_value: 0
+    allow_negative: false
+    allow_zero: false
+    max_period_change_pct: 15
+    freshness_max_age_days: 90
+    min_observations: 100
+
+  ni_cpi_inflation_monthly_managua:
+    min_value: -20
+    max_value: 50
+    allow_negative: true
+    allow_zero: true
+    freshness_max_age_days: 90
+    min_observations: 100
+
+  ni_cpi_inflation_yoy_managua:
+    min_value: -30
+    max_value: 500
+    allow_negative: true
+    allow_zero: true
+    freshness_max_age_days: 90
+    min_observations: 100
+
+  ni_cpi_index_monthly_rest_of_country:
+    min_value: 0
+    allow_negative: false
+    allow_zero: false
+    max_period_change_pct: 15
+    freshness_max_age_days: 90
+    min_observations: 100
+
+  ni_cpi_inflation_monthly_rest_of_country:
+    min_value: -20
+    max_value: 50
+    allow_negative: true
+    allow_zero: true
+    freshness_max_age_days: 90
+    min_observations: 100
+
+  ni_cpi_inflation_yoy_rest_of_country:
+    min_value: -30
+    max_value: 500
+    allow_negative: true
+    allow_zero: true
+    freshness_max_age_days: 90
+    min_observations: 100
+
   # External sector -------------------------------------------------------
   ni_remittances_received:
     min_value: 0

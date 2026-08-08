@@ -154,6 +154,23 @@ def test_disabled_source_without_a_reason_is_rejected(tmp_path: Path) -> None:
         load_catalog(_write(tmp_path, _catalog(enabled=False)))
 
 
+def test_inide_source_declares_all_nine_cpi_indicators(catalog: SourceCatalog) -> None:
+    """One source, one download, nine series: national plus two regions."""
+    entry = catalog.get("inide_cpi_monthly")
+
+    assert set(entry.indicators) == {
+        "ni_cpi_index_monthly",
+        "ni_cpi_inflation_monthly",
+        "ni_cpi_inflation_yoy",
+        "ni_cpi_index_monthly_managua",
+        "ni_cpi_inflation_monthly_managua",
+        "ni_cpi_inflation_yoy_managua",
+        "ni_cpi_index_monthly_rest_of_country",
+        "ni_cpi_inflation_monthly_rest_of_country",
+        "ni_cpi_inflation_yoy_rest_of_country",
+    }
+
+
 def test_source_defaults_to_the_modern_tls_profile(tmp_path: Path) -> None:
     loaded = load_catalog(_write(tmp_path, _catalog()))
     entry = loaded.sources[0]

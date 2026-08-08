@@ -159,9 +159,10 @@ sources:
   - key: inide_cpi_monthly
     name: Nicaragua consumer price index (monthly)
     description: >-
-      National consumer price index (base 2006=100) with month-on-month and
-      year-on-year variation, published monthly by INIDE as an Excel workbook
-      containing the full historical series from January 2007.
+      National, Managua and rest-of-country consumer price indices (base
+      2006=100) with month-on-month and year-on-year variation, published
+      monthly by INIDE as an Excel workbook containing the full historical
+      series from January 2007.
     country: NI
     organization: INIDE
     category: prices
@@ -175,6 +176,12 @@ sources:
       - ni_cpi_index_monthly
       - ni_cpi_inflation_monthly
       - ni_cpi_inflation_yoy
+      - ni_cpi_index_monthly_managua
+      - ni_cpi_inflation_monthly_managua
+      - ni_cpi_inflation_yoy_managua
+      - ni_cpi_index_monthly_rest_of_country
+      - ni_cpi_inflation_monthly_rest_of_country
+      - ni_cpi_inflation_yoy_rest_of_country
     license: public_official_data
     official: true
     enabled: true
