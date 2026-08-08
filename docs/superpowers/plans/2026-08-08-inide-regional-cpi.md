@@ -66,8 +66,7 @@ Expected: FAIL — the catalog lists three indicators, and `SourceEntry` would r
 
 In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation_yoy` entry:
 
-```python
-(
+```text
     IndicatorDefinition(
         code="ni_cpi_index_monthly_managua",
         name="Nicaragua — consumer price index, Managua (monthly, 2006=100)",
@@ -82,8 +81,6 @@ In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation
         value_type=ValueType.INDEX,
         methodology_url="https://www.inide.gob.ni/Home/ipc",
     ),
-)
-(
     IndicatorDefinition(
         code="ni_cpi_inflation_monthly_managua",
         name="Nicaragua — consumer price inflation, Managua (month-on-month)",
@@ -97,8 +94,6 @@ In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation
         value_type=ValueType.PERCENT_CHANGE,
         methodology_url="https://www.inide.gob.ni/Home/ipc",
     ),
-)
-(
     IndicatorDefinition(
         code="ni_cpi_inflation_yoy_managua",
         name="Nicaragua — consumer price inflation, Managua (year-on-year)",
@@ -112,8 +107,6 @@ In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation
         value_type=ValueType.PERCENT_CHANGE,
         methodology_url="https://www.inide.gob.ni/Home/ipc",
     ),
-)
-(
     IndicatorDefinition(
         code="ni_cpi_index_monthly_rest_of_country",
         name="Nicaragua — consumer price index, rest of the country (monthly, 2006=100)",
@@ -129,8 +122,6 @@ In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation
         value_type=ValueType.INDEX,
         methodology_url="https://www.inide.gob.ni/Home/ipc",
     ),
-)
-(
     IndicatorDefinition(
         code="ni_cpi_inflation_monthly_rest_of_country",
         name="Nicaragua — consumer price inflation, rest of the country (month-on-month)",
@@ -144,8 +135,6 @@ In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation
         value_type=ValueType.PERCENT_CHANGE,
         methodology_url="https://www.inide.gob.ni/Home/ipc",
     ),
-)
-(
     IndicatorDefinition(
         code="ni_cpi_inflation_yoy_rest_of_country",
         name="Nicaragua — consumer price inflation, rest of the country (year-on-year)",
@@ -159,7 +148,6 @@ In `reim/domain/indicators/registry.py`, immediately after the `ni_cpi_inflation
         value_type=ValueType.PERCENT_CHANGE,
         methodology_url="https://www.inide.gob.ni/Home/ipc",
     ),
-)
 ```
 
 Then update the existing `ni_cpi_index_monthly` description, which currently ends "INIDE also publishes Managua and rest-of-country breakdowns." Replace that sentence with:

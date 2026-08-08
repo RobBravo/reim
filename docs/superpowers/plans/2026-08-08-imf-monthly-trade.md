@@ -83,8 +83,7 @@ Expected: FAIL — no rule set exists for these codes.
 
 In `reim/domain/indicators/registry.py`, after `ni_imports_goods_services`:
 
-```python
-(
+```text
     IndicatorDefinition(
         code="ni_exports_goods_monthly",
         name="Nicaragua — merchandise exports FOB (monthly)",
@@ -100,8 +99,6 @@ In `reim/domain/indicators/registry.py`, after `ni_imports_goods_services`:
         value_type=ValueType.LEVEL,
         methodology_url="https://www.imf.org/external/terms.htm",
     ),
-)
-(
     IndicatorDefinition(
         code="ni_imports_goods_monthly",
         name="Nicaragua — merchandise imports CIF (monthly)",
@@ -116,8 +113,6 @@ In `reim/domain/indicators/registry.py`, after `ni_imports_goods_services`:
         value_type=ValueType.LEVEL,
         methodology_url="https://www.imf.org/external/terms.htm",
     ),
-)
-(
     IndicatorDefinition(
         code="ni_trade_balance_goods_monthly",
         name="Nicaragua — merchandise trade balance (monthly)",
@@ -132,7 +127,6 @@ In `reim/domain/indicators/registry.py`, after `ni_imports_goods_services`:
         value_type=ValueType.LEVEL,
         methodology_url="https://www.imf.org/external/terms.htm",
     ),
-)
 ```
 
 - [ ] **Step 4: Add the three quality rule sets**
