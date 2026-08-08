@@ -95,16 +95,45 @@ the official producer of Nicaragua's IPC.
 increment — it carries the entire series — so one download per run yields
 everything, and the run is cheap for INIDE's servers.
 
-**Series ingested**, all from sheet `2-1-06` ("Cuadro II-1-06"), national aggregate:
+**Sheet `2-1-06` is three symmetric blocks, not one series.** Its full title is
+*"Índice de precios al consumidor nacional, Managua y resto del país"*: the same
+four columns repeat once per geographic breakdown, at a fixed offset.
 
-| REIM indicator | Sheet column | Points | Coverage |
-|----------------|--------------|--------|----------|
-| `ni_cpi_index_monthly` | 2 — IPC nacional, base 2006=100 | 198 | 2007-01..2026-06 |
-| `ni_cpi_inflation_monthly` | 3 — variación % mensual | 186 | 2011-01..2026-06 |
-| `ni_cpi_inflation_yoy` | 5 — variación % interanual | 198 | 2007-01..2026-06 |
+| Block | Index | Variación mensual | Variación acumulada | Variación interanual |
+|---|---|---|---|---|
+| nacional | 2 | 3 | 4 | 5 |
+| Managua | 6 | 7 | 8 | 9 |
+| resto del país | 10 | 11 | 12 | 13 |
+
+All three are ingested, into nine REIM indicators:
+
+| Region | Index | Month-on-month | Year-on-year |
+|---|---|---|---|
+| National | `ni_cpi_index_monthly` | `ni_cpi_inflation_monthly` | `ni_cpi_inflation_yoy` |
+| Managua | `ni_cpi_index_monthly_managua` | `ni_cpi_inflation_monthly_managua` | `ni_cpi_inflation_yoy_managua` |
+| Rest of country | `ni_cpi_index_monthly_rest_of_country` | `ni_cpi_inflation_monthly_rest_of_country` | `ni_cpi_inflation_yoy_rest_of_country` |
+
+**The three blocks have identical coverage** — 224 index rows, 186
+month-on-month rows and 224 year-on-year rows each in the June 2026 workbook.
+After annual rows are dropped, each region yields 198 index, 186 month-on-month
+and 198 year-on-year observations over 2007-01..2026-06: **1,746 in total, from
+one download**.
 
 The month-on-month series starts in 2011 rather than 2007: all twelve 2007 rows
-carry `-` in that column, so no observation is produced for them.
+carry `-` in that column, so no observation is produced for them. This holds for
+all three regions.
+
+**Region is modelled as separate indicator codes**, not as a dimension on
+`observations`. REIM's observation key is `(indicator, country, source, period)`;
+adding a geography column for one source would mean a migration touching every
+observation, the repositories and the API. The suffixed codes are published by
+INIDE, not derived by REIM.
+
+**The year-to-date column (offset 2 in every block) is never ingested** — it is
+a within-year running total, fully reconstructible from the monthly series — but
+its header *is* asserted, because doing so catches an inserted or reordered
+column. Twelve headers are checked in total before any value is read, and a
+mismatch in any of them aborts the whole run, national series included.
 
 **URL discovery, not URL construction.** File naming drifts between releases —
 `ipc_2025/ipc_abr25/` vs `ipc_2024/ipc_abril24/` vs `ipc_2023/ipc_Ene2023/`, and
@@ -137,13 +166,15 @@ comes from the structured spreadsheet.
   a stored `321.004267`).
 - **Publication date.** The workbook carries no machine-readable publication
   timestamp, so `published_at` comes from the HTTP `Last-Modified` header.
-- **Regional breakdowns not yet ingested.** Sheet `2-1-06` also holds Managua
-  (columns 6-9) and rest-of-country (10-13) series; sheets `2-3-06` and `2-4-06`
-  expand them. A documented future extension.
+- **Four sheets remain unread.** The workbook also carries CPI by division for
+  each of the three breakdowns (`2-2-06`, `2-3-06`, `2-4-06`) and national core
+  inflation (*subyacente*, `2-5-06`). Each is dozens of further series and
+  deserves its own increment.
 
 **Guards against silent corruption.** Before reading any value the connector
-asserts the base-year note still says `2006 = 100` and that the four column
-headers are unchanged. If INIDE rebases the index or reorders the table, the run
+asserts the base-year note still says `2006 = 100` and that all twelve column
+headers are unchanged — the three region headers plus the three non-index
+headers in each block. If INIDE rebases the index or reorders the table, the run
 fails loudly rather than mixing incompatible bases.
 
 ---

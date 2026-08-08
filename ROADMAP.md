@@ -47,8 +47,10 @@ aggregator rather than the Nicaraguan publisher itself.
   `docs/sources.md`.
 - **BCN monthly statistics** — monetary aggregates, remittances, trade and
   reserves from the published bulletins, once XLSX layout stability is assessed.
-- **INIDE regional CPI** — the Managua and rest-of-country breakdowns that sit
-  in the same workbook alongside the national series already ingested.
+- ~~**INIDE regional CPI**~~ ✅ **done** — Managua and rest-of-country, nine
+  series and 1,746 observations from the same single download. They turned out
+  to sit not merely in the same workbook but in the same worksheet and the same
+  rows, in columns the connector already walked past. See `docs/sources.md`.
 - **XLSX ingestion support** in the shared connector toolkit (pandas is already
   an approved dependency for exactly this).
 - Monthly and quarterly frequency exercised end to end. The period model already

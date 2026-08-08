@@ -383,7 +383,7 @@ make test-cov       # with coverage
 make check          # lint + typecheck + catalog + tests (what CI runs)
 ```
 
-332 tests. Integration tests skip cleanly when `REIM_TEST_DATABASE_URL` is unset,
+343 tests. Integration tests skip cleanly when `REIM_TEST_DATABASE_URL` is unset,
 so `pytest` works on a bare checkout.
 
 **No test calls a live official source.** Connector tests replay recorded
@@ -400,10 +400,14 @@ python scripts/smoke_test_sources.py --source worldbank_ni_cpi_inflation
 
 Stated plainly, because a data platform that hides its gaps is worse than none:
 
-- **Two national primary sources, six multilateral.** INIDE's monthly CPI and
-  the BCN's daily exchange rate come straight from the publisher; the remaining
-  six connectors read the World Bank, which compiles from national statistics
-  and is one step removed from it.
+- **Two national primary sources, six multilateral.** INIDE's monthly CPI —
+  national, Managua and rest-of-country — and the BCN's daily exchange rate come
+  straight from the publisher; the remaining six connectors read the World Bank,
+  which compiles from national statistics and is one step removed from it.
+- **Subnational coverage is two regions, not a geography model.** INIDE's
+  Managua and rest-of-country breakdowns are separate indicator codes.
+  `observations` has no region dimension, so this does not generalise to
+  finer geography without a schema change.
 - **The BCN endpoint requires a TLS 1.0 handshake.** REIM relaxes the protocol
   version and cipher security level for that one host, declared and justified in
   `sources/catalog.yml`. Certificate and hostname verification stay enforced.

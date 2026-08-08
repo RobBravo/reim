@@ -276,6 +276,48 @@ the warning is split: `http.legacy_tls_enabled` in the HTTP layer guarantees no
 connector can downgrade silently, and `bcn.legacy_tls` in the connector adds the
 hostname. Both fire on every run.
 
+## 13. Post-MVP increment — INIDE regional CPI (2026-08-08)
+
+Added the Managua and rest-of-country CPI breakdowns, taking `inide_cpi_monthly`
+from three series to nine.
+
+**The roadmap understated how close the data was.** It described the regional
+series as sitting "in the same workbook alongside the national series". They sit
+in the **same worksheet and the same rows**: sheet `2-1-06` is three symmetric
+four-column blocks, and the connector already walked past columns 6-13. No new
+download, sheet parser or network call was needed.
+
+**Verification**
+
+| Check | Result |
+|-------|--------|
+| `reim catalog validate` | ✅ 8 sources, quality rule sets 10 → 16 |
+| Live `pipeline run inide_cpi_monthly` | ✅ 1,746 observations, 0 rejected |
+| Second run | ✅ 0 inserted, 1,746 unchanged |
+| **Refactor safety** — new connector run over rows written by the pre-refactor one | ✅ 1,164 inserted, **582 unchanged, 0 updated** |
+| Regions distinct in stored data | ✅ mean index 220.569 / 220.417 / 220.850 over the same 198 months |
+| Quality checks | ✅ 4 INIDE checks pass; 0 failures at `error` or `critical` |
+| `pytest` / `ruff` / `mypy --strict` | ✅ 343 passed / clean / clean |
+
+The refactor-safety row is the one that mattered. The risk was that rewriting
+the column map would silently change a national value; running the new connector
+over a database populated by the old one and getting `updated = 0` proves every
+one of the 582 national observations hashes identically.
+
+**Judgement calls**
+
+* Region is modelled as new indicator codes, not a dimension on `observations`.
+  A geography column would mean a migration touching every observation, the
+  repositories and the API, for one source that needs it today.
+* The three national codes were not renamed, so the existing series keeps its
+  history. The national block simply carries an empty indicator suffix.
+* Regional indicators reuse their national counterpart's quality thresholds
+  verbatim. Inventing tighter bounds per region is how v0.1.0 rejected 31
+  legitimate exchange-rate figures.
+* The year-to-date column stays unread for every region, but its header is still
+  asserted: twelve headers are checked, not nine, because dropping the existing
+  "Acumulada" assertion would have been a regression.
+
 ## 10. Follow-up work (not in v0.1.0)
 
 - Verify the BCN SOAP contract from a network/TLS environment that can reach it, then enable it.
