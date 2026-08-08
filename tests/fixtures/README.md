@@ -9,6 +9,19 @@ never calls an official source.
 |------|--------|----------|
 | `worldbank_ni_cpi_inflation.json` | `GET https://api.worldbank.org/v2/country/NIC/indicator/FP.CPI.TOTL.ZG?format=json&per_page=500`, trimmed to 2015–2024 with the metadata block adjusted to match | 2026-08-04 |
 | `inide_ipc_junio_2026.xls.gz` | `GET https://www.inide.gob.ni/docs/ipc/ipc_2026/ipc_jun26/Cuadros_Estadisticas_IPC_junio_2026.xls`, byte-for-byte, gzipped only to keep the repo small (402 KB → 157 KB). Tests decompress it before parsing. | 2026-08-04 |
+| `bcn_tc_mes_2012_01.xml` | `POST https://servicios.bcn.gob.ni/Tc_Servicio/ServicioTC.asmx`, `RecuperaTC_Mes(2012, 1)` — the first month of coverage | 2026-08-08 |
+| `bcn_tc_mes_2020_03.xml` | Same endpoint, `RecuperaTC_Mes(2020, 3)` — the crawling peg, rows in the source's own arbitrary order | 2026-08-08 |
+| `bcn_tc_mes_2011_12.xml` | Same endpoint, `RecuperaTC_Mes(2011, 12)` — one month before coverage; the service answers with an empty result and no SOAP fault | 2026-08-08 |
+| `bcn_tc_mes_2026_12.xml` | Same endpoint, `RecuperaTC_Mes(2026, 12)` — a month that has not happened. The service projects the frozen rate forward to the end of the current calendar year; the connector discards these rows | 2026-08-08 |
+
+The BCN service requires a TLS 1.0 handshake, so the four recordings above were
+made through `reim.ingestion.http.legacy_tls_context()`. The exact script is in
+`docs/superpowers/plans/2026-08-08-bcn-exchange-rate.md`, Task 4.
+
+The projection horizon ends with the calendar year: at the time of recording,
+`RecuperaTC_Mes(2026, 12)` returned 31 rows while `RecuperaTC_Mes(2027, 1)`
+returned none. That is why the future-row fixture is a December of the current
+year rather than an arbitrary future month.
 
 ## Excerpted from a live source
 
@@ -20,7 +33,6 @@ never calls an official source.
 
 | File | Why it is synthetic |
 |------|---------------------|
-| `bcn_exchange_rate_soap.xml` | The BCN SOAP endpoint could not be reached during development (legacy TLS), so no real response was ever observed. This envelope follows the published service description; it is a **plausible shape, not a recording**, and exists only to exercise the parser. It must be replaced with a genuine recording before `bcn_exchange_rate` is enabled. See `docs/sources.md`. |
 | `worldbank_error.json` | Reproduces the documented World Bank error envelope. |
 
 Synthetic data lives here and nowhere else. It is never seeded, never ingested

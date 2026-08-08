@@ -88,12 +88,6 @@ def inide_source(catalog: SourceCatalog) -> SourceEntry:
 
 
 @pytest.fixture(scope="session")
-def bcn_soap_payload() -> str:
-    """Synthetic BCN SOAP envelope (see tests/fixtures/README.md)."""
-    return (FIXTURES / "bcn_exchange_rate_soap.xml").read_text()
-
-
-@pytest.fixture(scope="session")
 def catalog() -> SourceCatalog:
     """The repository's real source catalog."""
     return load_catalog(REPO_ROOT / "sources" / "catalog.yml")

@@ -17,7 +17,6 @@ from reim.core.constants import CheckSeverity, Frequency
 from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.pipelines.models import RawDataset
 from reim.domain.sources.catalog import SourceEntry
-from reim.ingestion.connectors.nicaragua.bcn_exchange_rate import BcnExchangeRateConnector
 from reim.ingestion.connectors.nicaragua.worldbank_cpi_inflation import (
     WorldBankNicaraguaCpiInflation,
 )
@@ -227,70 +226,3 @@ async def test_extract_retries_transient_failures(cpi_source, worldbank_cpi_payl
     raw = await WorldBankNicaraguaCpiInflation(cpi_source).extract()
     assert route.call_count == 2
     assert raw.http_status == 200
-
-
-# --------------------------------------------------------------------------
-# BCN (disabled connector, synthetic fixture)
-# --------------------------------------------------------------------------
-def test_bcn_source_is_disabled_in_the_catalog(bcn_source: SourceEntry) -> None:
-    """The blocker is recorded rather than papered over."""
-    assert bcn_source.enabled is False
-    assert bcn_source.disabled_reason
-    assert "TLS" in bcn_source.disabled_reason
-
-
-def test_bcn_transform_parses_the_result_element(bcn_source, bcn_soap_payload) -> None:  # type: ignore[no-untyped-def]
-    connector = BcnExchangeRateConnector(bcn_source)
-    raw = RawDataset(
-        source_key=bcn_source.key,
-        retrieved_at=RETRIEVED_AT,
-        source_url=str(bcn_source.base_url),
-        payload=bcn_soap_payload,
-        content_type="text/xml",
-        http_status=200,
-        metadata={"reference_date": "2024-07-15"},
-    )
-    observations = connector.transform(raw)
-
-    assert len(observations) == 1
-    assert observations[0].value_numeric == Decimal("36.6243")
-    assert observations[0].period.label == "2024-07-15"
-    assert observations[0].period.frequency is Frequency.DAILY
-    assert observations[0].currency_code == "NIO"
-    assert observations[0].raw_metadata["contract_status"] == "unverified"
-
-
-def test_bcn_transform_rejects_malformed_xml(bcn_source) -> None:  # type: ignore[no-untyped-def]
-    raw = RawDataset(
-        source_key=bcn_source.key,
-        retrieved_at=RETRIEVED_AT,
-        source_url=str(bcn_source.base_url),
-        payload="<not-closed>",
-        metadata={"reference_date": "2024-07-15"},
-    )
-    with pytest.raises(TransformationError, match="malformed XML"):
-        BcnExchangeRateConnector(bcn_source).transform(raw)
-
-
-def test_bcn_transform_rejects_a_missing_result(bcn_source) -> None:  # type: ignore[no-untyped-def]
-    raw = RawDataset(
-        source_key=bcn_source.key,
-        retrieved_at=RETRIEVED_AT,
-        source_url=str(bcn_source.base_url),
-        payload="<soap:Envelope xmlns:soap='http://x'><soap:Body/></soap:Envelope>",
-        metadata={"reference_date": "2024-07-15"},
-    )
-    with pytest.raises(TransformationError, match="Result"):
-        BcnExchangeRateConnector(bcn_source).transform(raw)
-
-
-async def test_bcn_refuses_dates_before_documented_coverage(bcn_source) -> None:  # type: ignore[no-untyped-def]
-    entry = bcn_source.model_copy(update={"options": {"reference_date": "2005-01-01"}})
-    with pytest.raises(ExtractionError, match="outside coverage"):
-        await BcnExchangeRateConnector(entry).extract()
-
-
-def test_bcn_validate_requires_exactly_one_rate(bcn_source, make_observation) -> None:  # type: ignore[no-untyped-def]
-    connector = BcnExchangeRateConnector(bcn_source)
-    failures = [r for r in connector.validate([]) if r.failed]
-    assert failures and failures[0].severity is CheckSeverity.CRITICAL
