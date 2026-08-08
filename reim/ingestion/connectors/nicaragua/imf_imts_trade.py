@@ -56,6 +56,7 @@ from reim.domain.pipelines.models import (
     RawDataset,
 )
 from reim.ingestion.base import BaseConnector
+from reim.ingestion.http import ensure_ok, fetch, http_client
 
 #: SDMX agency and dataflow holding merchandise trade.
 DATAFLOW = "IMF.STA,IMTS"
@@ -112,8 +113,43 @@ class ImfImtsTradeConnector(BaseConnector):
         return f"{base}/data/{DATAFLOW}/{key}"
 
     async def extract(self) -> RawDataset:
-        """Not yet implemented; see Task 5 of the implementation plan."""
-        raise NotImplementedError
+        """Fetch the whole series as one CSV response.
+
+        Raises:
+            ExtractionError: The API was unreachable, returned an error status,
+                or answered with something other than CSV.
+        """
+        params = {"startPeriod": self.start_period}
+        retrieved_at = datetime.now(UTC)
+
+        async with http_client() as client:
+            response = await fetch(
+                client,
+                self.request_url,
+                params=params,
+                headers={"Accept": CSV_MEDIA_TYPE},
+            )
+            ensure_ok(response, expected_content_type="csv")
+            payload = response.text
+
+        self.logger.info(
+            "imf_imts.extracted",
+            start_period=self.start_period,
+            bytes=len(payload),
+        )
+        return RawDataset(
+            source_key=self.source.key,
+            retrieved_at=retrieved_at,
+            source_url=str(response.request.url),
+            payload=payload,
+            content_type=response.headers.get("content-type"),
+            http_status=response.status_code,
+            metadata={
+                "dataflow": DATAFLOW,
+                "counterpart": COUNTERPART_WORLD,
+                "start_period": self.start_period,
+            },
+        )
 
     def transform(self, raw: RawDataset) -> list[NormalizedObservation]:
         """Map the SDMX CSV onto one observation per month and series.

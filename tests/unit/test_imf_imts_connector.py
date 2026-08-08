@@ -8,10 +8,12 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+import httpx
 import pytest
+import respx
 
 from reim.core.constants import CheckSeverity, CheckStatus, Frequency
-from reim.core.exceptions import TransformationError
+from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.pipelines.models import QualityResult, RawDataset
 from reim.domain.sources.catalog import SourceEntry
 from reim.ingestion.connectors.nicaragua.imf_imts_trade import ImfImtsTradeConnector
@@ -296,3 +298,88 @@ def test_a_broken_balance_identity_is_an_error(imf_imts_csv: str) -> None:
     assert check.status is CheckStatus.FAILED
     assert check.severity is CheckSeverity.ERROR
     assert broken.period.label in check.message
+
+
+# --------------------------------------------------------------------------
+# extract
+# --------------------------------------------------------------------------
+DATA_URL = f"{BASE_URL}/data/IMF.STA,IMTS/NIC..G001.M"
+
+
+def _csv_response(body: str) -> httpx.Response:
+    return httpx.Response(200, text=body, headers={"Content-Type": "application/vnd.sdmx.data+csv"})
+
+
+@respx.mock
+async def test_extract_requests_the_filtered_key(imf_imts_csv: str) -> None:
+    route = respx.get(DATA_URL).mock(return_value=_csv_response(imf_imts_csv))
+
+    raw = await build_connector().extract()
+
+    assert route.call_count == 1
+    assert raw.http_status == 200
+    assert raw.payload == imf_imts_csv
+    request = route.calls.last.request
+    assert "NIC..G001.M" in str(request.url)
+    assert request.url.params["startPeriod"] == "1990-01"
+
+
+@respx.mock
+async def test_extract_pins_the_csv_media_type(imf_imts_csv: str) -> None:
+    """The API ignores a JSON Accept, so the CSV type must be pinned."""
+    route = respx.get(DATA_URL).mock(return_value=_csv_response(imf_imts_csv))
+
+    await build_connector().extract()
+
+    assert (
+        route.calls.last.request.headers["Accept"] == "application/vnd.sdmx.data+csv;version=2.0.0"
+    )
+
+
+@respx.mock
+async def test_extract_honours_a_configured_start_period(imf_imts_csv: str) -> None:
+    route = respx.get(DATA_URL).mock(return_value=_csv_response(imf_imts_csv))
+
+    await build_connector(start_period="2020-01").extract()
+
+    assert route.calls.last.request.url.params["startPeriod"] == "2020-01"
+
+
+@respx.mock
+async def test_extract_rejects_an_xml_response() -> None:
+    """The API answers SDMX-ML when it feels like it; that must not be parsed."""
+    respx.get(DATA_URL).mock(
+        return_value=httpx.Response(
+            200,
+            text="<?xml version='1.0'?><message:StructureSpecificData/>",
+            headers={"Content-Type": "application/vnd.sdmx.structurespecificdata+xml"},
+        )
+    )
+
+    with pytest.raises(ExtractionError, match="csv"):
+        await build_connector().extract()
+
+
+@respx.mock
+async def test_extract_raises_on_a_server_error() -> None:
+    respx.get(DATA_URL).mock(return_value=httpx.Response(404, text="not found"))
+
+    with pytest.raises(ExtractionError, match="HTTP 404"):
+        await build_connector().extract()
+
+
+@pytest.mark.live
+async def test_live_api_answers_the_documented_contract() -> None:
+    """Opt-in: hits the real IMF API. Run with `pytest -m live`."""
+    connector = build_connector(start_period="2025-01")
+
+    raw = await connector.extract()
+    observations = connector.transform(raw)
+
+    assert observations
+    assert {obs.indicator_code for obs in observations} == {
+        "ni_exports_goods_monthly",
+        "ni_imports_goods_monthly",
+        "ni_trade_balance_goods_monthly",
+    }
+    assert [r for r in connector.validate(observations) if r.failed] == []
