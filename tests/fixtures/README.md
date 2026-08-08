@@ -9,6 +9,7 @@ never calls an official source.
 |------|--------|----------|
 | `worldbank_ni_cpi_inflation.json` | `GET https://api.worldbank.org/v2/country/NIC/indicator/FP.CPI.TOTL.ZG?format=json&per_page=500`, trimmed to 2015–2024 with the metadata block adjusted to match | 2026-08-04 |
 | `inide_ipc_junio_2026.xls.gz` | `GET https://www.inide.gob.ni/docs/ipc/ipc_2026/ipc_jun26/Cuadros_Estadisticas_IPC_junio_2026.xls`, byte-for-byte, gzipped only to keep the repo small (402 KB → 157 KB). Tests decompress it before parsing. | 2026-08-04 |
+| `imf_imts_nic_g001.csv.gz` | `GET https://api.imf.org/external/sdmx/2.1/data/IMF.STA,IMTS/NIC..G001.M?startPeriod=1990-01` with `Accept: application/vnd.sdmx.data+csv;version=2.0.0`, byte-for-byte, gzipped only to keep the repo small (789 KB → 18 KB). Tests decompress it before parsing. The **complete** response, not a sample, so tests assert the real 1,308 observations across 436 months. | 2026-08-08 |
 | `bcn_tc_mes_2012_01.xml` | `POST https://servicios.bcn.gob.ni/Tc_Servicio/ServicioTC.asmx`, `RecuperaTC_Mes(2012, 1)` — the first month of coverage | 2026-08-08 |
 | `bcn_tc_mes_2020_03.xml` | Same endpoint, `RecuperaTC_Mes(2020, 3)` — the crawling peg, rows in the source's own arbitrary order | 2026-08-08 |
 | `bcn_tc_mes_2011_12.xml` | Same endpoint, `RecuperaTC_Mes(2011, 12)` — one month before coverage; the service answers with an empty result and no SOAP fault | 2026-08-08 |

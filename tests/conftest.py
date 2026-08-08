@@ -76,6 +76,12 @@ def inide_workbook_bytes() -> bytes:
 
 
 @pytest.fixture(scope="session")
+def imf_imts_csv() -> str:
+    """Real IMF IMTS response for Nicaragua, world aggregate (stored gzipped)."""
+    return gzip.decompress((FIXTURES / "imf_imts_nic_g001.csv.gz").read_bytes()).decode("utf-8")
+
+
+@pytest.fixture(scope="session")
 def inide_index_html() -> str:
     """Excerpt of the INIDE IPC index page, with its real workbook links."""
     return (FIXTURES / "inide_ipc_index.html").read_text(encoding="utf-8")
