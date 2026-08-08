@@ -1,213 +1,162 @@
-r"""Nicaragua — daily official exchange rate published by the Banco Central de Nicaragua.
+"""Nicaragua — daily official exchange rate published by the Banco Central de Nicaragua.
 
-.. warning::
-   **This connector ships disabled and its response contract is unverified.**
+The BCN exposes a free SOAP service at
+``https://servicios.bcn.gob.ni/Tc_Servicio/ServicioTC.asmx``, documented at
+https://www.bcn.gob.ni/servicio-web-tipo-de-cambio and covering January 2012
+onwards. The connector calls ``RecuperaTC_Mes(Ano, Mes)``, which returns every
+calendar day of the requested month, rather than the per-day operation.
 
-   The BCN exposes a free SOAP service at
-   ``https://servicios.bcn.gob.ni/Tc_Servicio/ServicioTC.asmx`` documented at
-   https://www.bcn.gob.ni/servicio-web-tipo-de-cambio, covering January 2012
-   onwards. During development the endpoint could not be reached: the host only
-   negotiates a pre-TLS 1.2 handshake, which OpenSSL 3.x under the default
-   Fedora ``DEFAULT`` crypto policy rejects with
-   ``error:0A000102:SSL routines::unsupported protocol``.
+Two properties of the service shape this connector:
 
-   The request construction below follows the published service description, but
-   because no live response was ever observed, the *parsing* is written
-   defensively and **must be verified against the real service before this
-   source is enabled**. In line with the project's transparency principle, no
-   fabricated response was used to "confirm" it works, and the catalog entry
-   carries ``enabled: false`` with the blocker recorded.
+* Rows come back in **arbitrary order**, so they are sorted here.
+* The service **answers for months that have not happened yet**, projecting the
+  currently frozen rate forward to the end of the calendar year. Those rows are
+  discarded: a projection is not an observation.
 
-   To verify and enable it, from a host that can complete the handshake::
-
-       curl -sv --tlsv1.0 \\
-         "https://servicios.bcn.gob.ni/Tc_Servicio/ServicioTC.asmx?WSDL"
-
-   then confirm the operation name and the shape of the ``*Result`` element,
-   adjust :meth:`BcnExchangeRateConnector.transform` if needed, add a recorded
-   fixture, and flip ``enabled: true`` in ``sources/catalog.yml``.
+The host negotiates TLS 1.0 only and signs its key exchange with SHA-1, so the
+catalog entry declares ``tls_profile: legacy``. That relaxes the protocol
+version and cipher security level for this host alone — certificate and
+hostname verification remain enforced. See
+:func:`reim.ingestion.http.legacy_tls_context`.
 """
 
 from __future__ import annotations
 
 import re
 from datetime import UTC, date, datetime
-from decimal import Decimal, InvalidOperation
 from typing import ClassVar
-from xml.etree import ElementTree
 
-from reim.core.constants import CheckSeverity, CheckType, Frequency
-from reim.core.exceptions import ExtractionError, TransformationError
-from reim.domain.observations.periods import parse_period
+from reim.core.constants import Frequency
+from reim.core.exceptions import ExtractionError
 from reim.domain.pipelines.models import (
     NormalizedObservation,
     QualityResult,
     RawDataset,
 )
 from reim.ingestion.base import BaseConnector
-from reim.ingestion.http import ensure_ok, http_client
 
-SOAP_NAMESPACE = "http://tempuri.org/"
-SOAP_ACTION = f"{SOAP_NAMESPACE}RecuperaTC_Dia"
-#: Earliest date the BCN service documents coverage for.
+SOAP_NAMESPACE = "http://servicios.bcn.gob.ni/"
+SOAP_ACTION = f"{SOAP_NAMESPACE}RecuperaTC_Mes"
+SOAP_ENVELOPE_NS = "http://schemas.xmlsoap.org/soap/envelope/"
+
+#: Earliest month the BCN service holds data for; 2011-12 returns nothing.
 COVERAGE_START = date(2012, 1, 1)
+#: Months requested when the catalog does not say otherwise.
+DEFAULT_MONTHS_BACK = 2
+#: Ceiling on one run, so a mistyped range cannot launch a thousand requests.
+MAX_MONTHS_PER_RUN = 400
 
-_SOAP_ENVELOPE = """<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-               xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <RecuperaTC_Dia xmlns="{namespace}">
-      <strfecha>{reference_date}</strfecha>
-    </RecuperaTC_Dia>
-  </soap:Body>
-</soap:Envelope>
-"""
+_MONTH_OPTION = re.compile(r"^(?P<year>\d{4})-(?P<month>0[1-9]|1[0-2])$")
 
-_RESULT_TAG = re.compile(r"Result$")
+_SOAP_ENVELOPE = (
+    '<?xml version="1.0" encoding="utf-8"?>'
+    '<soap:Envelope xmlns:soap="{envelope_ns}">'
+    "<soap:Body>"
+    '<RecuperaTC_Mes xmlns="{namespace}"><Ano>{year}</Ano><Mes>{month}</Mes></RecuperaTC_Mes>'
+    "</soap:Body></soap:Envelope>"
+)
+
+
+def _utc_today() -> date:
+    """Return today's UTC date. Indirected so tests can pin it."""
+    return datetime.now(UTC).date()
+
+
+def _month_of(day: date) -> tuple[int, int]:
+    return (day.year, day.month)
+
+
+def _shift_month(month: tuple[int, int], delta: int) -> tuple[int, int]:
+    index = month[0] * 12 + (month[1] - 1) + delta
+    return (index // 12, index % 12 + 1)
+
+
+def _month_span(start: tuple[int, int], end: tuple[int, int]) -> list[tuple[int, int]]:
+    """Return every month from ``start`` to ``end`` inclusive, ascending."""
+    count = (end[0] * 12 + end[1]) - (start[0] * 12 + start[1]) + 1
+    return [_shift_month(start, offset) for offset in range(count)]
 
 
 class BcnExchangeRateConnector(BaseConnector):
-    """Daily NIO/USD official rate from the BCN SOAP service.
-
-    The connector requests a single reference date — by default today, or the
-    date supplied through the catalog ``options.reference_date`` — because the
-    service is documented as a per-day lookup rather than a bulk series export.
-    """
+    """Daily NIO/USD official rate from the BCN SOAP service."""
 
     connector_key = "bcn_exchange_rate"
-    version = "0.1.0-unverified"
+    version = "1.0.0"
     expected_frequency = Frequency.DAILY
     indicator_code: ClassVar[str] = "ni_exchange_rate_official_daily"
     unit: ClassVar[str] = "NIO per USD"
 
-    @property
-    def reference_date(self) -> date:
-        """Date to query; overridable through the catalog ``options`` block."""
-        configured = self.source.options.get("reference_date")
-        if isinstance(configured, str):
-            return date.fromisoformat(configured)
-        if isinstance(configured, date):
-            return configured
-        return datetime.now(UTC).date()
+    def resolve_months(self, today: date) -> list[tuple[int, int]]:
+        """Resolve which ``(year, month)`` pairs to request.
 
-    async def extract(self) -> RawDataset:
-        """POST the SOAP request for :attr:`reference_date`."""
-        reference = self.reference_date
-        if reference < COVERAGE_START:
+        Pure function of the catalog ``options`` and ``today``, so ``extract``
+        and ``validate`` can both call it and agree.
+
+        Args:
+            today: The date the run considers "now".
+
+        Raises:
+            ExtractionError: The options are malformed, reach before coverage,
+                invert the range, or exceed :data:`MAX_MONTHS_PER_RUN`.
+        """
+        end = self._month_option("end_month") or _month_of(today)
+        start = self._month_option("start_month")
+
+        if start is None:
+            months_back = self._months_back()
+            start = _shift_month(end, -(months_back - 1))
+
+        coverage = _month_of(COVERAGE_START)
+        if start < coverage:
             msg = (
-                f"BCN publishes exchange rates from {COVERAGE_START.isoformat()} onwards; "
-                f"{reference.isoformat()} is outside coverage"
+                f"BCN coverage starts at {coverage[0]}-{coverage[1]:02d}; "
+                f"requested start {start[0]}-{start[1]:02d} is before it"
             )
             raise ExtractionError(msg, source_key=self.source.key)
 
-        url = str(self.source.base_url)
-        body = _SOAP_ENVELOPE.format(namespace=SOAP_NAMESPACE, reference_date=reference.isoformat())
-        retrieved_at = datetime.now(UTC)
+        if end < start:
+            msg = f"end_month {end[0]}-{end[1]:02d} precedes start_month {start[0]}-{start[1]:02d}"
+            raise ExtractionError(msg, source_key=self.source.key)
 
-        async with http_client() as client:
-            try:
-                response = await client.post(
-                    url,
-                    content=body.encode("utf-8"),
-                    headers={
-                        "Content-Type": "text/xml; charset=utf-8",
-                        "SOAPAction": SOAP_ACTION,
-                    },
-                )
-            except Exception as exc:
-                msg = f"Could not reach the BCN SOAP service at {url}: {type(exc).__name__}: {exc}"
-                raise ExtractionError(msg, url=url, source_key=self.source.key) from exc
-            ensure_ok(response)
-            text = response.text
+        months = _month_span(start, end)
+        if len(months) > MAX_MONTHS_PER_RUN:
+            msg = (
+                f"Requested {len(months)} months, above the {MAX_MONTHS_PER_RUN} "
+                f"allowed in one run; narrow start_month/end_month"
+            )
+            raise ExtractionError(msg, source_key=self.source.key)
+        return months
 
-        return RawDataset(
-            source_key=self.source.key,
-            retrieved_at=retrieved_at,
-            source_url=url,
-            payload=text,
-            content_type=response.headers.get("content-type"),
-            http_status=response.status_code,
-            metadata={"reference_date": reference.isoformat()},
-        )
+    def _months_back(self) -> int:
+        raw = self.source.options.get("months_back", DEFAULT_MONTHS_BACK)
+        try:
+            months_back = int(raw)
+        except (TypeError, ValueError) as exc:
+            msg = f"months_back must be an integer, got {raw!r}"
+            raise ExtractionError(msg, source_key=self.source.key) from exc
+        if months_back < 1:
+            msg = f"months_back must be at least 1, got {months_back}"
+            raise ExtractionError(msg, source_key=self.source.key)
+        return months_back
+
+    def _month_option(self, name: str) -> tuple[int, int] | None:
+        raw = self.source.options.get(name)
+        if raw is None:
+            return None
+        match = _MONTH_OPTION.match(str(raw).strip())
+        if match is None:
+            msg = f"{name} must be formatted YYYY-MM, got {raw!r}"
+            raise ExtractionError(msg, source_key=self.source.key)
+        return (int(match["year"]), int(match["month"]))
+
+    async def extract(self) -> RawDataset:
+        """Not yet implemented; see Task 8 of the implementation plan."""
+        raise NotImplementedError
 
     def transform(self, raw: RawDataset) -> list[NormalizedObservation]:
-        """Extract the rate from the SOAP envelope.
-
-        Parses the first element whose tag ends in ``Result`` rather than
-        hard-coding a path, because the exact envelope has not been observed
-        against the live service.
-        """
-        if not isinstance(raw.payload, str):
-            msg = "BCN payload must be the raw SOAP XML string"
-            raise TransformationError(msg, source_key=self.source.key)
-
-        try:
-            root = ElementTree.fromstring(raw.payload)
-        except ElementTree.ParseError as exc:
-            msg = f"BCN returned malformed XML: {exc}"
-            raise TransformationError(msg, source_key=self.source.key) from exc
-
-        result_text: str | None = None
-        for element in root.iter():
-            tag = element.tag.rsplit("}", 1)[-1]
-            if _RESULT_TAG.search(tag) and element.text and element.text.strip():
-                result_text = element.text.strip()
-                break
-
-        if result_text is None:
-            msg = "No '*Result' element with a value found in the BCN SOAP response"
-            raise TransformationError(msg, source_key=self.source.key)
-
-        try:
-            value = Decimal(result_text.replace(",", "."))
-        except (InvalidOperation, ValueError) as exc:
-            msg = f"BCN returned a non-numeric exchange rate {result_text!r}"
-            raise TransformationError(msg, source_key=self.source.key) from exc
-
-        reference = str(raw.metadata.get("reference_date", ""))
-        period = parse_period(reference, Frequency.DAILY)
-
-        return [
-            NormalizedObservation(
-                country_iso3="NIC",
-                indicator_code=self.indicator_code,
-                source_key=self.source.key,
-                period=period,
-                unit=self.unit,
-                currency_code="NIO",
-                value_numeric=value,
-                retrieved_at=raw.retrieved_at,
-                source_url=raw.source_url,
-                source_record_id=f"tc_dia:{reference}",
-                raw_metadata={
-                    "bcn_operation": "RecuperaTC_Dia",
-                    "bcn_reference_date": reference,
-                    "contract_status": "unverified",
-                },
-            )
-        ]
+        """Not yet implemented; see Task 6 of the implementation plan."""
+        raise NotImplementedError
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
-        """Assert the day lookup returned exactly one rate."""
-        count = len(observations)
-        if count == 1:
-            return [
-                QualityResult.passed(
-                    "bcn_single_daily_rate",
-                    CheckType.COMPLETENESS,
-                    "Exactly one daily rate returned",
-                    expected_value="1",
-                    actual_value="1",
-                )
-            ]
-        return [
-            QualityResult.failure(
-                "bcn_single_daily_rate",
-                CheckType.COMPLETENESS,
-                CheckSeverity.CRITICAL,
-                f"Expected exactly one daily rate, got {count}",
-                expected_value="1",
-                actual_value=str(count),
-            )
-        ]
+        """Not yet implemented; see Task 7 of the implementation plan."""
+        raise NotImplementedError
