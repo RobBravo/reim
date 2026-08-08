@@ -31,20 +31,25 @@ Two properties of the source shape this connector:
 Layout of sheet ``2-1-06``
 --------------------------
 Column 0 holds either a year (an annual summary row) or a Spanish month name
-belonging to the most recent year above it. Columns 2-5 are the national series:
+belonging to the most recent year above it. The value columns are **three
+symmetric four-column blocks**, one per geographic breakdown:
 
-===  ==========================================
-Col  Content
-===  ==========================================
-2    IPC nacional, index, base 2006 = 100
-3    Variación % mensual (month on month)
-4    Variación % acumulada (year to date)
-5    Variación % interanual (year on year)
-===  ==========================================
+=========  ======  =========  ===========  ===========
+Block      Index   Mensual    Acumulada    Interanual
+=========  ======  =========  ===========  ===========
+nacional   2       3          4            5
+Managua    6       7          8            9
+resto      10      11         12           13
+=========  ======  =========  ===========  ===========
 
-Columns 6-9 repeat the block for Managua and 10-13 for the rest of the country.
-Only the **national** series is ingested in this version; the regional
-breakdowns are a documented future extension.
+All three are ingested, and all three carry identical coverage in the source:
+224 index rows, 186 month-on-month rows and 224 year-on-year rows each. The
+blocks are described in :data:`REGION_BLOCKS`, from which the column map and
+the header assertions are derived rather than written out nine times.
+
+The workbook's four other sheets — CPI by division for each of the three
+breakdowns (``2-2-06``, ``2-3-06``, ``2-4-06``) and national core inflation
+(``2-5-06``) — are not read.
 
 Deliberate omissions
 --------------------
@@ -52,8 +57,9 @@ Deliberate omissions
   of that year's monthly indices, so for the current year it is a partial-year
   average that changes every month. Storing it would manufacture a stream of
   spurious "revisions" for a number that is not yet final.
-* **The year-to-date column is not ingested.** It is a running total that is
-  fully reconstructible from the monthly series.
+* **The year-to-date column is not ingested**, for any region. It is a running
+  total that is fully reconstructible from the monthly series. Its header is
+  still asserted, because doing so catches an inserted or reordered column.
 * **Missing values are skipped.** Every month of 2007 carries ``-`` in the
   month-on-month column because there is no December 2006 in the rebased series.
   Those observations are simply not produced — never zero-filled.
@@ -117,7 +123,11 @@ class RegionBlock(NamedTuple):
     indicator_suffix: str
 
 
-REGION_BLOCKS: tuple[RegionBlock, ...] = (RegionBlock("national", "nacional", 2, ""),)
+REGION_BLOCKS: tuple[RegionBlock, ...] = (
+    RegionBlock("national", "nacional", 2, ""),
+    RegionBlock("managua", "managua", 6, "_managua"),
+    RegionBlock("rest_of_country", "resto del país", 10, "_rest_of_country"),
+)
 
 #: Offsets within a block that REIM ingests, and the base indicator each
 #: feeds. Offset 2 ("Acumulada", year-to-date) is deliberately absent: it is a
@@ -202,7 +212,7 @@ class InideCpiMonthly(BaseConnector):
     """Monthly national CPI (index, month-on-month and year-on-year) from INIDE."""
 
     connector_key = "inide_cpi_monthly"
-    version = "1.0.0"
+    version = "1.1.0"
     expected_frequency = Frequency.MONTHLY
     country_iso3: ClassVar[str] = "NIC"
 

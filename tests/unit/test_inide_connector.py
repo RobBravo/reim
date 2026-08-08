@@ -134,25 +134,35 @@ def test_release_label_formats_month() -> None:
 # --------------------------------------------------------------------------
 # Transform
 # --------------------------------------------------------------------------
-def test_column_maps_are_derived_from_the_national_block() -> None:
-    """The derived maps must reproduce the hand-written ones exactly."""
-    assert COLUMN_INDICATORS == {
-        2: ("ni_cpi_index_monthly", "index (2006=100)"),
-        3: ("ni_cpi_inflation_monthly", "percent"),
-        5: ("ni_cpi_inflation_yoy", "percent"),
-    }
+def test_column_maps_cover_all_three_blocks() -> None:
+    assert COLUMN_INDICATORS[2] == ("ni_cpi_index_monthly", "index (2006=100)")
+    assert COLUMN_INDICATORS[6] == ("ni_cpi_index_monthly_managua", "index (2006=100)")
+    assert COLUMN_INDICATORS[10] == (
+        "ni_cpi_index_monthly_rest_of_country",
+        "index (2006=100)",
+    )
+    assert len(COLUMN_INDICATORS) == 9
     assert EXPECTED_HEADERS == {
         2: "nacional",
         3: "mensual",
         4: "acumulada",
         5: "interanual",
+        6: "managua",
+        7: "mensual",
+        8: "acumulada",
+        9: "interanual",
+        10: "resto del país",
+        11: "mensual",
+        12: "acumulada",
+        13: "interanual",
     }
 
 
 def test_the_year_to_date_column_is_asserted_but_not_ingested() -> None:
-    """Column 4 guards the layout; its values are deliberately not read."""
-    assert 4 in EXPECTED_HEADERS
-    assert 4 not in COLUMN_INDICATORS
+    """Columns 4, 8 and 12 guard the layout; their values are not read."""
+    for column in (4, 8, 12):
+        assert column in EXPECTED_HEADERS
+        assert column not in COLUMN_INDICATORS
 
 
 def test_every_ingested_column_knows_its_region() -> None:
@@ -160,7 +170,7 @@ def test_every_ingested_column_knows_its_region() -> None:
     assert COLUMN_REGIONS[2] == "national"
 
 
-def test_transform_parses_the_real_workbook(
+def test_all_three_regions_are_parsed(
     connector: InideCpiMonthly, inide_workbook_bytes: bytes
 ) -> None:
     observations = connector.transform(_raw(inide_workbook_bytes))
@@ -170,12 +180,112 @@ def test_transform_parses_the_real_workbook(
         by_indicator[obs.indicator_code] = by_indicator.get(obs.indicator_code, 0) + 1
 
     # 198 months of index and year-on-year; 2007 has no month-on-month figure.
+    # The three blocks have identical coverage in the source, so each region
+    # yields the same counts as the national one.
     assert by_indicator == {
         "ni_cpi_index_monthly": 198,
         "ni_cpi_inflation_yoy": 198,
         "ni_cpi_inflation_monthly": 186,
+        "ni_cpi_index_monthly_managua": 198,
+        "ni_cpi_inflation_yoy_managua": 198,
+        "ni_cpi_inflation_monthly_managua": 186,
+        "ni_cpi_index_monthly_rest_of_country": 198,
+        "ni_cpi_inflation_yoy_rest_of_country": 198,
+        "ni_cpi_inflation_monthly_rest_of_country": 186,
     }
-    assert len(observations) == 582
+    assert len(observations) == 1746
+
+
+def test_the_three_regions_are_not_the_same_series(
+    connector: InideCpiMonthly, inide_workbook_bytes: bytes
+) -> None:
+    """The failure this catches would otherwise look exactly like success.
+
+    If the block offsets were wrong, all nine indicators would be filled from
+    the national columns: every count would match, every value would be a
+    valid CPI, and every other test would pass.
+    """
+    observations = connector.transform(_raw(inide_workbook_bytes))
+
+    def index_series(code: str) -> dict[str, Decimal | None]:
+        return {
+            obs.period.label: obs.value_numeric
+            for obs in observations
+            if obs.indicator_code == code
+        }
+
+    national = index_series("ni_cpi_index_monthly")
+    managua = index_series("ni_cpi_index_monthly_managua")
+    rest = index_series("ni_cpi_index_monthly_rest_of_country")
+
+    assert national.keys() == managua.keys() == rest.keys()
+    assert national != managua
+    assert national != rest
+    assert managua != rest
+
+
+def test_regional_observations_record_their_region(
+    connector: InideCpiMonthly, inide_workbook_bytes: bytes
+) -> None:
+    observations = connector.transform(_raw(inide_workbook_bytes))
+    regions = {
+        obs.indicator_code: obs.raw_metadata["inide_region"]
+        for obs in observations
+        if obs.indicator_code.startswith("ni_cpi_index_monthly")
+    }
+
+    assert regions == {
+        "ni_cpi_index_monthly": "national",
+        "ni_cpi_index_monthly_managua": "managua",
+        "ni_cpi_index_monthly_rest_of_country": "rest_of_country",
+    }
+
+
+def test_record_ids_stay_unique_across_regions(
+    connector: InideCpiMonthly, inide_workbook_bytes: bytes
+) -> None:
+    """source_record_id is column-scoped, so nine series cannot collide."""
+    observations = connector.transform(_raw(inide_workbook_bytes))
+    record_ids = [obs.source_record_id for obs in observations]
+
+    assert len(record_ids) == len(set(record_ids))
+
+
+def test_regional_values_are_quantised_like_national(
+    connector: InideCpiMonthly, inide_workbook_bytes: bytes
+) -> None:
+    observations = connector.transform(_raw(inide_workbook_bytes))
+    regional = [
+        obs
+        for obs in observations
+        if obs.indicator_code == "ni_cpi_index_monthly_managua" and obs.value_numeric is not None
+    ]
+
+    assert regional
+    for obs in regional:
+        assert isinstance(obs.value_numeric, Decimal)
+        assert -obs.value_numeric.as_tuple().exponent <= 6
+
+
+def test_a_changed_regional_header_aborts_the_whole_run(
+    connector: InideCpiMonthly, inide_workbook_bytes: bytes, monkeypatch
+) -> None:
+    """A restructured sheet stops everything, national included."""
+    import xlrd
+
+    real_open = xlrd.open_workbook
+
+    def fake_open(**kwargs: object):  # type: ignore[no-untyped-def]
+        book = real_open(**kwargs)
+        # Column 6 is Managua's index header.
+        book.sheet_by_name(SHEET_NAME)._cell_values[3][6] = "Chinandega"
+        return book
+
+    monkeypatch.setattr(
+        "reim.ingestion.connectors.nicaragua.inide_cpi_monthly.xlrd.open_workbook", fake_open
+    )
+    with pytest.raises(TransformationError, match="column 6"):
+        connector.transform(_raw(inide_workbook_bytes))
 
 
 def test_transform_produces_monthly_periods(
