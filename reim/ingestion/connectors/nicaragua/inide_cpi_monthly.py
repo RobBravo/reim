@@ -459,9 +459,10 @@ class InideCpiMonthly(BaseConnector):
     # -- Validate ---------------------------------------------------------
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
         """Assert INIDE-specific expectations beyond the standard battery."""
-        results: list[QualityResult] = []
-        results.append(self._check_all_indicators_present(observations))
-        results.append(self._check_index_series_complete(observations))
+        results: list[QualityResult] = [self._check_all_indicators_present(observations)]
+        results.extend(
+            self._check_index_series_complete(observations, block) for block in REGION_BLOCKS
+        )
         return results
 
     def _check_all_indicators_present(
@@ -490,7 +491,7 @@ class InideCpiMonthly(BaseConnector):
         )
 
     def _check_index_series_complete(
-        self, observations: list[NormalizedObservation]
+        self, observations: list[NormalizedObservation], block: RegionBlock
     ) -> QualityResult:
         """The index must be unbroken from :data:`CONTIGUOUS_FROM_YEAR` onward.
 
@@ -500,13 +501,19 @@ class InideCpiMonthly(BaseConnector):
         not a parsing fault, so it is not treated as a failure. The modern
         stretch, however, must never develop a hole — one there would mean the
         workbook was truncated or the row scan broke.
+
+        Run once per region, so a hole in one breakdown names that breakdown
+        instead of collapsing three findings into one. All three blocks share
+        the same coverage, so the same threshold applies to each.
         """
+        check_name = f"inide_index_continuity_{block.key}"
+        index_code = f"{BLOCK_COLUMNS[0][1]}{block.indicator_suffix}"
         months = sorted(
-            obs.period.start for obs in observations if obs.indicator_code == "ni_cpi_index_monthly"
+            obs.period.start for obs in observations if obs.indicator_code == index_code
         )
         if not months:
             return QualityResult.skipped(
-                "inide_index_continuity",
+                check_name,
                 CheckType.COMPLETENESS,
                 "No index observations to assess",
             )
@@ -514,7 +521,7 @@ class InideCpiMonthly(BaseConnector):
         modern = [month for month in months if month.year >= CONTIGUOUS_FROM_YEAR]
         if not modern:
             return QualityResult.failure(
-                "inide_index_continuity",
+                check_name,
                 CheckType.COMPLETENESS,
                 CheckSeverity.ERROR,
                 f"No monthly index at or after {CONTIGUOUS_FROM_YEAR}",
@@ -528,7 +535,7 @@ class InideCpiMonthly(BaseConnector):
 
         if gaps == 0:
             return QualityResult.passed(
-                "inide_index_continuity",
+                check_name,
                 CheckType.COMPLETENESS,
                 f"Index unbroken {modern[0]:%Y-%m}..{modern[-1]:%Y-%m} "
                 f"({len(modern)} months), plus {legacy} sparse pre-"
@@ -537,7 +544,7 @@ class InideCpiMonthly(BaseConnector):
                 actual_value="0",
             )
         return QualityResult.failure(
-            "inide_index_continuity",
+            check_name,
             CheckType.COMPLETENESS,
             CheckSeverity.ERROR,
             f"Index has {gaps} missing month(s) between {modern[0]:%Y-%m} and "

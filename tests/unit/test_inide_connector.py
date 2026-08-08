@@ -473,12 +473,47 @@ def test_validate_passes_on_the_real_workbook(
     assert [r for r in connector.validate(observations) if r.failed] == []
 
 
+def test_validate_checks_continuity_once_per_region(
+    connector: InideCpiMonthly, inide_workbook_bytes: bytes
+) -> None:
+    observations = connector.transform(_raw(inide_workbook_bytes))
+    names = {r.check_name for r in connector.validate(observations)}
+
+    assert names == {
+        "inide_all_indicators_present",
+        "inide_index_continuity_national",
+        "inide_index_continuity_managua",
+        "inide_index_continuity_rest_of_country",
+    }
+
+
+def test_a_hole_in_one_region_does_not_implicate_the_others(
+    connector: InideCpiMonthly, inide_workbook_bytes: bytes
+) -> None:
+    observations = [
+        obs
+        for obs in connector.transform(_raw(inide_workbook_bytes))
+        if not (
+            obs.indicator_code == "ni_cpi_index_monthly_managua" and obs.period.label == "2015-05"
+        )
+    ]
+    results = {r.check_name: r for r in connector.validate(observations)}
+
+    assert results["inide_index_continuity_managua"].failed
+    assert results["inide_index_continuity_managua"].severity is CheckSeverity.ERROR
+    assert results["inide_index_continuity_managua"].actual_value == "1"
+    assert not results["inide_index_continuity_national"].failed
+    assert not results["inide_index_continuity_rest_of_country"].failed
+
+
 def test_validate_reports_the_documented_sparse_history(
     connector: InideCpiMonthly, inide_workbook_bytes: bytes
 ) -> None:
     observations = connector.transform(_raw(inide_workbook_bytes))
     continuity = next(
-        r for r in connector.validate(observations) if r.check_name == "inide_index_continuity"
+        r
+        for r in connector.validate(observations)
+        if r.check_name == "inide_index_continuity_national"
     )
     assert not continuity.failed
     assert "2011-01..2026-06" in continuity.message
@@ -494,7 +529,9 @@ def test_validate_flags_a_hole_in_the_modern_series(
         if obs.period.label != "2015-05"
     ]
     continuity = next(
-        r for r in connector.validate(observations) if r.check_name == "inide_index_continuity"
+        r
+        for r in connector.validate(observations)
+        if r.check_name == "inide_index_continuity_national"
     )
     assert continuity.failed
     assert continuity.severity is CheckSeverity.ERROR
