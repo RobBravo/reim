@@ -10,9 +10,9 @@ from decimal import Decimal
 
 import pytest
 
-from reim.core.constants import Frequency
+from reim.core.constants import CheckSeverity, CheckStatus, Frequency
 from reim.core.exceptions import TransformationError
-from reim.domain.pipelines.models import RawDataset
+from reim.domain.pipelines.models import QualityResult, RawDataset
 from reim.domain.sources.catalog import SourceEntry
 from reim.ingestion.connectors.nicaragua.imf_imts_trade import ImfImtsTradeConnector
 
@@ -204,3 +204,95 @@ def test_transform_rejects_a_non_string_payload() -> None:
 
     with pytest.raises(TransformationError, match="CSV text"):
         connector.transform(raw)
+
+
+# --------------------------------------------------------------------------
+# validate
+# --------------------------------------------------------------------------
+def results_by_name(results: list[QualityResult]) -> dict[str, QualityResult]:
+    return {r.check_name: r for r in results}
+
+
+def test_validate_returns_the_three_source_checks(imf_imts_csv: str) -> None:
+    connector = build_connector()
+    observations = connector.transform(raw_from(imf_imts_csv))
+
+    assert set(results_by_name(connector.validate(observations))) == {
+        "imf_imts_world_aggregate_present",
+        "imf_imts_all_indicators_present",
+        "imf_imts_balance_identity",
+    }
+
+
+def test_validate_passes_on_the_recorded_response(imf_imts_csv: str) -> None:
+    connector = build_connector()
+    observations = connector.transform(raw_from(imf_imts_csv))
+
+    assert [r for r in connector.validate(observations) if r.failed] == []
+
+
+def test_missing_world_aggregate_is_critical() -> None:
+    """Without G001 the run has no totals and must not be committed."""
+    connector = build_connector()
+
+    check = results_by_name(connector.validate([]))["imf_imts_world_aggregate_present"]
+
+    assert check.status is CheckStatus.FAILED
+    assert check.severity is CheckSeverity.CRITICAL
+
+
+def test_a_missing_series_is_an_error(imf_imts_csv: str) -> None:
+    connector = build_connector()
+    observations = [
+        obs
+        for obs in connector.transform(raw_from(imf_imts_csv))
+        if obs.indicator_code != "ni_trade_balance_goods_monthly"
+    ]
+
+    check = results_by_name(connector.validate(observations))["imf_imts_all_indicators_present"]
+
+    assert check.status is CheckStatus.FAILED
+    assert check.severity is CheckSeverity.ERROR
+    assert "ni_trade_balance_goods_monthly" in check.message
+
+
+def test_balance_identity_holds_on_the_real_series(imf_imts_csv: str) -> None:
+    """TBG equals XG - MG to within a cent across all 436 months."""
+    connector = build_connector()
+    observations = connector.transform(raw_from(imf_imts_csv))
+
+    check = results_by_name(connector.validate(observations))["imf_imts_balance_identity"]
+
+    assert check.status is CheckStatus.PASSED
+    assert check.actual_value == "0"
+    assert "436" in check.message
+
+
+def test_the_identity_tolerates_the_publisher_rounding(imf_imts_csv: str) -> None:
+    """12 of 436 months differ in their last digit; that is not a fault."""
+    connector = build_connector()
+    observations = connector.transform(raw_from(imf_imts_csv))
+    balance = next(
+        obs for obs in observations if obs.indicator_code == "ni_trade_balance_goods_monthly"
+    )
+    assert balance.value_numeric is not None
+    balance.value_numeric += Decimal("0.000001")
+
+    check = results_by_name(connector.validate(observations))["imf_imts_balance_identity"]
+
+    assert check.status is CheckStatus.PASSED
+
+
+def test_a_broken_balance_identity_is_an_error(imf_imts_csv: str) -> None:
+    connector = build_connector()
+    observations = connector.transform(raw_from(imf_imts_csv))
+    broken = next(
+        obs for obs in observations if obs.indicator_code == "ni_trade_balance_goods_monthly"
+    )
+    broken.value_numeric = Decimal("1")
+
+    check = results_by_name(connector.validate(observations))["imf_imts_balance_identity"]
+
+    assert check.status is CheckStatus.FAILED
+    assert check.severity is CheckSeverity.ERROR
+    assert broken.period.label in check.message
