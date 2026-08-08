@@ -82,6 +82,12 @@ def imf_imts_csv() -> str:
 
 
 @pytest.fixture(scope="session")
+def imf_imts_gtm_csv() -> str:
+    """Real IMF IMTS response for Guatemala, world aggregate (stored gzipped)."""
+    return gzip.decompress((FIXTURES / "imf_imts_gtm_g001.csv.gz").read_bytes()).decode("utf-8")
+
+
+@pytest.fixture(scope="session")
 def inide_index_html() -> str:
     """Excerpt of the INIDE IPC index page, with its real workbook links."""
     return (FIXTURES / "inide_ipc_index.html").read_text(encoding="utf-8")

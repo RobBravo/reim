@@ -48,7 +48,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar
 
 from reim.core.constants import CheckSeverity, CheckType, Frequency
-from reim.core.exceptions import TransformationError
+from reim.core.exceptions import ExtractionError, TransformationError
+from reim.domain.countries.registry import COUNTRIES_BY_ISO2
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
     NormalizedObservation,
@@ -60,8 +61,6 @@ from reim.ingestion.http import ensure_ok, fetch, http_client
 
 #: SDMX agency and dataflow holding merchandise trade.
 DATAFLOW = "IMF.STA,IMTS"
-#: ISO-3166 alpha-3 of the reporting country.
-COUNTRY_ISO3 = "NIC"
 #: World aggregate. Counterpart groups overlap, so this is selected in the key
 #: rather than reconstructed by summing.
 COUNTERPART_WORLD = "G001"
@@ -100,8 +99,29 @@ class ImfImtsTradeConnector(BaseConnector):
 
     version = "2.0.0"
     expected_frequency = Frequency.MONTHLY
-    country_iso3: ClassVar[str] = COUNTRY_ISO3
     currency_code: ClassVar[str] = "USD"
+
+    @property
+    def country_iso3(self) -> str:
+        """ISO-3 of the country this catalog entry covers.
+
+        Read from the catalog rather than fixed on the class, so one module
+        serves every country in the dataflow.
+
+        Raises:
+            ExtractionError: The entry declares no country, or one REIM does
+                not know. Defaulting to any country would file its data under
+                the wrong flag.
+        """
+        iso2 = self.source.country_iso2
+        if iso2 is None:
+            msg = f"{self.source.key} must declare a country"
+            raise ExtractionError(msg, source_key=self.source.key)
+        definition = COUNTRIES_BY_ISO2.get(iso2)
+        if definition is None:
+            msg = f"{self.source.key} names unknown country {iso2!r}"
+            raise ExtractionError(msg, source_key=self.source.key)
+        return definition.iso3
 
     @property
     def start_period(self) -> str:
@@ -113,7 +133,7 @@ class ImfImtsTradeConnector(BaseConnector):
     def request_url(self) -> str:
         """Full SDMX data URL, counterpart already filtered."""
         base = str(self.source.base_url).rstrip("/")
-        key = f"{COUNTRY_ISO3}..{COUNTERPART_WORLD}.{FREQUENCY_CODE}"
+        key = f"{self.country_iso3}..{COUNTERPART_WORLD}.{FREQUENCY_CODE}"
         return f"{base}/data/{DATAFLOW}/{key}"
 
     async def extract(self) -> RawDataset:
@@ -265,6 +285,7 @@ class ImfImtsTradeConnector(BaseConnector):
             self._check_world_aggregate_present(observations),
             self._check_all_indicators_present(observations),
             self._check_balance_identity(observations),
+            self._check_country_match(observations),
         ]
 
     def _check_world_aggregate_present(
@@ -371,4 +392,32 @@ class ImfImtsTradeConnector(BaseConnector):
             f"{len(breaks)} of {checked} month(s) break TBG = XG - MG: {shown}{suffix}",
             expected_value="0",
             actual_value=str(len(breaks)),
+        )
+
+    def _check_country_match(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """Every row must belong to the country this entry declares.
+
+        Critical: one module now serves six catalog entries, so a wrong key or
+        a wrong response would file one country's trade under another's flag —
+        and the counts would look perfectly healthy, because all six countries
+        return the same 436 months.
+        """
+        expected = self.country_iso3
+        foreign = sorted({obs.country_iso3 for obs in observations if obs.country_iso3 != expected})
+
+        if not foreign:
+            return QualityResult.passed(
+                "imf_imts_country_match",
+                CheckType.INTEGRITY,
+                f"All {len(observations)} observation(s) reported for {expected}",
+                expected_value=expected,
+                actual_value=expected,
+            )
+        return QualityResult.failure(
+            "imf_imts_country_match",
+            CheckType.INTEGRITY,
+            CheckSeverity.CRITICAL,
+            f"Observations for {', '.join(foreign)} in a {expected} source",
+            expected_value=expected,
+            actual_value=", ".join(foreign),
         )

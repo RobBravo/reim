@@ -22,12 +22,16 @@ BASE_URL = "https://api.imf.org/external/sdmx/2.1"
 RETRIEVED_AT = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
 
 
-def build_connector(**options: object) -> ImfImtsNicaragua:
+def build_connector(
+    country: str | None = "NI",
+    key: str = "imf_imts_nicaragua",
+    **options: object,
+) -> ImfImtsNicaragua:
     entry = SourceEntry.model_validate(
         {
-            "key": "imf_imts_nicaragua",
-            "name": "Nicaragua merchandise trade (monthly)",
-            "country": "NI",
+            "key": key,
+            "name": "Merchandise trade (monthly)",
+            "country": country,
             "organization": "IMF",
             "category": "external_sector",
             "access_type": "http_api",
@@ -215,17 +219,6 @@ def results_by_name(results: list[QualityResult]) -> dict[str, QualityResult]:
     return {r.check_name: r for r in results}
 
 
-def test_validate_returns_the_three_source_checks(imf_imts_csv: str) -> None:
-    connector = build_connector()
-    observations = connector.transform(raw_from(imf_imts_csv))
-
-    assert set(results_by_name(connector.validate(observations))) == {
-        "imf_imts_world_aggregate_present",
-        "imf_imts_all_indicators_present",
-        "imf_imts_balance_identity",
-    }
-
-
 def test_validate_passes_on_the_recorded_response(imf_imts_csv: str) -> None:
     connector = build_connector()
     observations = connector.transform(raw_from(imf_imts_csv))
@@ -383,3 +376,80 @@ async def test_live_api_answers_the_documented_contract() -> None:
         "trade_balance_goods_monthly",
     }
     assert [r for r in connector.validate(observations) if r.failed] == []
+
+
+# --------------------------------------------------------------------------
+# Country comes from the catalog
+# --------------------------------------------------------------------------
+def test_country_comes_from_the_catalog_entry() -> None:
+    assert build_connector(country="NI").country_iso3 == "NIC"
+    assert build_connector(country="GT").country_iso3 == "GTM"
+    assert build_connector(country="CR").country_iso3 == "CRI"
+
+
+def test_a_source_without_a_country_is_rejected() -> None:
+    """Defaulting to Nicaragua would file another country's data under it."""
+    connector = build_connector(country=None)
+
+    with pytest.raises(ExtractionError, match="must declare a country"):
+        _ = connector.country_iso3
+
+
+def test_guatemala_rows_are_filed_under_guatemala(imf_imts_gtm_csv: str) -> None:
+    connector = build_connector(country="GT")
+
+    observations = connector.transform(raw_from(imf_imts_gtm_csv))
+
+    assert len(observations) == 1308
+    assert {obs.country_iso3 for obs in observations} == {"GTM"}
+
+
+def test_guatemala_and_nicaragua_are_different_series(
+    imf_imts_csv: str, imf_imts_gtm_csv: str
+) -> None:
+    """The one failure mode counts cannot catch.
+
+    Both countries return 436 identically shaped months, so a country-mapping
+    bug would produce plausible figures under the wrong flag and every count
+    would still match.
+    """
+    nicaragua = {
+        obs.period.label: obs.value_numeric
+        for obs in build_connector(country="NI").transform(raw_from(imf_imts_csv))
+        if obs.indicator_code == "exports_goods_monthly"
+    }
+    guatemala = {
+        obs.period.label: obs.value_numeric
+        for obs in build_connector(country="GT").transform(raw_from(imf_imts_gtm_csv))
+        if obs.indicator_code == "exports_goods_monthly"
+    }
+
+    assert nicaragua.keys() == guatemala.keys()
+    assert nicaragua != guatemala
+    assert nicaragua["2026-04"] == Decimal("601982690")
+    assert guatemala["2026-04"] == Decimal("1524586084")
+
+
+def test_a_foreign_country_in_the_response_fails_the_check(imf_imts_gtm_csv: str) -> None:
+    """A Guatemala entry served Nicaragua's rows must not pass silently."""
+    connector = build_connector(country="GT")
+    observations = connector.transform(raw_from(imf_imts_gtm_csv))
+    observations[0].country_iso3 = "NIC"
+
+    check = results_by_name(connector.validate(observations))["imf_imts_country_match"]
+
+    assert check.status is CheckStatus.FAILED
+    assert check.severity is CheckSeverity.CRITICAL
+    assert "NIC" in str(check.actual_value)
+
+
+def test_validate_now_returns_four_checks(imf_imts_csv: str) -> None:
+    connector = build_connector()
+    observations = connector.transform(raw_from(imf_imts_csv))
+
+    assert set(results_by_name(connector.validate(observations))) == {
+        "imf_imts_world_aggregate_present",
+        "imf_imts_all_indicators_present",
+        "imf_imts_balance_identity",
+        "imf_imts_country_match",
+    }
