@@ -16,13 +16,13 @@ from reim.core.constants import CheckSeverity, CheckStatus, Frequency
 from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.pipelines.models import QualityResult, RawDataset
 from reim.domain.sources.catalog import SourceEntry
-from reim.ingestion.connectors.nicaragua.imf_imts_trade import ImfImtsTradeConnector
+from reim.ingestion.connectors.nicaragua.imf_imts_trade import ImfImtsNicaragua
 
 BASE_URL = "https://api.imf.org/external/sdmx/2.1"
 RETRIEVED_AT = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
 
 
-def build_connector(**options: object) -> ImfImtsTradeConnector:
+def build_connector(**options: object) -> ImfImtsNicaragua:
     entry = SourceEntry.model_validate(
         {
             "key": "imf_imts_nicaragua",
@@ -44,7 +44,7 @@ def build_connector(**options: object) -> ImfImtsTradeConnector:
             "options": dict(options),
         }
     )
-    return ImfImtsTradeConnector(entry)
+    return ImfImtsNicaragua(entry)
 
 
 def raw_from(csv_text: str) -> RawDataset:
