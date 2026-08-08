@@ -58,12 +58,15 @@ aggregator rather than the Nicaraguan publisher itself.
   - **reserves** — the IMF has 1,740 monthly observations, but its indicator
     codes cannot be named from anything its API exposes. See `docs/sources.md`
     for the unblocking step.
+
+  This also retired the planned **XLSX ingestion support** in the connector
+  toolkit. It was listed only to read these bulletins, and nothing else in the
+  roadmap needs it: INIDE publishes legacy `.xls`, which `xlrd` already handles.
+  If a future source arrives as XLSX, add the support then, for that source.
 - ~~**INIDE regional CPI**~~ ✅ **done** — Managua and rest-of-country, nine
   series and 1,746 observations from the same single download. They turned out
   to sit not merely in the same workbook but in the same worksheet and the same
   rows, in columns the connector already walked past. See `docs/sources.md`.
-- **XLSX ingestion support** in the shared connector toolkit (pandas is already
-  an approved dependency for exactly this).
 - Monthly and quarterly frequency exercised end to end. The period model already
   supports it; no schema change needed.
 
