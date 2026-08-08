@@ -247,9 +247,9 @@ sources:
     documentation_url: https://www.imf.org/external/terms.htm
     connector: reim.ingestion.connectors.nicaragua.imf_imts_trade
     indicators:
-      - ni_exports_goods_monthly
-      - ni_imports_goods_monthly
-      - ni_trade_balance_goods_monthly
+      - exports_goods_monthly
+      - imports_goods_monthly
+      - trade_balance_goods_monthly
     license: imf_terms_of_use
     official: true
     enabled: true

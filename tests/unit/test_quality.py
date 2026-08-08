@@ -356,16 +356,16 @@ def test_monthly_trade_indicators_have_their_own_rules(
     set at all.
     """
     for code in (
-        "ni_exports_goods_monthly",
-        "ni_imports_goods_monthly",
-        "ni_trade_balance_goods_monthly",
+        "exports_goods_monthly",
+        "imports_goods_monthly",
+        "trade_balance_goods_monthly",
     ):
         assert code in quality_rules.indicators, f"{code} has no rule set of its own"
 
 
 def test_trade_balance_may_be_negative(quality_rules: QualityRuleSet) -> None:
     """Nicaragua ran a merchandise deficit in 433 of 436 published months."""
-    balance = quality_rules.indicators["ni_trade_balance_goods_monthly"]
+    balance = quality_rules.indicators["trade_balance_goods_monthly"]
 
     assert balance.allow_negative is True
     assert balance.min_value is None

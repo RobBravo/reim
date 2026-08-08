@@ -74,9 +74,9 @@ CSV_MEDIA_TYPE = "application/vnd.sdmx.data+csv;version=2.0.0"
 
 #: IMF indicator code mapped to the REIM indicator it feeds and its unit.
 INDICATORS: dict[str, tuple[str, str]] = {
-    "XG_FOB_USD": ("ni_exports_goods_monthly", "current USD"),
-    "MG_CIF_USD": ("ni_imports_goods_monthly", "current USD"),
-    "TBG_USD": ("ni_trade_balance_goods_monthly", "current USD"),
+    "XG_FOB_USD": ("exports_goods_monthly", "current USD"),
+    "MG_CIF_USD": ("imports_goods_monthly", "current USD"),
+    "TBG_USD": ("trade_balance_goods_monthly", "current USD"),
 }
 
 #: Largest accepted gap between the published balance and exports minus
@@ -94,7 +94,7 @@ class ImfImtsTradeConnector(BaseConnector):
     """Monthly merchandise exports, imports and balance for Nicaragua."""
 
     connector_key = "imf_imts_nicaragua"
-    version = "1.0.0"
+    version = "2.0.0"
     expected_frequency = Frequency.MONTHLY
     country_iso3: ClassVar[str] = COUNTRY_ISO3
     currency_code: ClassVar[str] = "USD"
@@ -340,9 +340,9 @@ class ImfImtsTradeConnector(BaseConnector):
         checked = 0
         for label in sorted(by_period):
             series = by_period[label]
-            exports = series.get("ni_exports_goods_monthly")
-            imports = series.get("ni_imports_goods_monthly")
-            balance = series.get("ni_trade_balance_goods_monthly")
+            exports = series.get("exports_goods_monthly")
+            imports = series.get("imports_goods_monthly")
+            balance = series.get("trade_balance_goods_monthly")
             if exports is None or imports is None or balance is None:
                 continue
             checked += 1

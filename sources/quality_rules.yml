@@ -185,23 +185,23 @@ indicators:
   # the three: monthly trade is genuinely volatile, and the balance crosses
   # zero, which makes a percentage change OF it unbounded and meaningless —
   # the same reasoning already applied to ni_cpi_inflation_monthly.
-  ni_exports_goods_monthly:
+  exports_goods_monthly:
     min_value: 0
     allow_negative: false
     allow_zero: false
     freshness_max_age_days: 120
     min_observations: 300
 
-  ni_imports_goods_monthly:
+  imports_goods_monthly:
     min_value: 0
     allow_negative: false
     allow_zero: false
     freshness_max_age_days: 120
     min_observations: 300
 
-  ni_trade_balance_goods_monthly:
+  trade_balance_goods_monthly:
     # NOT bounded below. A trade balance crosses zero; a sign constraint here
-    # would reject 433 of the 436 real months.
+    # would reject the great majority of real months in every country covered.
     allow_negative: true
     allow_zero: true
     freshness_max_age_days: 120

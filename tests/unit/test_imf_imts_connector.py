@@ -36,9 +36,9 @@ def build_connector(**options: object) -> ImfImtsTradeConnector:
             "base_url": BASE_URL,
             "connector": "reim.ingestion.connectors.nicaragua.imf_imts_trade",
             "indicators": [
-                "ni_exports_goods_monthly",
-                "ni_imports_goods_monthly",
-                "ni_trade_balance_goods_monthly",
+                "exports_goods_monthly",
+                "imports_goods_monthly",
+                "trade_balance_goods_monthly",
             ],
             "license": "imf_terms_of_use",
             "options": dict(options),
@@ -71,9 +71,9 @@ def test_transform_reads_all_three_series(imf_imts_csv: str) -> None:
         counts[obs.indicator_code] = counts.get(obs.indicator_code, 0) + 1
 
     assert counts == {
-        "ni_exports_goods_monthly": 436,
-        "ni_imports_goods_monthly": 436,
-        "ni_trade_balance_goods_monthly": 436,
+        "exports_goods_monthly": 436,
+        "imports_goods_monthly": 436,
+        "trade_balance_goods_monthly": 436,
     }
     assert len(observations) == 1308
 
@@ -101,7 +101,7 @@ def test_transform_does_not_apply_scale(imf_imts_csv: str) -> None:
     exports = {
         obs.period.label: obs.value_numeric
         for obs in observations
-        if obs.indicator_code == "ni_exports_goods_monthly"
+        if obs.indicator_code == "exports_goods_monthly"
     }
 
     assert exports["2026-04"] == Decimal("601982690")
@@ -116,7 +116,7 @@ def test_transform_keeps_the_published_precision(imf_imts_csv: str) -> None:
     balance = {
         obs.period.label: obs.value_numeric
         for obs in observations
-        if obs.indicator_code == "ni_trade_balance_goods_monthly"
+        if obs.indicator_code == "trade_balance_goods_monthly"
     }
 
     assert balance["2026-04"] == Decimal("-274932625")
@@ -248,14 +248,14 @@ def test_a_missing_series_is_an_error(imf_imts_csv: str) -> None:
     observations = [
         obs
         for obs in connector.transform(raw_from(imf_imts_csv))
-        if obs.indicator_code != "ni_trade_balance_goods_monthly"
+        if obs.indicator_code != "trade_balance_goods_monthly"
     ]
 
     check = results_by_name(connector.validate(observations))["imf_imts_all_indicators_present"]
 
     assert check.status is CheckStatus.FAILED
     assert check.severity is CheckSeverity.ERROR
-    assert "ni_trade_balance_goods_monthly" in check.message
+    assert "trade_balance_goods_monthly" in check.message
 
 
 def test_balance_identity_holds_on_the_real_series(imf_imts_csv: str) -> None:
@@ -275,7 +275,7 @@ def test_the_identity_tolerates_the_publisher_rounding(imf_imts_csv: str) -> Non
     connector = build_connector()
     observations = connector.transform(raw_from(imf_imts_csv))
     balance = next(
-        obs for obs in observations if obs.indicator_code == "ni_trade_balance_goods_monthly"
+        obs for obs in observations if obs.indicator_code == "trade_balance_goods_monthly"
     )
     assert balance.value_numeric is not None
     balance.value_numeric += Decimal("0.000001")
@@ -289,7 +289,7 @@ def test_a_broken_balance_identity_is_an_error(imf_imts_csv: str) -> None:
     connector = build_connector()
     observations = connector.transform(raw_from(imf_imts_csv))
     broken = next(
-        obs for obs in observations if obs.indicator_code == "ni_trade_balance_goods_monthly"
+        obs for obs in observations if obs.indicator_code == "trade_balance_goods_monthly"
     )
     broken.value_numeric = Decimal("1")
 
@@ -378,8 +378,8 @@ async def test_live_api_answers_the_documented_contract() -> None:
 
     assert observations
     assert {obs.indicator_code for obs in observations} == {
-        "ni_exports_goods_monthly",
-        "ni_imports_goods_monthly",
-        "ni_trade_balance_goods_monthly",
+        "exports_goods_monthly",
+        "imports_goods_monthly",
+        "trade_balance_goods_monthly",
     }
     assert [r for r in connector.validate(observations) if r.failed] == []

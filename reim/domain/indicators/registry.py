@@ -255,13 +255,15 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         methodology_url=_WB_METHODOLOGY,
     ),
     IndicatorDefinition(
-        code="ni_exports_goods_monthly",
-        name="Nicaragua — merchandise exports FOB (monthly)",
+        code="exports_goods_monthly",
+        name="Merchandise exports FOB (monthly)",
         description=(
             "Exports of goods, free on board, compiled by the IMF from national "
             "customs data (International Merchandise Trade Statistics). Goods "
             "only: this does not replace the annual, broader "
-            "ni_exports_goods_services, which also covers services."
+            "ni_exports_goods_services, which also covers services. The "
+            "country is carried by the observation, not the code, because "
+            "every country shares this methodology."
         ),
         category=IndicatorCategory.EXTERNAL_SECTOR,
         frequency=Frequency.MONTHLY,
@@ -270,8 +272,8 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         methodology_url=_IMF_TERMS,
     ),
     IndicatorDefinition(
-        code="ni_imports_goods_monthly",
-        name="Nicaragua — merchandise imports CIF (monthly)",
+        code="imports_goods_monthly",
+        name="Merchandise imports CIF (monthly)",
         description=(
             "Imports of goods including cost, insurance and freight, compiled "
             "by the IMF from national customs data. Goods only: this does not "
@@ -284,12 +286,12 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         methodology_url=_IMF_TERMS,
     ),
     IndicatorDefinition(
-        code="ni_trade_balance_goods_monthly",
-        name="Nicaragua — merchandise trade balance (monthly)",
+        code="trade_balance_goods_monthly",
+        name="Merchandise trade balance (monthly)",
         description=(
             "Merchandise exports FOB minus imports CIF, as published by the "
-            "IMF. Negative in 433 of the 436 months published: Nicaragua runs "
-            "a persistent merchandise deficit."
+            "IMF. Negative in the great majority of months for every Central "
+            "American country REIM covers."
         ),
         category=IndicatorCategory.EXTERNAL_SECTOR,
         frequency=Frequency.MONTHLY,
