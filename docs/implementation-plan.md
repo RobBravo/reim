@@ -318,6 +318,60 @@ one of the 582 national observations hashes identically.
   asserted: twelve headers are checked, not nine, because dropping the existing
   "Acumulada" assertion would have been a regression.
 
+## 14. Post-MVP increment — IMF monthly trade (2026-08-08)
+
+The roadmap asked for **BCN monthly statistics**. The BCN cannot be read:
+`www.bcn.gob.ni` redirects every automated request to a Radware bot-manager
+challenge at `validate.perfdrive.com`, including requests carrying a browser
+User-Agent. Defeating it would mean circumventing an access control the
+publisher installed deliberately, so the same indicators were sought elsewhere.
+
+Only one of the four families could be delivered honestly. Measured, not
+assumed: `MFS_MA` returns 0 observations for Nicaragua against 183 for Costa
+Rica; `BOP` returns 0 at every frequency; `IRFCL` has 1,740 monthly Nicaraguan
+observations whose 60 indicator codes cannot be named from anything the API
+exposes. `IMTS` has three self-describing codes and shipped.
+
+**Verification**
+
+| Check | Result |
+|-------|--------|
+| `reim catalog validate` | ✅ 9 sources, 9 enabled, 19 rule sets |
+| Live `pipeline run imf_imts_nicaragua` | ✅ 1,308 observations, 0 rejected |
+| Second run | ✅ 0 inserted, 1,308 unchanged |
+| Stored signs | ✅ exports/imports minima positive; balance minimum **−520,784,262** |
+| Coverage | ✅ 436 months, 1990-01 … 2026-04, three series |
+| Quality checks | ✅ 3 IMF checks pass; 0 failures at `error` or `critical` |
+| Live contract test (`pytest -m live`) | ✅ passes against the real API |
+| `pytest` / `ruff` / `mypy` | ✅ 278 passed / clean / clean |
+
+**Three things the plan had wrong, all caught by measuring the recording**
+
+1. The dataflow metadata row is the **last** row, not the first.
+2. The 1990 figures carry 16 significant digits; the expected balance is
+   `-50033856.85436923`, not the `-50033856.9` a formatted print had suggested.
+3. **The balance identity is not exact.** The IMF rounds `TBG`, so 12 of 436
+   months differ from `XG − MG` in their last digit, by at most 5e-8 USD. The
+   check as first designed used exact equality and would have reported an
+   `error` on every single run. It now allows a one-cent tolerance.
+
+**Judgement calls**
+
+* The counterpart is filtered in the SDMX key, not after download: 789 KB
+  instead of 62.9 MB for the same 1,308 rows.
+* A response with no `G001` row fails at `critical`. The alternative — summing
+  103 overlapping counterpart groups — would report 1,804 M where the real
+  figure is 481 M.
+* `SCALE=6` is recorded and never applied; the values are already full USD.
+* The CSV media type is pinned and enforced, because the API ignores content
+  negotiation and answers SDMX-ML to a JSON request.
+
+**Licence deviation.** This is the only REIM source whose data is not openly
+licensed: it carries "All Rights Reserved". The catalog says
+`license: imf_terms_of_use`, and `docs/sources.md` states the deviation plainly
+rather than disguising it. The IMF's terms page could not be retrieved
+programmatically, so its contents are not summarised anywhere in this repo.
+
 ## 10. Follow-up work (not in v0.1.0)
 
 - Verify the BCN SOAP contract from a network/TLS environment that can reach it, then enable it.

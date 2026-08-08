@@ -270,6 +270,103 @@ publisher's infrastructure.
 
 ---
 
+### IMF — Nicaragua monthly merchandise trade
+
+| | |
+|---|---|
+| **Organization** | International Monetary Fund (`IMF`) |
+| **Endpoint** | `https://api.imf.org/external/sdmx/2.1` |
+| **Dataflow** | `IMF.STA,IMTS` — International Merchandise Trade Statistics |
+| **Key** | `NIC..G001.M` (`COUNTRY.INDICATOR.COUNTERPART_COUNTRY.FREQUENCY`) |
+| **Format** | CSV, `Accept: application/vnd.sdmx.data+csv;version=2.0.0` |
+| **Frequency** | Monthly |
+| **Coverage** | 1990-01 … 2026-04, verified — 436 months |
+| **Licence** | ⚠️ **Not open.** See below. |
+| **Status** | ✅ Enabled — 1,308 observations from one 789 KB request |
+
+Three REIM indicators: `ni_exports_goods_monthly` (`XG_FOB_USD`),
+`ni_imports_goods_monthly` (`MG_CIF_USD`) and
+`ni_trade_balance_goods_monthly` (`TBG_USD`). These are **merchandise** flows
+and do not replace the annual World Bank `ni_exports_goods_services` /
+`ni_imports_goods_services`, which also cover services.
+
+**Why the IMF and not the BCN.** The BCN publishes these figures in its monthly
+bulletins, but `www.bcn.gob.ni` is behind a **Radware Bot Manager**: every HTTP
+request — `/`, `/estadisticas`, `/publicaciones` and others — is redirected to a
+challenge at `validate.perfdrive.com`. It is not a User-Agent filter; a Chrome
+UA receives the same 302. Passing it requires executing a JavaScript challenge,
+which REIM does not do: a bot manager is the publisher's explicit decision about
+automated access, and defeating it would also break on every challenge update.
+`servicios.bcn.gob.ni`, which is not behind the wall, exposes only
+`Tc_Servicio` — the exchange-rate service documented above.
+
+**Three properties of the API that shape the connector:**
+
+1. **The counterpart is filtered in the SDMX key.** Requesting every
+   counterpart returns 103 of them and **62.9 MB**; requesting `G001` alone
+   returns the same 1,308 usable rows in **789 KB**.
+2. **Counterpart groups overlap and must never be summed.** Adding all 103 for
+   June 2025 gives 1,804 million USD against a real 481 million, because
+   `G001` (world) and the regional groups already contain the individual
+   countries. A run without any `G001` row fails at `critical` severity rather
+   than falling back to a sum.
+3. **`SCALE` is not a multiplier.** Every row reports `SCALE=6` while carrying
+   full USD. REIM records it for provenance and never applies it; treating it
+   as "millions" would inflate the series a millionfold.
+
+The API also **ignores content negotiation** — requesting SDMX-JSON returns
+SDMX-ML regardless — so the connector pins the CSV media type and refuses a
+response that is not CSV.
+
+**The balance identity is checked, but not for exact equality.** `TBG` should
+equal `XG − MG`, and does to within 5e-8 USD; the IMF publishes `TBG` rounded
+to about 16 significant digits, so 12 of the 436 months differ in their last
+digit. The check therefore allows a one-cent tolerance — four orders of
+magnitude above the observed noise, and still far below any real misalignment.
+
+**Licence: this source is not openly licensed.** Every row carries:
+
+> © International Monetary Fund Copyright. All Rights Reserved.
+> <https://www.imf.org/external/terms.htm>
+
+REIM's roadmap says "official and openly licensed only". **This source is a
+documented exception**, adopted with the project owner's explicit decision, and
+the catalog records `license: imf_terms_of_use` — deliberately not
+`public_official_data`, which would imply an openness this source does not
+grant. Every observation carries the IMF's own `SUGGESTED_CITATION` in
+`raw_metadata`.
+
+Two facts are recorded rather than reconciled, because resolving them is a
+legal question this project has not answered: the `LICENSE` field says All
+Rights Reserved, and the same rows carry `ACCESS_SHARING_LEVEL = PUBLIC_OPEN`
+and `SECURITY_CLASSIFICATION = PUB`. The terms page could not be retrieved
+programmatically — `imf.org/external/terms.htm` returns an empty document and
+`imf.org/en/About/copyright-and-terms` returns 403 — so its contents are **not**
+summarised here. Read it yourself before relying on this data.
+
+**What the IMF does *not* have for Nicaragua**, measured rather than assumed:
+
+* **Monetary aggregates.** `MFS_MA` returns **0 observations for Nicaragua**,
+  against 183 for Costa Rica and 210 for Guatemala. Nicaragua does not report.
+* **Remittances.** `BOP` returns 0 for Nicaragua at monthly, quarterly *and*
+  annual frequency.
+* **Reserves.** `IRFCL` *does* hold 1,740 monthly Nicaraguan observations, but
+  its 60 indicator codes cannot be named from anything the API exposes:
+  `codelist/IMF.STA/CL_INDICATOR` returns `204 No Content`, the `INDICATOR`
+  dimension carries no `<str:Enumeration>` in `DSD_IRFCL_PUB`, and SDMX-JSON
+  requests return SDMX-ML. Three candidate codes read identically at 7.206 bn
+  USD for June 2025, so picking one would be a guess — the same reason v0.1.0
+  shipped the BCN connector disabled. **Unblocking step:** map the codes
+  against the IMF's *IRFCL Guidelines for a Data Template*, whose numbered
+  template lines the `IRFCLnn` fragments appear to reference.
+
+SECMCA (Consejo Monetario Centroamericano) publishes all four families through
+a documented Swagger API at `secmca-api.secmca.org/simafir_api`, but its data
+endpoints require a `user`/`password` account — including those prefixed
+`/public/`. Only the catalogue and date-range endpoints are open.
+
+---
+
 ## Registered but not yet implemented
 
 These organizations exist in `reim/domain/sources/organizations.py` so that

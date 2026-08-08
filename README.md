@@ -383,7 +383,7 @@ make test-cov       # with coverage
 make check          # lint + typecheck + catalog + tests (what CI runs)
 ```
 
-343 tests. Integration tests skip cleanly when `REIM_TEST_DATABASE_URL` is unset,
+371 tests. Integration tests skip cleanly when `REIM_TEST_DATABASE_URL` is unset,
 so `pytest` works on a bare checkout.
 
 **No test calls a live official source.** Connector tests replay recorded
@@ -408,6 +408,15 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   Managua and rest-of-country breakdowns are separate indicator codes.
   `observations` has no region dimension, so this does not generalise to
   finer geography without a schema change.
+- **One source is not openly licensed.** The IMF merchandise-trade series
+  carries "© International Monetary Fund. All Rights Reserved", unlike every
+  other source here. It is a documented exception to REIM's "openly licensed
+  only" rule; read <https://www.imf.org/external/terms.htm> before
+  redistributing it. See [`docs/sources.md`](./docs/sources.md).
+- **The Banco Central de Nicaragua's website blocks automation.** Its monthly
+  bulletins sit behind a bot manager, so monetary aggregates and remittances
+  are absent: Nicaragua reports neither to the IMF, and the regional
+  alternative requires a credentialed account.
 - **The BCN endpoint requires a TLS 1.0 handshake.** REIM relaxes the protocol
   version and cipher security level for that one host, declared and justified in
   `sources/catalog.yml`. Certificate and hostname verification stay enforced.

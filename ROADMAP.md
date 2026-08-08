@@ -45,8 +45,19 @@ aggregator rather than the Nicaraguan publisher itself.
   signature ban, not the protocol version — and the real WSDL contract differed
   from every assumption made while the service was unreachable. See
   `docs/sources.md`.
-- **BCN monthly statistics** — monetary aggregates, remittances, trade and
-  reserves from the published bulletins, once XLSX layout stability is assessed.
+- **BCN monthly statistics** — ⚠️ **partly delivered, partly blocked.** The
+  layout question never arose: `www.bcn.gob.ni` redirects every automated
+  request to a Radware bot-manager challenge, and REIM will not defeat an
+  access control the publisher installed deliberately. Of the four families:
+  - ~~**merchandise trade**~~ ✅ **done** — monthly exports, imports and balance
+    from the IMF's IMTS instead, 1,308 observations from 1990-01. Note this is
+    REIM's only source whose data is **not openly licensed**.
+  - **monetary aggregates and remittances** — Nicaragua reports neither to the
+    IMF (0 observations, against 183 for Costa Rica). Available from SECMCA,
+    which requires a credentialed account.
+  - **reserves** — the IMF has 1,740 monthly observations, but its indicator
+    codes cannot be named from anything its API exposes. See `docs/sources.md`
+    for the unblocking step.
 - ~~**INIDE regional CPI**~~ ✅ **done** — Managua and rest-of-country, nine
   series and 1,746 observations from the same single download. They turned out
   to sit not merely in the same workbook but in the same worksheet and the same

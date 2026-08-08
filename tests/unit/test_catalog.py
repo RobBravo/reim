@@ -154,6 +154,15 @@ def test_disabled_source_without_a_reason_is_rejected(tmp_path: Path) -> None:
         load_catalog(_write(tmp_path, _catalog(enabled=False)))
 
 
+def test_imf_source_declares_its_non_open_licence(catalog: SourceCatalog) -> None:
+    """The IMF is the one source here whose data is not openly licensed."""
+    entry = catalog.get("imf_imts_nicaragua")
+
+    assert entry.license == "imf_terms_of_use"
+    assert entry.license != "public_official_data"
+    assert entry.enabled is True
+
+
 def test_inide_source_declares_all_nine_cpi_indicators(catalog: SourceCatalog) -> None:
     """One source, one download, nine series: national plus two regions."""
     entry = catalog.get("inide_cpi_monthly")
