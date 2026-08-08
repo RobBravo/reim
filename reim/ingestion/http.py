@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import ssl
 import warnings
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -98,6 +98,56 @@ async def http_client(
         yield client
 
 
+async def _send_with_retries(
+    send: Callable[[], Coroutine[Any, Any, httpx.Response]],
+    url: str,
+    resolved: Settings,
+) -> httpx.Response:
+    """Run ``send`` under the shared retry policy.
+
+    Args:
+        send: Zero-argument coroutine factory performing one attempt.
+        url: Absolute URL, used for logging and error messages.
+        resolved: Already-resolved settings.
+
+    Raises:
+        ExtractionError: The source was unreachable, kept failing, or returned
+            a non-retryable error status.
+    """
+    attempts = resolved.http_max_retries + 1
+
+    try:
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(attempts),
+            wait=wait_exponential(multiplier=resolved.http_retry_backoff_seconds, max=30),
+            retry=retry_if_exception_type((httpx.TransportError, TransientHTTPError)),
+            reraise=True,
+        ):
+            with attempt:
+                response = await send()
+                if response.status_code in RETRYABLE_STATUS_CODES:
+                    logger.warning(
+                        "http.retryable_status",
+                        url=url,
+                        status_code=response.status_code,
+                        attempt=attempt.retry_state.attempt_number,
+                    )
+                    raise TransientHTTPError(response.status_code, url)
+                return response
+    except RetryError as exc:  # pragma: no cover - reraise=True makes this rare
+        msg = f"Exhausted {attempts} attempt(s) requesting {url}"
+        raise ExtractionError(msg, url=url) from exc
+    except TransientHTTPError as exc:
+        msg = f"Source kept returning HTTP {exc.status_code} after {attempts} attempt(s): {url}"
+        raise ExtractionError(msg, url=url, status_code=exc.status_code) from exc
+    except httpx.TransportError as exc:
+        msg = f"Could not reach {url}: {type(exc).__name__}: {exc}"
+        raise ExtractionError(msg, url=url) from exc
+
+    msg = f"Retry loop exited without a response for {url}"  # pragma: no cover
+    raise ExtractionError(msg, url=url)  # pragma: no cover
+
+
 async def fetch(
     client: httpx.AsyncClient,
     url: str,
@@ -120,38 +170,42 @@ async def fetch(
             non-retryable error status.
     """
     resolved = settings or get_settings()
-    attempts = resolved.http_max_retries + 1
 
-    try:
-        async for attempt in AsyncRetrying(
-            stop=stop_after_attempt(attempts),
-            wait=wait_exponential(multiplier=resolved.http_retry_backoff_seconds, max=30),
-            retry=retry_if_exception_type((httpx.TransportError, TransientHTTPError)),
-            reraise=True,
-        ):
-            with attempt:
-                response = await client.get(url, params=params, headers=dict(headers or {}))
-                if response.status_code in RETRYABLE_STATUS_CODES:
-                    logger.warning(
-                        "http.retryable_status",
-                        url=url,
-                        status_code=response.status_code,
-                        attempt=attempt.retry_state.attempt_number,
-                    )
-                    raise TransientHTTPError(response.status_code, url)
-                return response
-    except RetryError as exc:  # pragma: no cover - reraise=True makes this rare
-        msg = f"Exhausted {attempts} attempt(s) fetching {url}"
-        raise ExtractionError(msg, url=url) from exc
-    except TransientHTTPError as exc:
-        msg = f"Source kept returning HTTP {exc.status_code} after {attempts} attempt(s): {url}"
-        raise ExtractionError(msg, url=url, status_code=exc.status_code) from exc
-    except httpx.TransportError as exc:
-        msg = f"Could not reach {url}: {type(exc).__name__}: {exc}"
-        raise ExtractionError(msg, url=url) from exc
+    async def send() -> httpx.Response:
+        return await client.get(url, params=params, headers=dict(headers or {}))
 
-    msg = f"Retry loop exited without a response for {url}"  # pragma: no cover
-    raise ExtractionError(msg, url=url)  # pragma: no cover
+    return await _send_with_retries(send, url, resolved)
+
+
+async def post(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    content: bytes,
+    headers: Mapping[str, str] | None = None,
+    settings: Settings | None = None,
+) -> httpx.Response:
+    """POST ``content`` to ``url`` with retries.
+
+    Shares :func:`fetch`'s retry policy: transport errors and transient server
+    statuses are retried, a ``404`` is a real answer and is not.
+
+    Args:
+        client: Client returned by :func:`http_client`.
+        url: Absolute URL to request.
+        content: Request body, already encoded.
+        headers: Extra request headers.
+        settings: Override settings; defaults to the process-wide instance.
+
+    Raises:
+        ExtractionError: The source was unreachable or kept failing.
+    """
+    resolved = settings or get_settings()
+
+    async def send() -> httpx.Response:
+        return await client.post(url, content=content, headers=dict(headers or {}))
+
+    return await _send_with_retries(send, url, resolved)
 
 
 def ensure_ok(response: httpx.Response, *, expected_content_type: str | None = None) -> None:
