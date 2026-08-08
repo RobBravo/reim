@@ -28,6 +28,9 @@ dependencies = [
     "alembic>=1.14",
     "psycopg[binary]>=3.2",
     "httpx>=0.28",
+    # Pinned CA bundle for the legacy-TLS profile, which builds its own
+    # SSLContext instead of relying on httpx's default verification.
+    "certifi>=2024.8.30",
     "tenacity>=9.0",
     "structlog>=24.4",
     "prometheus-client>=0.21",

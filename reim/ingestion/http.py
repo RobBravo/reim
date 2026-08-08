@@ -8,10 +8,13 @@ a ``404`` is a real answer and is never retried.
 
 from __future__ import annotations
 
+import ssl
+import warnings
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from typing import Any
 
+import certifi
 import httpx
 from tenacity import (
     AsyncRetrying,
@@ -22,6 +25,7 @@ from tenacity import (
 )
 
 from reim.core.config import Settings, get_settings
+from reim.core.constants import TlsProfile
 from reim.core.exceptions import ExtractionError
 from reim.core.logging import get_logger
 
@@ -40,19 +44,56 @@ class TransientHTTPError(Exception):
         self.url = url
 
 
+def legacy_tls_context() -> ssl.SSLContext:
+    """Build an SSL context for hosts stuck on a pre-TLS-1.2 handshake.
+
+    ``servicios.bcn.gob.ni`` negotiates TLS 1.0 only and signs its key exchange
+    with SHA-1, which a modern OpenSSL profile refuses. This context lowers the
+    protocol version and the cipher security level for that class of host — and
+    nothing else. The certificate chain and the hostname are still verified,
+    against certifi's bundle.
+    """
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.load_verify_locations(cafile=certifi.where())
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.check_hostname = True
+    with warnings.catch_warnings():
+        # Assigning TLSv1 is deprecated in CPython, and pyproject promotes
+        # DeprecationWarning from reim.* to an error. Pinning it is the
+        # deliberate point of this function.
+        warnings.simplefilter("ignore", DeprecationWarning)
+        context.minimum_version = ssl.TLSVersion.TLSv1
+        context.maximum_version = ssl.TLSVersion.TLSv1
+    context.set_ciphers("DEFAULT:@SECLEVEL=0")
+    return context
+
+
 @asynccontextmanager
-async def http_client(settings: Settings | None = None) -> AsyncIterator[httpx.AsyncClient]:
+async def http_client(
+    settings: Settings | None = None,
+    *,
+    tls_profile: TlsProfile = TlsProfile.MODERN,
+) -> AsyncIterator[httpx.AsyncClient]:
     """Yield a configured :class:`httpx.AsyncClient`.
 
     Args:
         settings: Override settings; defaults to the process-wide instance.
+        tls_profile: TLS policy the source requires. ``LEGACY`` downgrades the
+            handshake and is logged at warning level on every use, so no
+            connector can quietly weaken its transport.
     """
     resolved = settings or get_settings()
+    verify: ssl.SSLContext | bool = True
+    if tls_profile is TlsProfile.LEGACY:
+        logger.warning("http.legacy_tls_enabled", tls_profile=tls_profile.value)
+        verify = legacy_tls_context()
+
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(resolved.http_timeout_seconds),
         headers={"User-Agent": resolved.http_user_agent, "Accept-Encoding": "gzip, deflate"},
         follow_redirects=True,
         limits=httpx.Limits(max_connections=5, max_keepalive_connections=2),
+        verify=verify,
     ) as client:
         yield client
 
