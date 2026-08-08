@@ -67,8 +67,13 @@ aggregator rather than the Nicaraguan publisher itself.
   series and 1,746 observations from the same single download. They turned out
   to sit not merely in the same workbook but in the same worksheet and the same
   rows, in columns the connector already walked past. See `docs/sources.md`.
-- Monthly and quarterly frequency exercised end to end. The period model already
-  supports it; no schema change needed.
+- ~~**Monthly frequency exercised end to end**~~ ✅ **done**, and daily with it,
+  which this item had not even anticipated: the catalog now holds 6 annual, 2
+  monthly and 1 daily source. **Quarterly remains unexercised**, because no
+  source REIM reads publishes at that frequency. The period model parses and
+  tests it already, so this is not work of its own — it will be covered by the
+  first quarterly source that arrives, and both SECMCA (whose capital-account
+  series is quarterly) and the IMF's balance-of-payments data are candidates.
 
 ## v0.3.0 — Central America
 
