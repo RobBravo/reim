@@ -227,6 +227,55 @@ shipped with.
 * The connector reads the index page to *discover* the newest workbook, because
   file naming drifts between releases and no URL template covers them all.
 
+## 12. Post-MVP increment — BCN daily exchange rate (2026-08-08)
+
+Enabled `bcn_exchange_rate`, giving REIM its first daily-frequency series and
+its second national primary source.
+
+**The v0.1.0 blocker was misdiagnosed.** §5 recorded that the host "only
+negotiates a pre-TLS 1.2 handshake, which OpenSSL 3.x rejects". The host does
+negotiate only TLS 1.0, but the handshake failed one stage later, at
+`ServerKeyExchange`, on Fedora's ban on **SHA-1 signatures**. An
+`ssl.SSLContext` pinned to TLS 1.0 at `SECLEVEL=0`, verifying against certifi,
+connects with no environment changes and with certificate and hostname
+verification intact.
+
+**Verification**
+
+| Check | Result |
+|-------|--------|
+| `reim catalog validate` | ✅ 8 sources, 8 enabled, all connectors import |
+| Live `pipeline run bcn_exchange_rate` | ✅ 39 observations (2026-07-01 … 2026-08-08) |
+| Second run | ✅ 0 inserted, 39 unchanged |
+| Historical backfill (`start_month: 2012-01`) | ✅ 5,295 inserted, 5,334 total, 0 rejected, 31 s |
+| Backfill continuity | ✅ 5,334 days = exactly the calendar span 2012-01-01 → 2026-08-08, no gaps |
+| Run after removing `start_month` | ✅ back to 2 requests, 0 inserted |
+| Quality checks | ✅ 0 failing at `error` or `critical`; the three BCN checks pass |
+| No future data stored | ✅ `max(period_start) = 2026-08-08` = today |
+| API + CSV export | ✅ 5,334 served with full provenance |
+| Live contract test (`pytest -m live`) | ✅ passes against the real service |
+| `pytest` / `ruff` / `mypy --strict` | ✅ 240 passed / clean / clean |
+
+**Judgement calls**
+
+* Rows dated after today are discarded and the count reported as an `info`
+  check. The service projects the frozen rate forward to the end of the calendar
+  year; publishing that as observed would be a factual error, and discarding it
+  silently would hide that the source projects at all.
+* The scheduled window is two months. The 2012-onwards backfill is an explicit
+  one-off range, capped at 400 months, because the HTTP layer exists so that no
+  connector accidentally hammers an official source.
+* `RecuperaTC_Dia` is not used. `RecuperaTC_Mes` is a strict superset at a
+  thirtieth of the request count.
+* A day returned twice with two different values raises rather than picking a
+  winner.
+
+**Deviation from the design.** The design said the legacy profile "emits a
+structured warning naming the host". `http_client` does not know the host, so
+the warning is split: `http.legacy_tls_enabled` in the HTTP layer guarantees no
+connector can downgrade silently, and `bcn.legacy_tls` in the connector adds the
+hostname. Both fire on every run.
+
 ## 10. Follow-up work (not in v0.1.0)
 
 - Verify the BCN SOAP contract from a network/TLS environment that can reach it, then enable it.

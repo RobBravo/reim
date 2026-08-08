@@ -39,9 +39,12 @@ aggregator rather than the Nicaraguan publisher itself.
 - ~~**INIDE monthly IPC**~~ ✅ **done** — the national CPI is live at monthly
   resolution (index, month-on-month and year-on-year), replacing reliance on the
   World Bank's annual restatement. See `docs/sources.md`.
-- **Unblock the BCN exchange-rate connector.** Verify the SOAP contract from an
-  environment that can complete the legacy TLS handshake, record a real fixture,
-  enable it. Gets REIM its first daily-frequency series.
+- ~~**Unblock the BCN exchange-rate connector**~~ ✅ **done** — REIM's first
+  daily-frequency series: 5,334 observations from 2012-01-01, one per calendar
+  day. The v0.1.0 blocker was misdiagnosed — the handshake failed on the SHA-1
+  signature ban, not the protocol version — and the real WSDL contract differed
+  from every assumption made while the service was unreachable. See
+  `docs/sources.md`.
 - **BCN monthly statistics** — monetary aggregates, remittances, trade and
   reserves from the published bulletins, once XLSX layout stability is assessed.
 - **INIDE regional CPI** — the Managua and rest-of-country breakdowns that sit

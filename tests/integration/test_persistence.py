@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session
 from reim.core.constants import ValidationStatus
 from reim.core.exceptions import UnknownReferenceError
 from reim.database.models import Country, DataSource, Indicator, Observation, ObservationRevision
+from reim.domain.sources.catalog import SourceCatalog
 from reim.services.observation_writer import write_observations
+from reim.services.seeding import seed_all
 from tests.conftest import requires_db
 
 pytestmark = [requires_db, pytest.mark.integration]
@@ -47,13 +49,55 @@ def test_seed_is_idempotent(seeded_session: Session, catalog) -> None:  # type: 
     assert seeded_session.scalar(select(func.count(Country.id))) == before
 
 
-def test_disabled_source_is_marked_inactive(seeded_session: Session) -> None:
-    source = seeded_session.scalar(
-        select(DataSource).where(DataSource.source_key == "bcn_exchange_rate")
+def test_disabled_source_is_marked_inactive(session: Session) -> None:
+    """Seeding carries a catalog entry's disabled state and reason into the table.
+
+    Seeded from a catalog built here rather than the repository's own, which
+    currently has no disabled source — the mechanism is what is under test, not
+    which entry happens to be off today.
+    """
+    catalog = SourceCatalog.model_validate(
+        {
+            "version": 1,
+            "sources": [
+                {
+                    "key": "disabled_probe_source",
+                    "name": "A source with no automatable endpoint yet",
+                    "country": "NI",
+                    "organization": "MHCP",
+                    "category": "fiscal",
+                    "access_type": "manual",
+                    "frequency": "annual",
+                    "format": "pdf",
+                    "base_url": "https://www.mhcp.gob.ni",
+                    "connector": "reim.ingestion.connectors.nicaragua.worldbank_exports",
+                    "indicators": ["ni_exports_goods_services"],
+                    "enabled": False,
+                    "disabled_reason": "Published only as PDF; no stable machine-readable export.",
+                }
+            ],
+        }
     )
+    seed_all(session, catalog)
+    session.commit()
+
+    source = session.scalar(
+        select(DataSource).where(DataSource.source_key == "disabled_probe_source")
+    )
+
     assert source is not None
     assert source.is_active is False
-    assert source.disabled_reason
+    assert source.disabled_reason == "Published only as PDF; no stable machine-readable export."
+
+
+def test_enabled_source_carries_no_disabled_reason(seeded_session: Session) -> None:
+    """Every source in the repository catalog is currently enabled."""
+    sources = seeded_session.scalars(select(DataSource)).all()
+
+    assert sources
+    for source in sources:
+        assert source.is_active is True
+        assert source.disabled_reason is None
 
 
 # --------------------------------------------------------------------------

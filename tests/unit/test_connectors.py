@@ -13,7 +13,7 @@ import httpx
 import pytest
 import respx
 
-from reim.core.constants import CheckSeverity, Frequency
+from reim.core.constants import CheckSeverity, Frequency, TlsProfile
 from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.pipelines.models import RawDataset
 from reim.domain.sources.catalog import SourceEntry
@@ -226,3 +226,16 @@ async def test_extract_retries_transient_failures(cpi_source, worldbank_cpi_payl
     raw = await WorldBankNicaraguaCpiInflation(cpi_source).extract()
     assert route.call_count == 2
     assert raw.http_status == 200
+
+
+# --------------------------------------------------------------------------
+# BCN (enabled, legacy TLS)
+# --------------------------------------------------------------------------
+def test_bcn_source_is_enabled_with_a_justified_legacy_tls_profile(
+    bcn_source: SourceEntry,
+) -> None:
+    """The TLS concession is declared in the catalog and explains itself."""
+    assert bcn_source.enabled is True
+    assert bcn_source.disabled_reason is None
+    assert bcn_source.tls_profile is TlsProfile.LEGACY
+    assert bcn_source.tls_note and "TLS 1.0" in bcn_source.tls_note

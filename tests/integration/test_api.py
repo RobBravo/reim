@@ -125,11 +125,24 @@ def test_list_organizations(client: TestClient) -> None:
     assert {o["code"] for o in body["data"]} >= {"BCN", "INIDE", "WORLDBANK"}
 
 
-def test_list_sources_exposes_disabled_ones_with_a_reason(client: TestClient) -> None:
+def test_list_sources_exposes_activation_state(client: TestClient) -> None:
+    """A disabled source must never appear active without saying why."""
+    body = client.get("/api/v1/sources").json()
+
+    assert body["data"]
+    for source in body["data"]:
+        assert "is_active" in source
+        assert "disabled_reason" in source
+        if not source["is_active"]:
+            assert source["disabled_reason"], f"{source['source_key']} is off without a reason"
+
+
+def test_bcn_source_is_active_over_a_declared_legacy_tls_profile(client: TestClient) -> None:
     body = client.get("/api/v1/sources").json()
     bcn = next(s for s in body["data"] if s["source_key"] == "bcn_exchange_rate")
-    assert bcn["is_active"] is False
-    assert bcn["disabled_reason"]
+
+    assert bcn["is_active"] is True
+    assert bcn["disabled_reason"] is None
 
 
 def test_sources_active_only_filter(client: TestClient) -> None:
@@ -392,11 +405,17 @@ def test_pipeline_overview_reports_freshness(client: TestClient) -> None:
     assert cpi["data_age_days"] is not None
 
 
-def test_pipeline_overview_surfaces_disabled_sources(client: TestClient) -> None:
+def test_pipeline_overview_surfaces_activation_state(client: TestClient) -> None:
+    """A disabled pipeline must carry its reason into the overview."""
     rows = client.get("/api/v1/pipelines").json()
+
+    assert rows
+    for row in rows:
+        if not row["enabled"]:
+            assert row["disabled_reason"], f"{row['pipeline_key']} is off without a reason"
+
     bcn = next(r for r in rows if r["pipeline_key"] == "bcn_exchange_rate")
-    assert bcn["enabled"] is False
-    assert bcn["disabled_reason"]
+    assert bcn["enabled"] is True
 
 
 def test_list_runs_when_empty(client: TestClient) -> None:

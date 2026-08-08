@@ -383,7 +383,7 @@ make test-cov       # with coverage
 make check          # lint + typecheck + catalog + tests (what CI runs)
 ```
 
-242 tests. Integration tests skip cleanly when `REIM_TEST_DATABASE_URL` is unset,
+332 tests. Integration tests skip cleanly when `REIM_TEST_DATABASE_URL` is unset,
 so `pytest` works on a bare checkout.
 
 **No test calls a live official source.** Connector tests replay recorded
@@ -400,10 +400,13 @@ python scripts/smoke_test_sources.py --source worldbank_ni_cpi_inflation
 
 Stated plainly, because a data platform that hides its gaps is worse than none:
 
-- **One national primary source, six multilateral.** INIDE's monthly CPI is
-  live, but the remaining six connectors read the World Bank, which compiles
-  from national statistics and is one step removed from the publisher. The BCN
-  connector exists but is disabled and unverified.
+- **Two national primary sources, six multilateral.** INIDE's monthly CPI and
+  the BCN's daily exchange rate come straight from the publisher; the remaining
+  six connectors read the World Bank, which compiles from national statistics
+  and is one step removed from it.
+- **The BCN endpoint requires a TLS 1.0 handshake.** REIM relaxes the protocol
+  version and cipher security level for that one host, declared and justified in
+  `sources/catalog.yml`. Certificate and hostname verification stay enforced.
 - **INIDE publishes no monthly CPI for 2008-2010.** That gap is in the source
   itself; REIM reports it rather than filling it.
 - **World Bank data lags.** Annual figures for year *Y* land during *Y+1*, so

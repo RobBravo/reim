@@ -148,8 +148,6 @@ fails loudly rather than mixing incompatible bases.
 
 ---
 
-## Implemented but disabled
-
 ### Banco Central de Nicaragua — daily official exchange rate
 
 | | |
@@ -159,51 +157,79 @@ fails loudly rather than mixing incompatible bases.
 | **Documentation** | <https://www.bcn.gob.ni/servicio-web-tipo-de-cambio> |
 | **Format** | SOAP / XML |
 | **Frequency** | Daily |
-| **Coverage** | January 2012 onwards (per BCN documentation) |
-| **Status** | ⛔ **Disabled — endpoint unreachable, response contract unverified** |
+| **Coverage** | 2012-01-01 onwards, verified against the service itself |
+| **Status** | ✅ **Enabled** — REIM's first daily-frequency series |
 
-This is the source REIM most wants: the national primary publisher of the
-official NIO/USD rate, at daily resolution. The connector is written. It is
-disabled anyway.
+The national primary publisher of the official NIO/USD rate, at daily
+resolution. v0.1.0 shipped this connector disabled; it was enabled on
+2026-08-08 after the endpoint turned out to be reachable and its contract was
+verified against live responses.
 
-**The blocker.** The host only negotiates a pre-TLS 1.2 handshake. Modern
-OpenSSL 3.x under a standard system crypto policy refuses it:
+**The v0.1.0 blocker was misdiagnosed.** The note recorded that the host "only
+negotiates a pre-TLS 1.2 handshake, which OpenSSL 3.x rejects". The first half
+is true — forcing TLS 1.1 or 1.2 makes the server choose 1.0, which the client
+then refuses. The second half was wrong: pinning TLS 1.0 alone still fails, but
+one stage later, at `ServerKeyExchange`:
 
 ```console
-$ curl -sv "https://servicios.bcn.gob.ni/Tc_Servicio/ServicioTC.asmx?WSDL"
-* Trying 165.98.219.12:443...
-* TLSv1.3 (OUT), TLS handshake, Client hello (1):
-* TLSv1.3 (IN), TLS handshake, Server hello (2):
-* TLSv1.3 (OUT), TLS alert, protocol version (582):
-* TLS connect error: error:0A000102:SSL routines::unsupported protocol
+$ openssl s_client -connect servicios.bcn.gob.ni:443 -tls1 -cipher 'ALL:@SECLEVEL=0'
+error:03000098:digital envelope routines:do_sigver_init:invalid digest
 ```
 
-The main site `https://www.bcn.gob.ni` responds normally (HTTP 200); only the
-`servicios.` subdomain carrying the web service is affected.
+That is the **ban on SHA-1 signatures**, not a protocol-version rejection. From
+Python, an `ssl.SSLContext` pinned to TLS 1.0 at `SECLEVEL=0` and verifying
+against certifi completes the handshake with no system or environment changes:
 
-**Why that means disabled rather than "probably fine".** No live response was
-ever observed. The connector's request is built from the published service
-description, and its parsing is written defensively — it takes the first element
-whose tag ends in `Result` rather than hard-coding a path — but *defensive
-parsing of an unobserved format is still a guess*. Shipping it enabled would
-mean claiming a connector works when nobody has seen it work. So:
+```console
+TLSv1 ECDHE-RSA-AES256-SHA
+{'countryName': 'NI', 'localityName': 'Managua',
+ 'organizationName': 'Banco Central de Nicaragua', 'commonName': '*.bcn.gob.ni'}
+```
 
-- `sources/catalog.yml` carries `enabled: false` with `disabled_reason`.
-- The connector version is `0.1.0-unverified`.
-- Every observation it would produce is tagged `contract_status: "unverified"`.
-- Its test fixture is **clearly labelled synthetic** in `tests/fixtures/README.md`.
+**The TLS concession.** `sources/catalog.yml` declares `tls_profile: legacy` with
+a `tls_note` explaining why, and the catalog refuses a legacy profile that does
+not document itself. The concession relaxes **only** the protocol version and
+the cipher security level, for this host alone. The certificate chain and the
+hostname are still verified, and every downgraded connection is logged at
+warning level twice — once by the HTTP layer, once by the connector with the
+hostname attached. Remove the profile if the BCN modernises the endpoint; no
+code change is needed.
 
-**To verify and enable it**, from a host that can complete the handshake (an
-older OpenSSL, `SECLEVEL=0`, or a relaxed system crypto policy):
+**The real contract**, from the live WSDL. Every assumption v0.1.0 made while
+unable to reach the service was wrong:
 
-1. Fetch the WSDL and confirm the operation name and parameter
-   (`RecuperaTC_Dia` / `strfecha` per the published documentation).
-2. Call it for a known date and record the real envelope.
-3. Save that recording as `tests/fixtures/bcn_exchange_rate_soap.xml`, replacing
-   the synthetic one, and update `tests/fixtures/README.md`.
-4. Adjust `transform()` if the real shape differs.
-5. Bump `version` to `1.0.0` and set `enabled: true` in the catalog.
-6. Run `python scripts/smoke_test_sources.py --source bcn_exchange_rate`.
+| v0.1.0 assumed | Actual |
+|---|---|
+| namespace `http://tempuri.org/` | `http://servicios.bcn.gob.ni/` |
+| parameter `<strfecha>` as an ISO date | `<Ano>`, `<Mes>`, `<Dia>` as `s:int` |
+| only a per-day lookup exists | `RecuperaTC_Mes(Ano, Mes)` returns the whole month |
+
+REIM uses `RecuperaTC_Mes`, which returns one `<Tc>` per calendar day — a strict
+superset of the per-day operation at a thirtieth of the request count.
+
+**Three properties of the service that shape the connector:**
+
+1. **Rows arrive unordered.** The recording of March 2020 starts at the 7th. The
+   connector sorts by date.
+2. **The service answers for months that have not happened**, projecting the
+   currently frozen rate forward to the end of the calendar year: at the time of
+   writing `RecuperaTC_Mes(2026, 12)` returned 31 rows while
+   `RecuperaTC_Mes(2027, 1)` returned none. REIM **discards every row dated
+   after today** — a projection is not an observation — and reports the number
+   discarded as an `info` quality check so the truncation is auditable.
+3. **Coverage begins exactly at 2012-01.** `RecuperaTC_Mes(2011, 12)` returns an
+   empty result with no SOAP fault, so an empty month is not treated as an
+   error unless the month has already begun.
+
+**Request volume.** A scheduled run asks for the current month and the previous
+one — two requests. The 2012-onwards backfill is an explicit one-off
+`start_month` range, capped at 400 months so a typo cannot launch a thousand
+calls at an official service.
+
+**What the series looks like.** 5,334 observations from 2012-01-01 to
+2026-08-08, one per calendar day with no gaps. It shows the crawling peg
+(`2012-01-01 = 22.9797` rising steadily) and its freeze: since January 2024 the
+rate has been constant at `36.6243`.
 
 **Also considered and rejected:** scraping `https://www.bcn.gob.ni/tipo-de-cambio`.
 The page is Drupal-rendered and returns no server-side table, and no CSV or XLSX

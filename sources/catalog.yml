@@ -182,11 +182,9 @@ sources:
   # ------------------------------------------------------------------------
   # Nicaragua — Banco Central de Nicaragua
   #
-  # DISABLED. The service description is public and the connector is
-  # implemented, but the endpoint could not be reached during development and
-  # its response contract has never been observed. Enabling it without that
-  # verification would mean shipping a connector whose parsing is a guess.
-  # See docs/sources.md and the connector module docstring.
+  # REIM's first daily-frequency series, verified against the live WSDL and
+  # the real RecuperaTC_Mes responses. Reaching the host needs a relaxed TLS
+  # handshake, declared below. See docs/sources.md.
   # ------------------------------------------------------------------------
   - key: bcn_exchange_rate
     name: Nicaragua official exchange rate (daily)
@@ -206,11 +204,14 @@ sources:
       - ni_exchange_rate_official_daily
     license: public_official_data
     official: true
-    enabled: false
-    disabled_reason: >-
-      The host only negotiates a pre-TLS 1.2 handshake, which OpenSSL 3.x
-      rejects under a modern system crypto policy
-      (error:0A000102:SSL routines::unsupported protocol). No live response was
-      ever observed, so the SOAP response contract is unverified. Verify the
-      WSDL and the *Result element shape from a host that can complete the
-      handshake, record a fixture, then enable.
+    enabled: true
+    tls_profile: legacy
+    tls_note: >-
+      servicios.bcn.gob.ni negotiates TLS 1.0 only and signs its key exchange
+      with SHA-1. REIM relaxes the protocol version and cipher security level
+      for this host alone; certificate chain and hostname verification remain
+      enforced. Remove this profile if the BCN modernises the endpoint.
+    options:
+      # Two requests per run. The 2012-onwards backfill is a one-off
+      # start_month range, not something every scheduled run repeats.
+      months_back: 2
