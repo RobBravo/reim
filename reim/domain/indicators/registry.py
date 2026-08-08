@@ -37,6 +37,9 @@ class IndicatorDefinition:
 
 
 _WB_METHODOLOGY = "https://datahelpdesk.worldbank.org/knowledgebase/articles/889392"
+#: The IMF publishes no per-series methodology page for IMTS; its terms of use
+#: are the closest stable reference, and they also state the licence.
+_IMF_TERMS = "https://www.imf.org/external/terms.htm"
 
 INDICATORS: tuple[IndicatorDefinition, ...] = (
     IndicatorDefinition(
@@ -250,6 +253,49 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         unit="current USD",
         value_type=ValueType.LEVEL,
         methodology_url=_WB_METHODOLOGY,
+    ),
+    IndicatorDefinition(
+        code="ni_exports_goods_monthly",
+        name="Nicaragua — merchandise exports FOB (monthly)",
+        description=(
+            "Exports of goods, free on board, compiled by the IMF from national "
+            "customs data (International Merchandise Trade Statistics). Goods "
+            "only: this does not replace the annual, broader "
+            "ni_exports_goods_services, which also covers services."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.MONTHLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=_IMF_TERMS,
+    ),
+    IndicatorDefinition(
+        code="ni_imports_goods_monthly",
+        name="Nicaragua — merchandise imports CIF (monthly)",
+        description=(
+            "Imports of goods including cost, insurance and freight, compiled "
+            "by the IMF from national customs data. Goods only: this does not "
+            "replace the annual, broader ni_imports_goods_services."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.MONTHLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=_IMF_TERMS,
+    ),
+    IndicatorDefinition(
+        code="ni_trade_balance_goods_monthly",
+        name="Nicaragua — merchandise trade balance (monthly)",
+        description=(
+            "Merchandise exports FOB minus imports CIF, as published by the "
+            "IMF. Negative in 433 of the 436 months published: Nicaragua runs "
+            "a persistent merchandise deficit."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.MONTHLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=_IMF_TERMS,
     ),
 )
 

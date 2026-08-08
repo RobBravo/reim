@@ -344,3 +344,28 @@ def test_malformed_rules_yaml_is_rejected(tmp_path: Path) -> None:
 def test_inverted_bounds_are_rejected() -> None:
     with pytest.raises(ValueError, match="exceeds max_value"):
         IndicatorRule(min_value=Decimal("10"), max_value=Decimal("1"))
+
+
+def test_monthly_trade_indicators_have_their_own_rules(
+    quality_rules: QualityRuleSet,
+) -> None:
+    """Every monthly trade series needs bounds of its own before ingestion.
+
+    Asserted against `.indicators`, not `for_indicator()`: the latter falls
+    back to `defaults` for an unknown code and would pass even with no rule
+    set at all.
+    """
+    for code in (
+        "ni_exports_goods_monthly",
+        "ni_imports_goods_monthly",
+        "ni_trade_balance_goods_monthly",
+    ):
+        assert code in quality_rules.indicators, f"{code} has no rule set of its own"
+
+
+def test_trade_balance_may_be_negative(quality_rules: QualityRuleSet) -> None:
+    """Nicaragua ran a merchandise deficit in 433 of 436 published months."""
+    balance = quality_rules.indicators["ni_trade_balance_goods_monthly"]
+
+    assert balance.allow_negative is True
+    assert balance.min_value is None
