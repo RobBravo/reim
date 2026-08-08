@@ -102,7 +102,10 @@ def test_list_countries(client: TestClient) -> None:
 
 def test_active_only_filter(client: TestClient) -> None:
     body = client.get("/api/v1/countries", params={"active_only": True}).json()
-    assert [c["iso2"] for c in body["data"]] == ["NI"]
+    returned = {c["iso2"] for c in body["data"]}
+
+    assert returned == {"NI", "GT", "SV", "HN", "CR", "PA"}
+    assert "BZ" not in returned
 
 
 def test_get_country(client: TestClient) -> None:

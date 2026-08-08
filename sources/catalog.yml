@@ -253,3 +253,118 @@ sources:
     license: imf_terms_of_use
     official: true
     enabled: true
+
+  - key: imf_imts_guatemala
+    name: Guatemala merchandise trade (monthly)
+    description: >-
+      Monthly merchandise exports FOB, imports CIF and the balance between
+      them for Guatemala, from the IMF's International Merchandise Trade
+      Statistics, world aggregate, covering January 1990 onwards.
+    country: GT
+    organization: IMF
+    category: external_sector
+    access_type: http_api
+    frequency: monthly
+    format: csv
+    base_url: https://api.imf.org/external/sdmx/2.1
+    documentation_url: https://www.imf.org/external/terms.htm
+    connector: reim.ingestion.connectors.guatemala.imf_imts_trade
+    indicators:
+      - exports_goods_monthly
+      - imports_goods_monthly
+      - trade_balance_goods_monthly
+    license: imf_terms_of_use
+    official: true
+    enabled: true
+
+  - key: imf_imts_el_salvador
+    name: El Salvador merchandise trade (monthly)
+    description: >-
+      Monthly merchandise exports FOB, imports CIF and the balance between
+      them for El Salvador, from the IMF's International Merchandise Trade
+      Statistics, world aggregate, covering January 1990 onwards.
+    country: SV
+    organization: IMF
+    category: external_sector
+    access_type: http_api
+    frequency: monthly
+    format: csv
+    base_url: https://api.imf.org/external/sdmx/2.1
+    documentation_url: https://www.imf.org/external/terms.htm
+    connector: reim.ingestion.connectors.el_salvador.imf_imts_trade
+    indicators:
+      - exports_goods_monthly
+      - imports_goods_monthly
+      - trade_balance_goods_monthly
+    license: imf_terms_of_use
+    official: true
+    enabled: true
+
+  - key: imf_imts_honduras
+    name: Honduras merchandise trade (monthly)
+    description: >-
+      Monthly merchandise exports FOB, imports CIF and the balance between
+      them for Honduras, from the IMF's International Merchandise Trade
+      Statistics, world aggregate, covering January 1990 onwards.
+    country: HN
+    organization: IMF
+    category: external_sector
+    access_type: http_api
+    frequency: monthly
+    format: csv
+    base_url: https://api.imf.org/external/sdmx/2.1
+    documentation_url: https://www.imf.org/external/terms.htm
+    connector: reim.ingestion.connectors.honduras.imf_imts_trade
+    indicators:
+      - exports_goods_monthly
+      - imports_goods_monthly
+      - trade_balance_goods_monthly
+    license: imf_terms_of_use
+    official: true
+    enabled: true
+
+  - key: imf_imts_costa_rica
+    name: Costa Rica merchandise trade (monthly)
+    description: >-
+      Monthly merchandise exports FOB, imports CIF and the balance between
+      them for Costa Rica, from the IMF's International Merchandise Trade
+      Statistics, world aggregate, covering January 1990 onwards.
+    country: CR
+    organization: IMF
+    category: external_sector
+    access_type: http_api
+    frequency: monthly
+    format: csv
+    base_url: https://api.imf.org/external/sdmx/2.1
+    documentation_url: https://www.imf.org/external/terms.htm
+    connector: reim.ingestion.connectors.costa_rica.imf_imts_trade
+    indicators:
+      - exports_goods_monthly
+      - imports_goods_monthly
+      - trade_balance_goods_monthly
+    license: imf_terms_of_use
+    official: true
+    enabled: true
+
+  - key: imf_imts_panama
+    name: Panama merchandise trade (monthly)
+    description: >-
+      Monthly merchandise exports FOB, imports CIF and the balance between
+      them for Panama, from the IMF's International Merchandise Trade
+      Statistics, world aggregate, covering January 1990 onwards.
+    country: PA
+    organization: IMF
+    category: external_sector
+    access_type: http_api
+    frequency: monthly
+    format: csv
+    base_url: https://api.imf.org/external/sdmx/2.1
+    documentation_url: https://www.imf.org/external/terms.htm
+    connector: reim.ingestion.connectors.panama.imf_imts_trade
+    indicators:
+      - exports_goods_monthly
+      - imports_goods_monthly
+      - trade_balance_goods_monthly
+    license: imf_terms_of_use
+    official: true
+    enabled: true

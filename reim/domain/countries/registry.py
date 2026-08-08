@@ -1,7 +1,8 @@
 """Canonical country definitions for the Central American region.
 
-Only Nicaragua is active in v0.1.0. The remaining entries are registered but
-inactive so that enabling a country later is a data change, not a code change.
+Six countries are active: REIM holds IMF merchandise-trade data for each.
+Belize stays inactive because it reports nothing to that dataflow. Enabling a
+country is a data change, not a code change.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ COUNTRIES: tuple[CountryDefinition, ...] = (
         name_local="Guatemala",
         currency_code="GTQ",
         currency_name="Quetzal",
-        is_active=False,
+        is_active=True,
     ),
     CountryDefinition(
         iso2="SV",
@@ -51,7 +52,7 @@ COUNTRIES: tuple[CountryDefinition, ...] = (
         name_local="El Salvador",
         currency_code="USD",
         currency_name="US dollar",
-        is_active=False,
+        is_active=True,
     ),
     CountryDefinition(
         iso2="HN",
@@ -60,7 +61,7 @@ COUNTRIES: tuple[CountryDefinition, ...] = (
         name_local="Honduras",
         currency_code="HNL",
         currency_name="Lempira",
-        is_active=False,
+        is_active=True,
     ),
     CountryDefinition(
         iso2="CR",
@@ -69,7 +70,7 @@ COUNTRIES: tuple[CountryDefinition, ...] = (
         name_local="Costa Rica",
         currency_code="CRC",
         currency_name="Colón costarricense",
-        is_active=False,
+        is_active=True,
     ),
     CountryDefinition(
         iso2="PA",
@@ -78,7 +79,7 @@ COUNTRIES: tuple[CountryDefinition, ...] = (
         name_local="Panamá",
         currency_code="PAB",
         currency_name="Balboa",
-        is_active=False,
+        is_active=True,
     ),
     CountryDefinition(
         iso2="BZ",
@@ -87,6 +88,8 @@ COUNTRIES: tuple[CountryDefinition, ...] = (
         name_local="Belize",
         currency_code="BZD",
         currency_name="Belize dollar",
+        # Belize reports nothing to the IMF's IMTS dataflow at any
+        # frequency, so REIM holds no data for it yet. See docs/sources.md.
         is_active=False,
     ),
 )

@@ -10,6 +10,7 @@ import yaml
 
 from reim.core.constants import TlsProfile
 from reim.core.exceptions import CatalogError, CatalogValidationError
+from reim.domain.countries.registry import COUNTRIES, COUNTRIES_BY_ISO2
 from reim.domain.sources.catalog import SourceCatalog, load_catalog
 
 VALID_ENTRY: dict[str, Any] = {
@@ -232,3 +233,31 @@ def test_error_message_names_the_offending_field(tmp_path: Path) -> None:
     with pytest.raises(CatalogValidationError) as exc_info:
         load_catalog(_write(tmp_path, _catalog(frequency="fortnightly")))
     assert "frequency" in str(exc_info.value)
+
+
+def test_imts_covers_the_six_reporting_countries(catalog: SourceCatalog) -> None:
+    """Belize is absent on purpose: it reports nothing to IMTS."""
+    imts = {e.key: e.country for e in catalog.sources if e.key.startswith("imf_imts_")}
+
+    assert imts == {
+        "imf_imts_nicaragua": "NI",
+        "imf_imts_guatemala": "GT",
+        "imf_imts_el_salvador": "SV",
+        "imf_imts_honduras": "HN",
+        "imf_imts_costa_rica": "CR",
+        "imf_imts_panama": "PA",
+    }
+
+
+def test_every_imts_entry_declares_the_imf_licence(catalog: SourceCatalog) -> None:
+    for entry in catalog.sources:
+        if entry.key.startswith("imf_imts_"):
+            assert entry.license == "imf_terms_of_use"
+
+
+def test_six_countries_are_active_and_belize_is_not() -> None:
+    """REIM holds data for six; Belize reports nothing to IMTS."""
+    active = {c.iso2 for c in COUNTRIES if c.is_active}
+
+    assert active == {"NI", "GT", "SV", "HN", "CR", "PA"}
+    assert COUNTRIES_BY_ISO2["BZ"].is_active is False
