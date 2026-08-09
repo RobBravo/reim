@@ -7,11 +7,12 @@ from typing import Any
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from reim.core.constants import TlsProfile
 from reim.core.exceptions import CatalogError, CatalogValidationError
 from reim.domain.countries.registry import COUNTRIES, COUNTRIES_BY_ISO2
-from reim.domain.sources.catalog import SourceCatalog, load_catalog
+from reim.domain.sources.catalog import SourceCatalog, SourceEntry, load_catalog
 
 VALID_ENTRY: dict[str, Any] = {
     "key": "worldbank_ni_cpi_inflation",
@@ -261,3 +262,28 @@ def test_six_countries_are_active_and_belize_is_not() -> None:
 
     assert active == {"NI", "GT", "SV", "HN", "CR", "PA"}
     assert COUNTRIES_BY_ISO2["BZ"].is_active is False
+
+
+def test_a_source_may_declare_its_own_user_agent() -> None:
+    entry = SourceEntry.model_validate(
+        {
+            **VALID_ENTRY,
+            "user_agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/126.0",
+            "user_agent_note": "The host answers 202 with an empty body otherwise.",
+        }
+    )
+
+    assert entry.user_agent == "Mozilla/5.0 (X11; Linux x86_64) Chrome/126.0"
+
+
+def test_most_sources_declare_no_user_agent() -> None:
+    """The honest default must stay the default."""
+    entry = SourceEntry.model_validate(VALID_ENTRY)
+
+    assert entry.user_agent is None
+
+
+def test_a_custom_user_agent_must_document_itself() -> None:
+    """Same rule as tls_profile: an exception that cannot explain itself is a bug."""
+    with pytest.raises(ValidationError, match="user_agent_note"):
+        SourceEntry.model_validate({**VALID_ENTRY, "user_agent": "Mozilla/5.0"})
