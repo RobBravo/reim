@@ -397,7 +397,4 @@ sources:
       - gt_exchange_rate_official_daily_sell
     license: public_official_data
     official: true
-    enabled: false
-    disabled_reason: >-
-      Connector under construction; enabled once it has been run end to end
-      against a real database.
+    enabled: true

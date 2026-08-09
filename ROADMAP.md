@@ -77,17 +77,22 @@ aggregator rather than the Nicaraguan publisher itself.
 
 ## v0.3.0 — Central America
 
-This release is five independent pieces, not one increment. The first is done.
+This release is five independent pieces, not one increment. Two are done,
+and a third has its first country.
 
 - ~~**Regional merchandise trade**~~ ✅ **done** — REIM's first data for more
   than one country: 7,848 monthly observations for Nicaragua, Guatemala, El
   Salvador, Honduras, Costa Rica and Panama, from the IMF's IMTS dataflow, all
   six with identical coverage back to 1990-01. **Belize is excluded**: it
   reports nothing to that dataflow at any frequency. See `docs/sources.md`.
-- Connectors for the **national central banks** — Banguat, BCR, BCH, BCCR,
-  INEC and the Central Bank of Belize. Six independent investigations, each the
-  size of the BCN work, and one of those six publishers has already been found
-  to block automated access. Worth taking one country at a time.
+- Connectors for the **national central banks**. Six independent
+  investigations, each the size of the BCN work, taken one country at a time.
+  **Banguat is done** ✅ — 26,730 observations, a buy and a sell rate for every
+  day since 1990-01-01, the whole history in one request. The other five were
+  probed and their state recorded in `docs/sources.md`: BCCR answers `503` and
+  is known to need an account; BCR, BCH, INEC and the Central Bank of Belize
+  are reachable but expose no machine-readable endpoint that could be found.
+  None is behind a bot wall.
 - **SIECA** regional trade series.
 - **CEPALSTAT** for cross-country comparable series.
 - ~~**Cross-country comparison endpoints**~~ ✅ **done** — `GET /api/v1/compare`
