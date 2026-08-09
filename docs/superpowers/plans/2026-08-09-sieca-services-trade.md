@@ -394,7 +394,10 @@ import pathlib
 from urllib.parse import urlencode
 import httpx
 
-UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/126.0 Safari/537.36"
+)
 BASE = "https://www.servicios.sieca.int/ReporteGeneralServicios"
 OUT = pathlib.Path("tests/fixtures")
 HEADERS = {
@@ -769,12 +772,19 @@ def test_the_six_country_names_map_to_iso3(raw: RawDataset) -> None:
     assert codes == {"CRI", "SLV", "GTM", "HND", "NIC", "PAN"}
 
 
-def test_the_regional_aggregate_produces_nothing(raw: RawDataset) -> None:
-    """Centroamérica is the sum of the six, and REIM has no code for a region."""
+def test_the_regional_aggregate_produces_nothing(raw: RawDataset, sieca_exports_json: str) -> None:
+    """Centroamérica is the sum of the six, and REIM has no code for a region.
+
+    The fixture carries seven rows per flow. Keeping the aggregate would give
+    1,449 observations instead of 1,242, so the count is what proves it dropped.
+    """
+    rows = json.loads(json.loads(sieca_exports_json)["Data"][0]["Data"])
+    assert any(row["Pais"] == "Centroamérica" for row in rows), "fixture lost the aggregate row"
+
     observations = build_connector().transform(raw)
 
-    assert all(o.country_iso3 != "CAM" for o in observations)
     assert len(observations) == OBSERVATIONS
+    assert len({o.country_iso3 for o in observations}) == COUNTRIES
 
 
 def test_an_unknown_country_name_raises() -> None:
@@ -1304,7 +1314,9 @@ Replace the stub in the connector:
         """``E - I`` must equal the published ``S`` within the rounding tolerance."""
         shared = sorted(set(exports) & set(imports) & set(balance))
         broken = [
-            key for key in shared if abs(exports[key] - imports[key] - balance[key]) > BALANCE_TOLERANCE
+            key
+            for key in shared
+            if abs(exports[key] - imports[key] - balance[key]) > BALANCE_TOLERANCE
         ]
 
         if not broken:
@@ -1330,7 +1342,9 @@ Replace the stub in the connector:
         )
 
 
-    def _check_quarterly_continuity(self, observations: list[NormalizedObservation]) -> QualityResult:
+    def _check_quarterly_continuity(
+        self, observations: list[NormalizedObservation]
+    ) -> QualityResult:
         """SIECA publishes every quarter; a hole is worth a human look."""
         labels = {obs.period.label for obs in observations}
         if len(labels) < 2:
