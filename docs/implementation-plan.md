@@ -384,7 +384,7 @@ independent subsystems, one of which is really six separate investigations:
 | **A. Regional IMF trade** | ✅ this increment |
 | **B. Cross-country comparison endpoints** | ✅ §16 |
 | **C. National central banks** (six countries) | ✅ Guatemala (§17); the other five recorded, not acted on |
-| **D. SIECA** | open, unresearched |
+| **D. SIECA** | ✅ §18 — services, not merchandise |
 | **E. CEPALSTAT** | open; a probe of its API returned 404 |
 | **F. Currency handling** | open, and not needed yet — everything multi-country is USD |
 
@@ -516,6 +516,97 @@ exists, reports the count, and never fails.
 * The other 39 currencies Banguat publishes are out of scope: REIM's indicators
   are US-dollar denominated.
 
+## 18. Post-MVP increment — SIECA quarterly services trade (2026-08-09)
+
+Piece D of v0.3.0, and **not the thing the roadmap line named**. The line said
+"SIECA regional trade series", meaning intra-regional **merchandise** trade.
+Probing on 2026-08-09 found that it does not exist in machine-readable form:
+`estadisticas.sieca.int`, the host SIECA's own statistics page links to, returns
+`404` on every path with any client; the "herramienta de inteligencia comercial"
+is a set of Tableau Public embeds; and `mercancias`, `comercio`, `intec`,
+`centrex` and `arancel` under `sieca.int` do not resolve. One host is alive:
+`www.servicios.sieca.int`, serving **trade in services** as open JSON.
+
+So the piece was delivered as services trade, which REIM held from no source,
+rather than merchandise trade, which it already holds monthly from the IMF. It
+is REIM's **first quarterly series** and its **first source with no country of
+its own** — one request returns all six. The dead host is written into
+`docs/sources.md` so the next person does not rediscover it.
+
+**Verification**
+
+| Check | Result |
+|-------|--------|
+| `reim catalog validate` | ✅ 16 sources, 16 enabled, 24 rule sets, all 16 connectors import |
+| `db seed` after enabling | ✅ created 4 — 3 indicators, 1 source (the `SIECA` organization already existed, unused since v0.1.0) |
+| Live pipeline run | ✅ extracted 1,242, inserted 1,242, rejected 0, 8.3 s |
+| Second run | ✅ extracted 1,242, inserted 0, **unchanged 1,242**, rejected 0, 7.6 s |
+| Three flows stored | ✅ 414 each — exports, imports and balance — 2009-01-01 … 2026-01-01 |
+| Quality checks | ✅ all four SIECA checks `passed` at `info`: 6 countries, balance within 100,000 USD on all 414 cells, 69 consecutive quarters 2009-Q1 … 2026-Q1, three flows over the same 414 cells |
+| Conversion is reversible | ✅ `4941.8` million stored as `4941800000` USD with `sieca_published_value="4941.8"` in `raw_metadata` |
+| Opt-in live test | ✅ the real service answers the recorded contract |
+| `pytest` / `ruff` / `mypy` | ✅ 377 offline + 112 integration passed / clean / clean |
+
+**What measuring corrected.** Two design assumptions were wrong, and both would
+have been silent.
+
+*"The balance identity is exact"* is false. `E − I` deviates from the published
+`S` by up to **0.1 million USD**, and **71 of 414 cells** deviate by more than
+0.05. The source rounds each flow to one decimal in millions, so two roundings
+of ±0.05 accumulate; this is arithmetic, not a data error, and an exact check
+would have failed on every run forever. The tolerance is **100,000 USD** —
+equal to the worst deviation observed, and four orders of magnitude below the
+smallest quarterly figure in the series (147.5 million USD). The same mistake
+had already been corrected once, in the IMF connector, where the tolerance is
+one cent.
+
+*"Values are strings"* is false: they arrive as JSON **floats**, so
+`Decimal(375.3)` is `375.2999999999999829…`. The payload is parsed with
+`json.loads(…, parse_float=Decimal)`. Reading it any other way corrupts every
+figure in its last places, where no count and no total would show it. A test
+asserts an exact `Decimal` on a value that is *not* exact in binary, so dropping
+`parse_float` fails the suite rather than passing quietly — the first attempt
+used a value that happened to be exact in binary and could not have caught it.
+
+**Judgement calls**
+
+* **Services instead of merchandise.** The roadmap item as written could not be
+  built. Delivering the adjacent thing that exists, and saying plainly that it
+  is not what the line imagined, beats either faking the original or leaving
+  the piece open.
+* **Whole USD instead of published millions.** Stored `× 10^6` so `/compare`
+  can put services beside the IMF's merchandise series. This is REIM's **first
+  declared transformation**, so it is declared: `sieca_published_value`,
+  `sieca_published_unit` and `sieca_scale_applied` travel in `raw_metadata`
+  with every observation, the arithmetic is exact in `Decimal`, and the
+  published figure is recoverable exactly.
+* **The published balance, not a derived one.** REIM stores SIECA's `S` and
+  *checks* the identity rather than assuming it. Deriving would have hidden the
+  rounding rather than measuring it.
+* **One component of thirty-three.** `categoria=0`, the first-level services
+  total. The other 32 would multiply the volume 33-fold with nothing consuming
+  them.
+* **The "Centroamérica" aggregate is discarded.** It is the sum of the six, and
+  `observations` has no region dimension.
+* **The User-Agent, and the rule it rewrote.** The host serves nothing to a
+  client that identifies itself honestly: REIM's own identifier and
+  `python-httpx` receive `202` with an empty body, `curl` and an empty header
+  receive `403`, and only a browser string receives data — the filter covers
+  the whole host, including its static PDFs. The decision was taken explicitly
+  by the project owner: ingest, send a string the host accepts, and say so. It
+  is declared per source in `sources/catalog.yml` with a `user_agent_note`,
+  never inside a connector, exactly as `tls_profile: legacy` declares the BCN's
+  relaxed handshake. This narrowed a rule the docs stated more absolutely than
+  was still true, so the rule is now stated **in two parts**: REIM does not
+  defeat an active access control — it still refuses the Radware bot-manager
+  challenge in front of `www.bcn.gob.ni` — and REIM does satisfy a static
+  header check, changing nothing else and keeping the same timeout and retry
+  policy as every other source. Both statements are about a publisher's edge;
+  they differ in kind, and `README.md` and `docs/sources.md` now say which is
+  which instead of implying REIM never touches either.
+* **`extract` raises on the empty `202`.** That response is exactly what a
+  rejected client receives, so treating it as "no data today" would turn a
+  revoked allowance into a silently empty run.
 
 ## 10. Follow-up work (not in v0.1.0)
 

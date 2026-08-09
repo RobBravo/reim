@@ -427,10 +427,7 @@ sources:
       - trade_balance_services_quarterly
     license: public_official_data
     official: true
-    enabled: false
-    disabled_reason: >-
-      Connector under construction; enabled once it has been run end to end
-      against a real database.
+    enabled: true
     user_agent: >-
       Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko)
       Chrome/126.0 Safari/537.36

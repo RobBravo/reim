@@ -47,8 +47,9 @@ aggregator rather than the Nicaraguan publisher itself.
   `docs/sources.md`.
 - **BCN monthly statistics** — ⚠️ **partly delivered, partly blocked.** The
   layout question never arose: `www.bcn.gob.ni` redirects every automated
-  request to a Radware bot-manager challenge, and REIM will not defeat an
-  access control the publisher installed deliberately. Of the four families:
+  request to a Radware bot-manager challenge, and REIM does not execute it —
+  passing an active control is where the project draws the line, as
+  `docs/sources.md` now states in full. Of the four families:
   - ~~**merchandise trade**~~ ✅ **done** — monthly exports, imports and balance
     from the IMF's IMTS instead, 1,308 observations from 1990-01. Note this is
     REIM's only source whose data is **not openly licensed**.
@@ -68,17 +69,16 @@ aggregator rather than the Nicaraguan publisher itself.
   to sit not merely in the same workbook but in the same worksheet and the same
   rows, in columns the connector already walked past. See `docs/sources.md`.
 - ~~**Monthly frequency exercised end to end**~~ ✅ **done**, and daily with it,
-  which this item had not even anticipated: the catalog now holds 6 annual, 2
-  monthly and 1 daily source. **Quarterly remains unexercised**, because no
-  source REIM reads publishes at that frequency. The period model parses and
-  tests it already, so this is not work of its own — it will be covered by the
-  first quarterly source that arrives, and both SECMCA (whose capital-account
-  series is quarterly) and the IMF's balance-of-payments data are candidates.
+  which this item had not even anticipated. **Quarterly is now exercised too**,
+  by SIECA's services trade in v0.3.0 — not by the SECMCA or IMF
+  balance-of-payments candidates this line named. Every frequency the period
+  model supports now has a live source: the catalog holds 6 annual, 7 monthly,
+  2 daily and 1 quarterly.
 
 ## v0.3.0 — Central America
 
-This release is five independent pieces, not one increment. Two are done,
-and a third has its first country.
+This release is five independent pieces, not one increment. Three are done,
+and a fourth has its first country.
 
 - ~~**Regional merchandise trade**~~ ✅ **done** — REIM's first data for more
   than one country: 7,848 monthly observations for Nicaragua, Guatemala, El
@@ -93,7 +93,12 @@ and a third has its first country.
   is known to need an account; BCR, BCH, INEC and the Central Bank of Belize
   are reachable but expose no machine-readable endpoint that could be found.
   None is behind a bot wall.
-- **SIECA** regional trade series.
+- ~~**SIECA** regional trade series~~ ✅ **done** — not the intra-regional
+  merchandise trade this line originally imagined, which has no
+  machine-readable endpoint today, but **quarterly trade in services**: 1,242
+  observations, six countries, 2009-Q1 onward, from four requests. REIM's first
+  quarterly series and its first source with no country of its own. See
+  `docs/sources.md`.
 - **CEPALSTAT** for cross-country comparable series.
 - ~~**Cross-country comparison endpoints**~~ ✅ **done** — `GET /api/v1/compare`
   takes one indicator and two to twenty countries and returns a **rectangular**

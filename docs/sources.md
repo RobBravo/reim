@@ -7,7 +7,7 @@ This file is the honest record behind `sources/catalog.yml`. A source is only
 enabled once its endpoint has been reached and its response shape observed. No
 connector is ever "confirmed working" against invented data.
 
-Last verified: **2026-08-04**.
+Last verified: **2026-08-09**.
 
 ---
 
@@ -466,6 +466,146 @@ investigation, and none was in scope for the Guatemalan increment.
 
 ---
 
+### SIECA — quarterly trade in services
+
+| | |
+|---|---|
+| **Organization** | Secretaría de Integración Económica Centroamericana (`SIECA`) — regional body |
+| **Host** | `https://www.servicios.sieca.int` |
+| **Endpoints** | `POST /ReporteGeneralServicios/LoadFilters` and `POST /ReporteGeneralServicios/LoadData` |
+| **Protocol** | Undocumented AJAX JSON behind an ASP.NET MVC page; form-encoded request, JSON response |
+| **Auth** | None — but the host filters on `User-Agent`; see below |
+| **Frequency** | Quarterly — REIM's first |
+| **Coverage** | **2009-Q1 … 2026-Q1**, verified — 69 consecutive quarters, no gaps |
+| **Countries** | All six, from one request; REIM's first source with no country of its own |
+| **Licence** | Public official data |
+| **Status** | ✅ **Enabled** — 1,242 observations, measured 2026-08-09 |
+
+**What the roadmap wanted was not what exists.** The roadmap named "SIECA
+regional trade series", meaning intra-regional **merchandise** trade. That has
+no machine-readable form today. Measured on 2026-08-09:
+
+| Property | State |
+|---|---|
+| `estadisticas.sieca.int` — the host SIECA's own statistics page links to | **`404` on every path, with any client.** Down or migrated; not chased further |
+| The "herramienta de inteligencia comercial" | Tableau Public embeds. A visualisation, not an endpoint |
+| `www.servicios.sieca.int` | ✅ live JSON, no authentication — **trade in services** |
+| `mercancias`, `comercio`, `intec`, `centrex`, `arancel` `.sieca.int` | Do not resolve |
+
+So what shipped is **trade in services**, which REIM held from no source, rather
+than merchandise trade, which it already holds monthly from the IMF. It
+complements the existing data instead of duplicating it. The dead
+`estadisticas.sieca.int` is recorded here precisely so the next person does not
+spend an afternoon rediscovering that it is dead.
+
+**Four requests per run.** One `LoadFilters` returns the country list and the 69
+available quarters; then one `LoadData` per flow — `E` exports, `I` imports,
+`S` balance — each carrying all six countries and the whole history, at 16.7 KB
+a flow. The quarter window comes from `LoadFilters` rather than a constant, so a
+newly published quarter is picked up without a code change. There is no routine
+window and no separate backfill, so **a rebuild from an empty database is
+complete by default** — the property Banguat has and the BCN lacks.
+
+`LoadData` takes `flujo`, `unidadMedida` (`MD`, millions of USD), `paises`
+(numeric ids `1..6`), `paisesDestino` (`0` = world, the only option), `periodos`
+(`"I Trim 2026,…"`) and `categoria`. REIM sends `categoria=0`, the
+"Sumatoria de Servicios de Primer Nivel" total; the other 32 components of the
+taxonomy would multiply the volume 33-fold with nothing consuming them. The rows
+arrive as a JSON **string** nested inside `Data[0].Data`, so the payload is
+decoded twice.
+
+**The balance is published, not derived.** REIM stores SIECA's own `S` figure
+rather than computing `E − I`, because REIM publishes what the publisher
+publishes. The identity is then *checked*, with a tolerance.
+
+**Published millions become whole USD — REIM's first declared transformation.**
+Figures arrive in millions of USD and are stored multiplied by 10⁶, unit
+`current USD`, matching the IMF merchandise series so `/compare` can put
+services and goods side by side. The conversion is exact in `Decimal` and fully
+reversible, and every observation carries the original in `raw_metadata`:
+
+| Key | Example |
+|---|---|
+| `sieca_published_value` | `"4941.8"` |
+| `sieca_published_unit` | `"millones de USD"` |
+| `sieca_scale_applied` | `"1e6"` |
+
+Nothing is inferred and nothing is lost: `4941.8` million is stored as
+`4941800000` USD, and the published string is kept beside it.
+
+**An exact balance check would have failed on every run.** `E − I = S` deviates
+from the published balance by up to **0.1 million USD**, and **71 of 414 cells**
+deviate by more than 0.05. The source rounds each flow to one decimal in
+millions, so two roundings of ±0.05 accumulate; this is arithmetic, not a data
+error. The tolerance is therefore **100,000 USD** — equal to the worst deviation
+observed, and still four orders of magnitude below the smallest quarterly figure
+in the series (147.5 million USD). The same mistake was already corrected once
+in the IMF connector, where the tolerance is one cent.
+
+**Values arrive as JSON floats, not strings.** `Decimal(375.3)` is
+`375.2999999999999829…`, so the payload is parsed with
+`json.loads(…, parse_float=Decimal)`. Reading it any other way corrupts every
+figure in its last places, where no count and no total would reveal it. A test
+pins an exact `Decimal`, so a refactor that drops `parse_float` fails loudly.
+
+**The "Centroamérica" row is discarded.** It is the sum of the six, and
+`observations` has no region dimension. The indicator codes carry no country
+prefix — `exports_services_quarterly`, `imports_services_quarterly`,
+`trade_balance_services_quarterly` — following the rule the regional IMF
+increment set: drop the prefix when the source is regional and every country
+shares the methodology.
+
+**Four quality checks**, all passing against the live service on 2026-08-09:
+`sieca_six_countries_present` (completeness, `critical`),
+`sieca_balance_identity` (consistency, `error`),
+`sieca_quarterly_continuity` (completeness, `warning`) and
+`sieca_flow_coverage` (consistency, `error`).
+
+#### The access decision, and the rule it rewrites
+
+**The host serves nothing to a client that identifies itself honestly.**
+Measured across User-Agents against the same request:
+
+| User-Agent sent | Response |
+|---|---|
+| `REIM/0.1.0 (…+https://github.com/RobBravo/reim)` | **`202`, empty body** |
+| `python-httpx/0.27.0` | **`202`, empty body** |
+| `curl/8.5.0`, or empty | **`403`** |
+| `Mozilla/5.0 … Chrome/126.0 Safari/537.36` | **`200` with the data** |
+
+The filter covers the whole host, including its static technical-note PDFs.
+`sources/catalog.yml` declares the `user_agent` for this source alone, with a
+`user_agent_note` explaining why — exactly as `tls_profile: legacy` declares the
+BCN's relaxed handshake rather than hiding it. Every other source keeps REIM's
+honest identifier. Remove the override if SIECA opens the host to identified
+clients; no code change is needed. The connector logs the override at warning
+level on every run, and `extract` **raises** on the empty `202` rather than
+yielding zero observations, because that is precisely what a rejected client
+receives.
+
+This narrows a rule REIM used to state more absolutely than is now true, so the
+rule is rewritten rather than quietly contradicted:
+
+> REIM does not defeat an active access control. `www.bcn.gob.ni` sits behind a
+> Radware bot manager that answers every automated request with a JavaScript
+> challenge; REIM does not execute it, and that has not changed.
+>
+> REIM does satisfy a static header check. SIECA's edge allows or denies on the
+> `User-Agent` string alone: REIM's own identifier receives `202` with an empty
+> body, `curl` receives `403`, a browser string receives the data. REIM sends a
+> string the host accepts, changes nothing else, keeps the same timeout and
+> retry policy as every other source, and declares it in the catalog entry.
+>
+> These are different things, and the project's rule is stated in both parts
+> rather than as one absolute that its own catalog would contradict.
+
+**Out of scope, deliberately:** the 32 other components of the services
+taxonomy; the `VP`, `PT` and `PC` units the portal also offers (year-on-year
+change, quarterly average, share of total — all derivable from the levels REIM
+stores); and reviving `estadisticas.sieca.int`.
+
+---
+
 ## Registered but not yet implemented
 
 These organizations exist in `reim/domain/sources/organizations.py` so that
@@ -477,7 +617,6 @@ catalog entries can reference them as soon as an endpoint is identified.
 | **BCN** (beyond exchange rate) | Monthly monetary statistics, remittances, trade, reserves | Published as XLSX bulletins; layout stability not yet assessed |
 | **MHCP** (ministry of finance) | Fiscal execution, public debt | Not yet researched |
 | **SIBOIF** (banking supervisor) | Banking system aggregates | Not yet researched |
-| **SIECA** (regional) | Intra-regional trade | Not yet researched; relevant once more countries are added |
 | **BCIE** (regional development bank) | Regional financing flows | Not yet researched |
 | **CEPAL** | CEPALSTAT regional series | Has an API; useful for cross-country comparison in a later phase |
 | **IMF** | IFS monetary and external series | `dataservices.imf.org` was not reachable from the development environment; worth retrying |
@@ -504,7 +643,12 @@ Before writing a connector:
 6. **Respect the publisher.** Realistic timeouts, bounded retries with backoff,
    an identifying User-Agent, no parallel hammering. REIM sends
    `REIM_HTTP_USER_AGENT` on every request so operators can identify and contact
-   us. Read the terms of use.
+   us. Read the terms of use. A source may override that header **only** in
+   `sources/catalog.yml`, with a `user_agent_note` recording the measurement
+   that forced it — never inside a connector. The rule is in two parts: REIM
+   does not defeat an active access control such as the BCN's bot-manager
+   challenge, and REIM does satisfy a static header check such as SIECA's
+   edge filter. See the SIECA entry above.
 7. **Record a real fixture** and write the transform test against it.
 8. **If it cannot be automated reliably, ship it disabled** with a documented
    `disabled_reason`, and move on to another source.
