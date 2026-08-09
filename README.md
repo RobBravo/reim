@@ -496,7 +496,7 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   These are different things, and the project's rule is stated in both parts
   rather than as one absolute that its own catalog would contradict. See
   [`docs/sources.md`](./docs/sources.md).
-- **One series is converted, and says so.** SIECA publishes services trade in
+- **One source is converted, and says so.** SIECA publishes services trade in
   **millions of USD**; REIM stores whole USD, multiplying by 10⁶ in `Decimal`.
   It is the project's first declared transformation and the only one: every
   observation keeps `sieca_published_value`, `sieca_published_unit` and

@@ -71,9 +71,11 @@ aggregator rather than the Nicaraguan publisher itself.
 - ~~**Monthly frequency exercised end to end**~~ ✅ **done**, and daily with it,
   which this item had not even anticipated. **Quarterly is now exercised too**,
   by SIECA's services trade in v0.3.0 — not by the SECMCA or IMF
-  balance-of-payments candidates this line named. Every frequency the period
-  model supports now has a live source: the catalog holds 6 annual, 7 monthly,
-  2 daily and 1 quarterly.
+  balance-of-payments candidates this line named. The catalog holds 6 annual,
+  7 monthly, 2 daily and 1 quarterly. **Weekly, semiannual and irregular remain
+  unexercised** — `Frequency` defines all three and the period model parses
+  `YYYY-Wnn` and `YYYY-Hn`, but no source REIM reads publishes at those
+  cadences.
 
 ## v0.3.0 — Central America
 
