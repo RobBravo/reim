@@ -257,10 +257,11 @@ one — two requests. The 2012-onwards backfill is an explicit one-off
 `start_month` range, capped at 400 months so a typo cannot launch a thousand
 calls at an official service.
 
-**What the series looks like.** 5,334 observations from 2012-01-01 to
+**What the series looks like.** 5,334 observations as of 2026-08-08, from 2012-01-01 to
 2026-08-08, one per calendar day with no gaps. It shows the crawling peg
 (`2012-01-01 = 22.9797` rising steadily) and its freeze: since January 2024 the
-rate has been constant at `36.6243`.
+rate has been constant at `36.6243`. The count grows by one every calendar
+day, so treat it as a snapshot rather than a fixed figure.
 
 **Also considered and rejected:** scraping `https://www.bcn.gob.ni/tipo-de-cambio`.
 The page is Drupal-rendered and returns no server-side table, and no CSV or XLSX

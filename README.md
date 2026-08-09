@@ -232,6 +232,49 @@ python -m reim.cli quality report
 Exit codes: `0` success, `1` a pipeline or quality gate failed, `2` invalid
 configuration or arguments — so these compose cleanly into cron or CI.
 
+### Rebuilding from an empty database
+
+`pipeline run-all` fetches each source's **routine window**, which is not always
+its whole history. Rebuilding from nothing therefore takes two steps, and the
+second is easy to forget:
+
+```bash
+alembic upgrade head
+python -m reim.cli db seed
+python -m reim.cli pipeline run-all          # ~9,700 observations
+```
+
+That leaves **`bcn_exchange_rate` with about 40 rows**, not the 5,334 it holds
+back to 2012-01: its routine window is the current month plus the previous one,
+deliberately, so a scheduled run makes two requests instead of 176. To load the
+history once, add `start_month: "2012-01"` to that entry's `options` in
+`sources/catalog.yml`, run the pipeline, then **remove the line again** so
+scheduled runs return to two requests:
+
+```bash
+python -m reim.cli pipeline run bcn_exchange_rate   # ~5,300 inserted, ~30 s
+```
+
+Everything else — INIDE and the six IMF trade series — ships its full history in
+the routine run, because each of those sources publishes the complete series on
+every request.
+
+A complete rebuild lands on the order of **15,000 observations**. No exact
+figure is given on purpose: the BCN publishes a rate every calendar day, so the
+total grows by one daily and any number printed here would be wrong tomorrow.
+To see the real composition:
+
+```bash
+python -m reim.cli pipeline status
+```
+
+A `run-all` that reports fewer than 14 successes is usually an upstream problem
+rather than a REIM fault: connectors retry and then fail loudly instead of
+writing partial data. The error message carries the exact URL, so request it
+yourself before assuming a bug — outages are often **per series**, not per host.
+While this section was being written, five World Bank series returned `502`
+while `FP.CPI.TOTL.ZG` on the same host returned `200`.
+
 ### Scheduling
 
 The MVP has no built-in scheduler by design. `pipeline list` prints a suggested

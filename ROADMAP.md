@@ -40,8 +40,8 @@ aggregator rather than the Nicaraguan publisher itself.
   resolution (index, month-on-month and year-on-year), replacing reliance on the
   World Bank's annual restatement. See `docs/sources.md`.
 - ~~**Unblock the BCN exchange-rate connector**~~ ✅ **done** — REIM's first
-  daily-frequency series: 5,334 observations from 2012-01-01, one per calendar
-  day. The v0.1.0 blocker was misdiagnosed — the handshake failed on the SHA-1
+  daily-frequency series: 5,334 observations as of 2026-08-08 from 2012-01-01,
+  one per calendar day. The v0.1.0 blocker was misdiagnosed — the handshake failed on the SHA-1
   signature ban, not the protocol version — and the real WSDL contract differed
   from every assumption made while the service was unreachable. See
   `docs/sources.md`.
