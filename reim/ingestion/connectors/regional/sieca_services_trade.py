@@ -31,7 +31,7 @@ import json
 from decimal import Decimal
 from typing import Any, ClassVar
 
-from reim.core.constants import Frequency
+from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import TransformationError
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
@@ -96,6 +96,17 @@ def parse_quarter(label: str) -> str:
         msg = f"unreadable SIECA period label {label!r}"
         raise ValueError(msg)
     return f"{int(parts[2])}-Q{_ROMAN[parts[0]]}"
+
+
+def _quarter_index(label: str) -> int:
+    """Turn ``"2026-Q1"`` into a sortable running quarter number."""
+    year, quarter = label.split("-Q")
+    return int(year) * 4 + int(quarter) - 1
+
+
+def _quarter_label(index: int) -> str:
+    """Inverse of :func:`_quarter_index`."""
+    return f"{index // 4}-Q{index % 4 + 1}"
 
 
 class SiecaServicesTradeConnector(BaseConnector):
@@ -196,5 +207,156 @@ class SiecaServicesTradeConnector(BaseConnector):
             raise TransformationError(msg, source_key=self.source.key) from exc
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
-        """Not yet implemented; the balance-identity and coverage checks land in Task 5."""
-        return []
+        """Assert SIECA-specific expectations beyond the standard battery."""
+        by_indicator: dict[str, dict[tuple[str, str], Decimal]] = {
+            indicator_code: {
+                (obs.country_iso3, obs.period.label): obs.value_numeric
+                for obs in observations
+                if obs.indicator_code == indicator_code and obs.value_numeric is not None
+            }
+            for _, indicator_code, _ in FLOWS
+        }
+        exports = by_indicator["exports_services_quarterly"]
+        imports = by_indicator["imports_services_quarterly"]
+        balance = by_indicator["trade_balance_services_quarterly"]
+
+        return [
+            self._check_six_countries(observations),
+            self._check_balance_identity(exports, imports, balance),
+            self._check_quarterly_continuity(observations),
+            self._check_flow_coverage(exports, imports, balance),
+        ]
+
+    def _check_six_countries(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """All six must appear. One returning nothing means a broken request."""
+        expected = set(COUNTRIES_BY_NAME.values())
+        seen = {obs.country_iso3 for obs in observations}
+        missing = sorted(expected - seen)
+
+        if not missing:
+            return QualityResult.passed(
+                "sieca_six_countries_present",
+                CheckType.COMPLETENESS,
+                f"All {len(expected)} countries returned figures",
+                expected_value=str(len(expected)),
+                actual_value=str(len(seen & expected)),
+            )
+        return QualityResult.failure(
+            "sieca_six_countries_present",
+            CheckType.COMPLETENESS,
+            CheckSeverity.CRITICAL,
+            f"{len(missing)} country/countries returned nothing: {', '.join(missing)}",
+            expected_value=str(len(expected)),
+            actual_value=str(len(seen & expected)),
+        )
+
+    def _check_balance_identity(
+        self,
+        exports: dict[tuple[str, str], Decimal],
+        imports: dict[tuple[str, str], Decimal],
+        balance: dict[tuple[str, str], Decimal],
+    ) -> QualityResult:
+        """``E - I`` must equal the published ``S`` within the rounding tolerance."""
+        shared = sorted(set(exports) & set(imports) & set(balance))
+        broken = [
+            key
+            for key in shared
+            if abs(exports[key] - imports[key] - balance[key]) > BALANCE_TOLERANCE
+        ]
+
+        if not broken:
+            return QualityResult.passed(
+                "sieca_balance_identity",
+                CheckType.CONSISTENCY,
+                f"Exports minus imports matches the published balance on all "
+                f"{len(shared)} cell(s), within {BALANCE_TOLERANCE} USD",
+                expected_value="0 beyond tolerance",
+                actual_value="0",
+            )
+
+        shown = ", ".join(f"{country} {quarter}" for country, quarter in broken[:5])
+        suffix = f" (+{len(broken) - 5} more)" if len(broken) > 5 else ""
+        return QualityResult.failure(
+            "sieca_balance_identity",
+            CheckType.CONSISTENCY,
+            CheckSeverity.ERROR,
+            f"{len(broken)} cell(s) break the balance identity by more than "
+            f"{BALANCE_TOLERANCE} USD: {shown}{suffix}",
+            expected_value="0 beyond tolerance",
+            actual_value=str(len(broken)),
+        )
+
+    def _check_quarterly_continuity(
+        self, observations: list[NormalizedObservation]
+    ) -> QualityResult:
+        """SIECA publishes every quarter; a hole is worth a human look."""
+        labels = {obs.period.label for obs in observations}
+        if len(labels) < 2:
+            return QualityResult.passed(
+                "sieca_quarterly_continuity",
+                CheckType.COMPLETENESS,
+                "Too few quarters ingested to assess continuity",
+                actual_value=str(len(labels)),
+            )
+
+        indices = sorted(_quarter_index(label) for label in labels)
+        expected = indices[-1] - indices[0] + 1
+        missing = [
+            _quarter_label(index)
+            for index in range(indices[0], indices[-1] + 1)
+            if index not in set(indices)
+        ]
+
+        if not missing:
+            return QualityResult.passed(
+                "sieca_quarterly_continuity",
+                CheckType.COMPLETENESS,
+                f"{expected} consecutive quarters from {_quarter_label(indices[0])} "
+                f"to {_quarter_label(indices[-1])}",
+                expected_value=str(expected),
+                actual_value=str(len(labels)),
+            )
+
+        shown = ", ".join(missing[:5])
+        suffix = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
+        return QualityResult.failure(
+            "sieca_quarterly_continuity",
+            CheckType.COMPLETENESS,
+            CheckSeverity.WARNING,
+            f"{len(missing)} quarter(s) missing: {shown}{suffix}",
+            expected_value=str(expected),
+            actual_value=str(len(labels)),
+        )
+
+    def _check_flow_coverage(
+        self,
+        exports: dict[tuple[str, str], Decimal],
+        imports: dict[tuple[str, str], Decimal],
+        balance: dict[tuple[str, str], Decimal],
+    ) -> QualityResult:
+        """The three flows must cover the same country-quarter set."""
+        union = set(exports) | set(imports) | set(balance)
+        gaps = {
+            "exports": len(union - set(exports)),
+            "imports": len(union - set(imports)),
+            "balance": len(union - set(balance)),
+        }
+        incomplete = {name: count for name, count in gaps.items() if count}
+
+        if not incomplete:
+            return QualityResult.passed(
+                "sieca_flow_coverage",
+                CheckType.CONSISTENCY,
+                f"All three flows cover the same {len(union)} cell(s)",
+                expected_value=str(len(union)),
+                actual_value=str(len(union)),
+            )
+        detail = ", ".join(f"{name} missing {count}" for name, count in sorted(incomplete.items()))
+        return QualityResult.failure(
+            "sieca_flow_coverage",
+            CheckType.CONSISTENCY,
+            CheckSeverity.ERROR,
+            f"The three flows cover different cells: {detail}",
+            expected_value=str(len(union)),
+            actual_value=str(len(union) - max(incomplete.values())),
+        )

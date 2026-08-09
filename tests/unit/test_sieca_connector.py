@@ -11,8 +11,9 @@ from decimal import Decimal
 
 import pytest
 
+from reim.core.constants import CheckSeverity, CheckStatus
 from reim.core.exceptions import TransformationError
-from reim.domain.pipelines.models import RawDataset
+from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.connectors.regional.sieca_services_trade import (
     SiecaServicesTradeConnector,
@@ -350,3 +351,81 @@ def test_observations_are_ordered_by_period(raw: RawDataset) -> None:
     ]
 
     assert exports == sorted(exports)
+
+
+def results_by_name(observations: list[NormalizedObservation]) -> dict[str, QualityResult]:
+    return {result.check_name: result for result in build_connector().validate(observations)}
+
+
+def test_the_recorded_history_passes_every_check(raw: RawDataset) -> None:
+    """The real 0.1-million rounding deviations must not fail a run."""
+    results = results_by_name(build_connector().transform(raw))
+
+    assert set(results) == {
+        "sieca_six_countries_present",
+        "sieca_balance_identity",
+        "sieca_quarterly_continuity",
+        "sieca_flow_coverage",
+    }
+    assert [r.status for r in results.values()] == [CheckStatus.PASSED] * 4
+
+
+def test_a_missing_country_is_critical(raw: RawDataset) -> None:
+    observations = [o for o in build_connector().transform(raw) if o.country_iso3 != "PAN"]
+
+    result = results_by_name(observations)["sieca_six_countries_present"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.CRITICAL
+    assert "PAN" in result.message
+
+
+def test_the_real_rounding_deviations_do_not_fail_the_identity(raw: RawDataset) -> None:
+    """71 of 414 cells deviate by more than 0.05 million; all are rounding."""
+    result = results_by_name(build_connector().transform(raw))["sieca_balance_identity"]
+
+    assert result.status is CheckStatus.PASSED
+
+
+def test_a_deviation_beyond_the_tolerance_fails(raw: RawDataset) -> None:
+    observations = build_connector().transform(raw)
+    # NormalizedObservation is a mutable dataclass, not a Pydantic model:
+    # there is no model_copy, so the doctored value is assigned in place.
+    target = next(
+        obs
+        for obs in observations
+        if obs.indicator_code == "trade_balance_services_quarterly"
+        and obs.country_iso3 == "NIC"
+        and obs.period.label == "2026-Q1"
+    )
+    target.value_numeric = Decimal("200000")
+
+    result = results_by_name(observations)["sieca_balance_identity"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.ERROR
+    assert "NIC 2026-Q1" in result.message
+
+
+def test_a_missing_quarter_is_reported(raw: RawDataset) -> None:
+    observations = [o for o in build_connector().transform(raw) if o.period.label != "2015-Q3"]
+
+    result = results_by_name(observations)["sieca_quarterly_continuity"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.WARNING
+    assert "2015-Q3" in result.message
+
+
+def test_flows_covering_different_cells_fail(raw: RawDataset) -> None:
+    """A flow that silently returns less would otherwise pass unnoticed."""
+    observations = [
+        o
+        for o in build_connector().transform(raw)
+        if not (o.indicator_code == "imports_services_quarterly" and o.period.label == "2009-Q1")
+    ]
+
+    result = results_by_name(observations)["sieca_flow_coverage"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.ERROR
