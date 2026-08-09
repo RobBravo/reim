@@ -69,8 +69,8 @@ single-country request is nearly always a client bug, and the existing
       "country_iso2": "NI",
       "country_iso3": "NIC",
       "country_name": "Nicaragua",
-      "unit": "current USD",
-      "currency_code": "USD",
+      "units": ["current USD"],
+      "currency_codes": ["USD"],
       "source_keys": ["imf_imts_nicaragua"],
       "observations": 436,
       "first_period": "1990-01",
@@ -121,8 +121,10 @@ A country with **no data at all** still appears in `series`, with
 column is `null` throughout. Omitting it would hide the very fact worth
 knowing.
 
-`source_keys` is a **list**, because one country's series for an indicator may
-legitimately come from more than one source over time.
+`units`, `currency_codes` and `source_keys` are all **lists**, because one
+country's series for an indicator may carry more than one over time. Collapsing
+any of them to a scalar would hide exactly the kind of difference this endpoint
+exists to surface.
 
 ## 4. Decisions
 
@@ -218,13 +220,16 @@ PostgreSQL database, following the file's existing style:
 
 Unit tests for the note-building and `comparable` logic live in
 `tests/unit/test_comparison.py` and use **constructed** `SeriesSummary` values,
-because the differing-unit case cannot be produced from real data today.
+because the note wording is pure logic. The differing-unit case is *also*
+covered end to end: `make_observation` can build two countries' rows for one
+indicator with different units, and the writer accepts them — verified, 2
+inserted and 0 rejected.
 
 ## 7. Risks
 
 | Risk | Mitigation |
 |---|---|
-| The `comparable: false` branch cannot be exercised against real data — all three multi-country indicators are homogeneous. | Covered by unit tests over constructed summaries, and labelled as such rather than presented as verified against a live source. It becomes real when piece C lands national connectors. |
+| No **ingested** data exercises `comparable: false` — all three multi-country indicators are homogeneous. | Verified storable: two countries can hold one indicator with different units, so the branch is covered by an **integration** test whose observations are constructed but pass through the real writer, database and endpoint. It stops being synthetic when piece C lands national connectors. |
 | Pivoting in Python could misalign a country's column. | The test comparing values against `/observations` for the same country and period is what catches it; a misalignment would show up as a wrong number, not a missing one. |
 | A wide date range over many countries produces a large payload. | Rows are paginated by the existing dependency and capped by `REIM_MAX_PAGE_SIZE`; countries are capped at twenty. |
 
