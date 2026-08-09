@@ -369,3 +369,23 @@ def test_trade_balance_may_be_negative(quality_rules: QualityRuleSet) -> None:
 
     assert balance.allow_negative is True
     assert balance.min_value is None
+
+
+def test_guatemala_exchange_rate_indicators_have_their_own_rules(
+    quality_rules: QualityRuleSet,
+) -> None:
+    """Both sides of the published pair need bounds before ingestion."""
+    for code in (
+        "gt_exchange_rate_official_daily_buy",
+        "gt_exchange_rate_official_daily_sell",
+    ):
+        assert code in quality_rules.indicators, f"{code} has no rule set of its own"
+
+
+def test_the_quetzal_rate_has_no_ceiling(quality_rules: QualityRuleSet) -> None:
+    """It ran 3.41 to 8.39 over 36 years; a narrow band would reject real history."""
+    rule = quality_rules.indicators["gt_exchange_rate_official_daily_sell"]
+
+    assert rule.allow_negative is False
+    assert rule.max_value is None
+    assert rule.max_period_change_pct is None

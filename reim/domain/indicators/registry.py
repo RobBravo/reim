@@ -40,6 +40,9 @@ _WB_METHODOLOGY = "https://datahelpdesk.worldbank.org/knowledgebase/articles/889
 #: The IMF publishes no per-series methodology page for IMTS; its terms of use
 #: are the closest stable reference, and they also state the licence.
 _IMF_TERMS = "https://www.imf.org/external/terms.htm"
+#: Banguat publishes no separate methodology page; the service description
+#: is the closest stable reference.
+_BANGUAT_WS = "https://www.banguat.gob.gt/variables/ws/TipoCambio.asmx"
 
 INDICATORS: tuple[IndicatorDefinition, ...] = (
     IndicatorDefinition(
@@ -80,6 +83,36 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         unit="percent",
         value_type=ValueType.PERCENT_CHANGE,
         methodology_url=_WB_METHODOLOGY,
+    ),
+    IndicatorDefinition(
+        code="gt_exchange_rate_official_daily_buy",
+        name="Guatemala — official exchange rate, buy (daily)",
+        description=(
+            "Rate at which the Banco de Guatemala buys US dollars, published "
+            "for each calendar day. This is the lower of the published pair; "
+            "'compra' is stated from the bank's side, so it is the rate a "
+            "seller of dollars receives."
+        ),
+        category=IndicatorCategory.EXCHANGE_RATE,
+        frequency=Frequency.DAILY,
+        unit="GTQ per USD",
+        value_type=ValueType.RATE,
+        methodology_url=_BANGUAT_WS,
+    ),
+    IndicatorDefinition(
+        code="gt_exchange_rate_official_daily_sell",
+        name="Guatemala — official exchange rate, sell (daily)",
+        description=(
+            "Rate at which the Banco de Guatemala sells US dollars, published "
+            "for each calendar day. This is the higher of the published pair "
+            "from 1992 onward; through the 1990-91 liberalisation the buy rate "
+            "sat fixed above it."
+        ),
+        category=IndicatorCategory.EXCHANGE_RATE,
+        frequency=Frequency.DAILY,
+        unit="GTQ per USD",
+        value_type=ValueType.RATE,
+        methodology_url=_BANGUAT_WS,
     ),
     IndicatorDefinition(
         code="ni_cpi_index_monthly",
