@@ -88,6 +88,19 @@ def imf_imts_gtm_csv() -> str:
 
 
 @pytest.fixture(scope="session")
+def banguat_rango_xml() -> str:
+    """Banguat's whole published history, 1990-01-01 onward (stored gzipped).
+
+    The full response is kept rather than a sample because the tests that
+    matter need history no excerpt contains: the 1990-91 rows where the buy
+    rate sat above the sell rate, and the five days the source skips.
+    """
+    return gzip.decompress((FIXTURES / "banguat_tipocambio_rango.xml.gz").read_bytes()).decode(
+        "utf-8"
+    )
+
+
+@pytest.fixture(scope="session")
 def inide_index_html() -> str:
     """Excerpt of the INIDE IPC index page, with its real workbook links."""
     return (FIXTURES / "inide_ipc_index.html").read_text(encoding="utf-8")
