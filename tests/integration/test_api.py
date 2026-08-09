@@ -568,7 +568,9 @@ def test_compare_reports_series_metadata(compare_client: TestClient) -> None:
     assert series["NIC"]["observations"] == 3
     assert series["GTM"]["observations"] == 2
     assert series["NIC"]["units"] == ["current USD"]
+    assert series["NIC"]["organization_codes"] == ["IMF"]
     assert series["NIC"]["first_period"] == "2024-01"
+    assert body["comparability_notes"] == []
 
 
 def test_compare_names_a_country_holding_nothing(compare_client: TestClient) -> None:

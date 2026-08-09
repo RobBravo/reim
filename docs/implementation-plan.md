@@ -425,6 +425,45 @@ the wrong flag with every count intact. A `critical` check asserts each row
 belongs to the declared country, and a test compares Guatemala's exports
 against Nicaragua's for the same month.
 
+## 16. Post-MVP increment — comparison endpoint (2026-08-08)
+
+`GET /api/v1/compare`: one indicator across two to twenty countries, aligned by
+period. Piece B of v0.3.0, and the first thing REIM offers that the previous
+increment made possible — until six countries existed there was nothing to
+compare.
+
+**Verification**
+
+| Check | Result |
+|-------|--------|
+| Real six-country request | ✅ 436 aligned periods, `comparable: true`, no notes |
+| Newest row | ✅ six values, zero nulls: NIC 601,982,690 … PAN 158,395,970 |
+| Value parity with `/observations` | ✅ identical for the same country and period |
+| An indicator only Nicaragua holds | ✅ GTM reported with 0 observations, column all `null`, note names it |
+| One country | ✅ `422`; twenty-one countries `422`; unknown indicator or country `422`/`404` |
+| `pytest` / `ruff` / `mypy` | ✅ 405 passed / clean / clean |
+
+**A finding from real data that the design had not anticipated.** The first
+run against the six countries emitted `Sources differ across countries:
+imf_imts_costa_rica, imf_imts_el_salvador, …` — because REIM holds the IMF
+under one catalog entry per country. That note would have fired on **every**
+regional comparison, which is exactly the "crying wolf" the design argued
+against for the `comparable` flag itself. The note is now keyed on the
+publishing **organization** rather than the catalog key, and `series` exposes
+both. Against the real data it is now silent, and it still speaks when
+publishers genuinely differ.
+
+**Judgement calls**
+
+* Rows are rectangular with explicit `null`s. An absent key would force the
+  caller to cross-reference `series[].observations` to notice a hole.
+* `comparable` turns on unit and currency only. Differing publishers are noted
+  but do not flip it.
+* No currency conversion, now or ever: it would publish figures no official
+  source published.
+* Pagination slices **periods**, not observation rows, so a page always carries
+  every country's figure for the periods it covers.
+
 ## 10. Follow-up work (not in v0.1.0)
 
 - Verify the BCN SOAP contract from a network/TLS environment that can reach it, then enable it.

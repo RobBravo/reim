@@ -50,9 +50,12 @@ def assess_comparability(summaries: list[SeriesSummary]) -> tuple[bool, list[str
         shown = ", ".join(sorted(code or "none" for code in currencies))
         notes.append(f"Currencies differ across countries: {shown}.")
 
-    sources = {key for s in populated for key in s.source_keys}
-    if len(sources) > 1:
-        notes.append(f"Sources differ across countries: {', '.join(sorted(sources))}.")
+    # Keyed on the publishing organization, not the catalog key. REIM holds one
+    # publisher under several entries — the IMF has one per country — and noting
+    # that on every regional comparison would train readers to ignore the notes.
+    publishers = {code for s in populated for code in s.organization_codes}
+    if len(publishers) > 1:
+        notes.append(f"Publishers differ across countries: {', '.join(sorted(publishers))}.")
 
     comparable = len(units) <= 1 and len(currencies) <= 1 and not mixed_within
     return comparable, notes
@@ -77,6 +80,7 @@ class ComparisonSeries(BaseModel):
     units: list[str]
     currency_codes: list[str | None]
     source_keys: list[str]
+    organization_codes: list[str]
     observations: int = Field(description="Active observations for this indicator and country.")
     first_period: str | None
     last_period: str | None

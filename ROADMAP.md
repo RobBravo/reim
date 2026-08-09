@@ -90,9 +90,13 @@ This release is five independent pieces, not one increment. The first is done.
   to block automated access. Worth taking one country at a time.
 - **SIECA** regional trade series.
 - **CEPALSTAT** for cross-country comparable series.
-- Cross-country comparison endpoints: one indicator, many countries, aligned
-  periods, with the unit and vintage differences made explicit rather than
-  smoothed over.
+- ~~**Cross-country comparison endpoints**~~ ✅ **done** — `GET /api/v1/compare`
+  takes one indicator and two to twenty countries and returns a **rectangular**
+  matrix: every row carries an entry for every country asked for, `null` where
+  that country publishes no figure, so a gap is stated rather than inferred.
+  Comparability is declared, never enforced: the flag turns on unit and
+  currency, differing publishers are noted, and the endpoint never refuses and
+  never converts. See `docs/sources.md` and the API section of the README.
 - Currency handling for genuinely multi-currency comparisons — always alongside
   the original figure, never replacing it.
 

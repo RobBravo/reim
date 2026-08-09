@@ -18,7 +18,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from reim.core.constants import ObservationStatus
-from reim.database.models import Country, DataSource, Indicator, Observation
+from reim.database.models import Country, DataSource, Indicator, Observation, Organization
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +57,10 @@ class SeriesSummary:
     units: tuple[str, ...]
     currency_codes: tuple[str | None, ...]
     source_keys: tuple[str, ...]
+    #: Publishing organizations. Distinct from ``source_keys``: REIM may hold
+    #: one publisher's data under several catalog entries, which is not a
+    #: difference worth warning about.
+    organization_codes: tuple[str, ...]
     observations: int
     first_period: str | None
     last_period: str | None
@@ -161,26 +165,30 @@ def summarise_series(
             Observation.unit,
             Observation.currency_code,
             DataSource.source_key,
+            Organization.code,
             Observation.period_start,
             Observation.period_label,
         )
         .join(Observation.indicator)
         .join(Observation.country)
-        .join(Observation.source),
+        .join(Observation.source)
+        .join(DataSource.organization),
         query,
     )
 
     units: dict[str, set[str]] = {}
     currencies: dict[str, set[str | None]] = {}
     sources: dict[str, set[str]] = {}
+    orgs: dict[str, set[str]] = {}
     counts: dict[str, int] = {}
     earliest: dict[str, tuple[date, str]] = {}
     latest: dict[str, tuple[date, str]] = {}
 
-    for iso3, unit, currency, source_key, start, label in session.execute(statement):
+    for iso3, unit, currency, source_key, org_code, start, label in session.execute(statement):
         units.setdefault(iso3, set()).add(unit)
         currencies.setdefault(iso3, set()).add(currency)
         sources.setdefault(iso3, set()).add(source_key)
+        orgs.setdefault(iso3, set()).add(org_code)
         counts[iso3] = counts.get(iso3, 0) + 1
         if iso3 not in earliest or start < earliest[iso3][0]:
             earliest[iso3] = (start, label)
@@ -197,6 +205,7 @@ def summarise_series(
                 sorted(currencies.get(country.iso3, set()), key=lambda c: (c is None, c or ""))
             ),
             source_keys=tuple(sorted(sources.get(country.iso3, set()))),
+            organization_codes=tuple(sorted(orgs.get(country.iso3, set()))),
             observations=counts.get(country.iso3, 0),
             first_period=earliest.get(country.iso3, (None, None))[1],
             last_period=latest.get(country.iso3, (None, None))[1],

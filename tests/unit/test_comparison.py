@@ -12,6 +12,7 @@ def summary(
     units: tuple[str, ...] = ("current USD",),
     currencies: tuple[str | None, ...] = ("USD",),
     sources: tuple[str, ...] = ("imf_imts_nicaragua",),
+    organizations: tuple[str, ...] = ("IMF",),
     observations: int = 10,
 ) -> SeriesSummary:
     return SeriesSummary(
@@ -21,6 +22,7 @@ def summary(
         units=units,
         currency_codes=currencies,
         source_keys=sources,
+        organization_codes=organizations,
         observations=observations,
         first_period="2024-01" if observations else None,
         last_period="2024-10" if observations else None,
@@ -44,14 +46,27 @@ def test_differing_units_are_not_comparable() -> None:
     assert any("quetzales" in note for note in notes)
 
 
-def test_differing_sources_are_noted_but_still_comparable() -> None:
+def test_differing_publishers_are_noted_but_still_comparable() -> None:
     """Two publishers measuring the same thing in the same unit is normal."""
     comparable, notes = assess_comparability(
-        [summary("NIC"), summary("GTM", sources=("banguat_trade",))]
+        [summary("NIC"), summary("GTM", sources=("banguat_trade",), organizations=("BANGUAT",))]
     )
 
     assert comparable is True
-    assert any("ource" in note for note in notes)
+    assert any("Publishers differ" in note for note in notes)
+
+
+def test_one_publisher_split_across_catalog_entries_is_not_noted() -> None:
+    """The IMF has one catalog entry per country; that is bookkeeping, not a
+    difference worth warning about on every regional comparison."""
+    _, notes = assess_comparability(
+        [
+            summary("NIC", sources=("imf_imts_nicaragua",)),
+            summary("GTM", sources=("imf_imts_guatemala",)),
+        ]
+    )
+
+    assert notes == []
 
 
 def test_a_country_with_no_data_is_named() -> None:

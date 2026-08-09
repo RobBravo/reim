@@ -272,6 +272,8 @@ GET /api/v1/observations                 filters + pagination + sorting
 GET /api/v1/observations/latest          newest observation per series
 GET /api/v1/observations/export.csv      streamed CSV
 
+GET /api/v1/compare                      one indicator, 2-20 countries, aligned
+
 GET /api/v1/pipelines                    health, volumes and freshness
 GET /api/v1/pipelines/runs               ?pipeline_key &status
 GET /api/v1/pipelines/runs/{run_id}      run + its quality checks
@@ -280,6 +282,13 @@ GET /api/v1/pipelines/runs/{run_id}      run + its quality checks
 Observation filters: `country` (ISO2 or ISO3), `indicator`, `source`,
 `category`, `date_from`, `date_to`, `validation_status`, `status`, plus
 `limit`, `offset`, `sort_by`, `order`.
+
+`/compare` takes one `indicator` and a repeated `country`, and returns a
+**rectangular** matrix: every row carries an entry for every country asked
+for, `null` where that country publishes no figure, so a gap is stated rather
+than inferred. It reports whether the series are comparable — the flag turns
+on unit and currency — and names what differs. It **never converts
+currencies**: heterogeneous units are surfaced, not reconciled.
 
 ### Examples
 
@@ -383,7 +392,7 @@ make test-cov       # with coverage
 make check          # lint + typecheck + catalog + tests (what CI runs)
 ```
 
-379 tests. Integration tests skip cleanly when `REIM_TEST_DATABASE_URL` is unset,
+406 tests. Integration tests skip cleanly when `REIM_TEST_DATABASE_URL` is unset,
 so `pytest` works on a bare checkout.
 
 **No test calls a live official source.** Connector tests replay recorded
