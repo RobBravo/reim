@@ -9,9 +9,9 @@ provenance for every figure it holds.
 
 REIM covers **six countries**: Nicaragua, Guatemala, El Salvador, Honduras,
 Costa Rica and Panama. Depth varies sharply — Nicaragua reads its national
-central bank and statistics office directly; the other five currently have
-merchandise trade only. Belize is registered but inactive: it reports nothing to
-the dataflow the others come from.
+central bank and statistics office directly, Guatemala its central bank; the
+other four currently have merchandise trade only. Belize is registered but
+inactive: it reports nothing to the dataflow the others come from.
 
 Adding a country is a catalog entry plus a connector module, not a redesign.
 
@@ -58,18 +58,19 @@ See [ROADMAP.md](./ROADMAP.md).
 
 ### Data available
 
-**14 live pipelines feeding 19 indicators**, every one verified against its
+**15 live pipelines feeding 21 indicators**, every one verified against its
 source. Nothing here is a scrape of an aggregator.
 
 | Source | Countries | Frequency | Series | Coverage |
 |--------|-----------|-----------|--------|----------|
 | **BCN** — Banco Central de Nicaragua | Nicaragua | **daily** | official NIO/USD rate | 2012-01 onward |
+| **Banguat** — Banco de Guatemala | Guatemala | **daily** | official GTQ/USD rate, buy and sell | 1990-01 onward |
 | **INIDE** — national statistics office | Nicaragua | **monthly** | CPI index, month-on-month, year-on-year, each for the country, Managua and the rest of the country | 2007 onward |
 | **IMF** — International Merchandise Trade Statistics | all six | **monthly** | exports FOB, imports CIF, trade balance | 1990-01 onward |
 | **World Bank** — Indicators API v2 | Nicaragua | annual | exchange rate, inflation, remittances, reserves, exports, imports | 1960 onward |
 
-The BCN and INIDE series are **national primary sources** — the publisher
-itself, not a multilateral restatement. The IMF series are the exception to
+The BCN, Banguat and INIDE series are **national primary sources** — the
+publisher itself, not a multilateral restatement. The IMF series are the exception to
 REIM's "openly licensed only" rule and carry attribution requirements; see the
 limitations below.
 
@@ -244,7 +245,7 @@ second is easy to forget:
 ```bash
 alembic upgrade head
 python -m reim.cli db seed
-python -m reim.cli pipeline run-all          # ~9,700 observations
+python -m reim.cli pipeline run-all          # ~36,000 observations
 ```
 
 That leaves **`bcn_exchange_rate` with about 40 rows**, not the 5,334 it holds
@@ -258,20 +259,21 @@ scheduled runs return to two requests:
 python -m reim.cli pipeline run bcn_exchange_rate   # ~5,300 inserted, ~30 s
 ```
 
-Everything else — INIDE and the six IMF trade series — ships its full history in
-the routine run, because each of those sources publishes the complete series on
-every request.
+Everything else — INIDE, Banguat and the six IMF trade series — ships its full
+history in the routine run, because each of those sources publishes the
+complete series on every request. Banguat's 36 years cost one request of 1.3 MB.
 
-A complete rebuild lands on the order of **15,000 observations**. No exact
-figure is given on purpose: the BCN publishes a rate every calendar day, so the
-total grows by one daily and any number printed here would be wrong tomorrow.
+A complete rebuild lands on the order of **42,000 observations**. No exact
+figure is given on purpose: the BCN and Banguat each publish a rate every
+calendar day, so the total grows daily and any number printed here would be
+wrong tomorrow.
 To see the real composition:
 
 ```bash
 python -m reim.cli pipeline status
 ```
 
-A `run-all` that reports fewer than 14 successes is usually an upstream problem
+A `run-all` that reports fewer than 15 successes is usually an upstream problem
 rather than a REIM fault: connectors retry and then fail loudly instead of
 writing partial data. The error message carries the exact URL, so request it
 yourself before assuming a bug — outages are often **per series**, not per host.
@@ -455,10 +457,11 @@ python scripts/smoke_test_sources.py --source worldbank_ni_cpi_inflation
 
 Stated plainly, because a data platform that hides its gaps is worse than none:
 
-- **Two national primary sources, six multilateral.** INIDE's monthly CPI —
-  national, Managua and rest-of-country — and the BCN's daily exchange rate come
-  straight from the publisher; the remaining six connectors read the World Bank,
-  which compiles from national statistics and is one step removed from it.
+- **Three national primary sources, the rest multilateral.** INIDE's monthly
+  CPI — national, Managua and rest-of-country — the BCN's daily exchange rate
+  and Banguat's daily rate pair come straight from the publisher; the remaining
+  connectors read the World Bank and the IMF, which compile from national
+  statistics and are one step removed from it.
 - **Subnational coverage is two regions, not a geography model.** INIDE's
   Managua and rest-of-country breakdowns are separate indicator codes.
   `observations` has no region dimension, so this does not generalise to
@@ -483,11 +486,12 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   itself; REIM reports it rather than filling it.
 - **World Bank data lags.** Annual figures for year *Y* land during *Y+1*, so
   freshness thresholds are measured in hundreds of days, not days.
-- **Six countries, but only one of them deeply.** Nicaragua has national
-  primary sources — the BCN's daily exchange rate and INIDE's monthly CPI.
-  Guatemala, El Salvador, Honduras, Costa Rica and Panama have **merchandise
-  trade only**, from the IMF. Belize has nothing: it reports nothing to that
-  dataflow at any frequency, and stays inactive in the registry.
+- **Six countries, but only two of them beyond trade.** Nicaragua has the
+  BCN's daily exchange rate and INIDE's monthly CPI; Guatemala has Banguat's
+  daily rate pair. El Salvador, Honduras, Costa Rica and Panama have
+  **merchandise trade only**, from the IMF. Belize has nothing: it reports
+  nothing to that dataflow at any frequency, and stays inactive in the
+  registry.
 - **No authentication or rate limiting.** Do not expose this publicly without
   putting a gateway in front and narrowing `REIM_CORS_ALLOW_ORIGINS`.
 - **Revisions are recorded, not reconciled.** REIM keeps the history but does

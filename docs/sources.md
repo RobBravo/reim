@@ -403,6 +403,67 @@ a documented Swagger API at `secmca-api.secmca.org/simafir_api`, but its data
 endpoints require a `user`/`password` account — including those prefixed
 `/public/`. Only the catalogue and date-range endpoints are open.
 
+### Banco de Guatemala — daily official exchange rate
+
+| | |
+|---|---|
+| **Organization** | Banco de Guatemala (`BANGUAT`) — central bank |
+| **Endpoint** | `https://www.banguat.gob.gt/variables/ws/TipoCambio.asmx` |
+| **Protocol** | SOAP 1.1, namespace `http://www.banguat.gob.gt/variables/ws/` |
+| **Operation** | `TipoCambioRango(fechainit, fechafin)`, dates `dd/mm/yyyy` |
+| **Auth** | None; modern TLS |
+| **Coverage** | 1990-01-01 … today, verified — 13,365 days as of 2026-08-09 |
+| **Licence** | Public official data |
+| **Status** | ✅ Enabled — 26,730 observations, two per published day |
+
+REIM's first national central bank outside Nicaragua, and its first source
+whose **whole history arrives in one request**: 1.3 MB, under a second. There
+is no windowed mode and no separate backfill, so a rebuild from an empty
+database is complete by default. The BCN needs two modes because its history
+costs 176 requests — and that is exactly what let a rebuild there produce 40
+rows instead of 5,334.
+
+**Two indicators, not one.** The bank publishes a buy and a sell rate for each
+day, and they differ on **6,174 of the 13,365 days**. Averaging them would
+destroy real information, so each side is its own series:
+`gt_exchange_rate_official_daily_buy` and `..._sell`. The names are stated from
+the bank's side, as the source states them: `compra` is what it pays for a US
+dollar, `venta` what it charges.
+
+**The `venta ≥ compra` invariant holds only from 1992.** 84 days violate it,
+every one in **1990 (76) or 1991 (8)**: through the quetzal's liberalisation
+the buy rate sat fixed at `5.15` while the sell rate floated below it, as low
+as `4.62`. That is real history, not crossed columns, so the check is enforced
+from 1992 onward — the same treatment `inide_cpi_monthly` gives INIDE's sparse
+pre-2011 table. Enforcing it unconditionally would have failed every run
+forever.
+
+**Five days are missing in 36 years**: 2000-04-02, 2000-05-01, 2001-09-02,
+2004-03-06 and 2004-03-07. The gap check counts them and never fails; the
+source's own publication history is not a defect.
+
+Two contract details the service enforces: the `SOAPAction` header must be
+**quoted**, and dates are **day-first** in both directions — `08/11/1990` is 8
+November. Reading it as 11 August would be silent and wrong, so a test pins it.
+
+`VariablesDisponibles` lists 40 currencies rather than economic variables: this
+service is exchange rates only, and REIM takes the US dollar (`moneda` 2).
+
+### The other five Central American central banks
+
+Probed on 2026-08-08, none behind a bot wall, none yet automated:
+
+| Publisher | Measured state |
+|---|---|
+| **BCCR** (Costa Rica) | `503` on both URL casings of its documented web service; it is also known to require a registered account |
+| **BCR** (El Salvador) | `estadisticas.bcr.gob.sv` answers `200` but exposes no machine-readable endpoint on its landing page |
+| **BCH** (Honduras) | Site reachable; no data endpoint found |
+| **INEC** (Panama) | Site reachable; `/mapi/map` responds, unresearched |
+| **Central Bank of Belize** | Site reachable; no data endpoint found |
+
+Recorded so the next person does not repeat the probing. Each is an independent
+investigation, and none was in scope for the Guatemalan increment.
+
 ---
 
 ## Registered but not yet implemented

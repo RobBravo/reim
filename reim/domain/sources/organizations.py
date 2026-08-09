@@ -32,6 +32,15 @@ ORGANIZATIONS: tuple[OrganizationDefinition, ...] = (
         website_url="https://www.bcn.gob.ni",
         country_iso2="NI",
     ),
+    # -- Guatemala --------------------------------------------------------
+    OrganizationDefinition(
+        code="BANGUAT",
+        name="Banco de Guatemala",
+        short_name="Banguat",
+        organization_type=OrganizationType.CENTRAL_BANK,
+        website_url="https://www.banguat.gob.gt",
+        country_iso2="GT",
+    ),
     OrganizationDefinition(
         code="INIDE",
         name="Instituto Nacional de Información de Desarrollo",

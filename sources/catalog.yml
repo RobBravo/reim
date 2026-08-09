@@ -368,3 +368,33 @@ sources:
     license: imf_terms_of_use
     official: true
     enabled: true
+
+  # ------------------------------------------------------------------------
+  # Guatemala — Banco de Guatemala
+  #
+  # Free SOAP service, no authentication, modern TLS. One request returns the
+  # whole published history: 1990-01-01 onwards, ~1.3 MB. Verified 2026-08-09.
+  # See docs/sources.md for the other five Central American central banks.
+  # ------------------------------------------------------------------------
+  - key: banguat_exchange_rate
+    name: Guatemala official exchange rate (daily)
+    description: >-
+      Official GTQ/USD reference rates published daily by the Banco de
+      Guatemala through its public SOAP service. Both sides of the pair are
+      ingested: the bank buys and sells at different rates on 6,174 of the
+      13,365 published days.
+    country: GT
+    organization: BANGUAT
+    category: exchange_rate
+    access_type: soap
+    frequency: daily
+    format: xml
+    base_url: https://www.banguat.gob.gt/variables/ws/TipoCambio.asmx
+    documentation_url: https://www.banguat.gob.gt/variables/ws/TipoCambio.asmx?WSDL
+    connector: reim.ingestion.connectors.guatemala.banguat_exchange_rate
+    indicators:
+      - gt_exchange_rate_official_daily_buy
+      - gt_exchange_rate_official_daily_sell
+    license: public_official_data
+    official: true
+    enabled: true

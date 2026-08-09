@@ -35,6 +35,25 @@ indicators:
     monotonic_increasing: false
     freshness_max_age_days: 7
 
+  # Guatemala publishes both sides of its daily rate, and both are bounded by
+  # sign only. The quetzal ran from 3.41332 in 1990 to 8.39482 at its peak, and
+  # the 1990-91 liberalisation moved it sharply and genuinely — a ceiling or a
+  # daily-change cap would reject real history, the same mistake `min_value: 1`
+  # made against the córdoba below.
+  gt_exchange_rate_official_daily_buy: &gt_daily_rate
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: false
+    max_period_change_pct: null
+    monotonic_increasing: false
+    # 13,364 days since 1990; a run that returns a handful is a broken window,
+    # not a quiet source.
+    min_observations: 1000
+    freshness_max_age_days: 7
+
+  gt_exchange_rate_official_daily_sell: *gt_daily_rate
+
   ni_exchange_rate_official_annual_avg:
     # NOT bounded below by 1. The World Bank restates the whole series in
     # current córdobas, so the 1979 and 1988/1991 redenominations push genuine

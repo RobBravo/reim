@@ -382,8 +382,8 @@ independent subsystems, one of which is really six separate investigations:
 | Piece | Status |
 |---|---|
 | **A. Regional IMF trade** | ✅ this increment |
-| **B. Cross-country comparison endpoints** | open — now has something to compare |
-| **C. National central banks** (six countries) | open, six independent investigations |
+| **B. Cross-country comparison endpoints** | ✅ §16 |
+| **C. National central banks** (six countries) | ✅ Guatemala (§17); the other five recorded, not acted on |
 | **D. SIECA** | open, unresearched |
 | **E. CEPALSTAT** | open; a probe of its API returned 404 |
 | **F. Currency handling** | open, and not needed yet — everything multi-country is USD |
@@ -463,6 +463,59 @@ publishers genuinely differ.
   source published.
 * Pagination slices **periods**, not observation rows, so a page always carries
   every country's figure for the periods it covers.
+
+## 17. Post-MVP increment — Banguat daily exchange rate (2026-08-09)
+
+Piece C of v0.3.0, scoped to **Guatemala only**. The piece names six national
+central banks; they are six independent investigations, and probing found only
+one feasible today. The other five states are written into `docs/sources.md`
+so the next person does not repeat the work: Costa Rica's documented web
+service answers `503` on both URL casings and is known to need an account;
+El Salvador, Honduras, Panama and Belize are reachable but expose no
+machine-readable endpoint that could be found. None is behind a bot wall.
+
+**Verification**
+
+| Check | Result |
+|-------|--------|
+| `reim catalog validate` | ✅ 15 sources, 15 enabled, 21 rule sets |
+| Live pipeline run | ✅ 26,730 inserted, 0 rejected, 57 s |
+| Second run | ✅ 0 inserted, 26,730 unchanged |
+| Both sides stored | ✅ 13,365 buy and 13,365 sell, 1990-01-01 … 2026-08-09 |
+| Quality checks | ✅ all three Banguat checks pass; 0 failures at `error` or `critical` |
+| Opt-in live test | ✅ real service still answers the recorded contract |
+| `pytest` / `ruff` / `mypy` | ✅ 334 offline + 112 integration passed / clean / clean |
+
+**Two design claims were wrong, and measuring the full response caught both.**
+
+*"`venta ≥ compra` in every row"* is false: **84 rows violate it**, every one in
+1990 (76) or 1991 (8), when the buy rate sat fixed at `5.15` while the sell rate
+floated as low as `4.62`. A check asserting it unconditionally would have failed
+on every run forever. It is enforced from 1992 onward, the same treatment INIDE's
+sparse pre-2011 table gets. Mutating that year back to 1990 fails three tests, so
+the boundary is held by the suite rather than by a comment.
+
+*"The series has gaps, so no continuity check"* came from misreading one year's
+row count. Across 36 years **five days** are missing. The gap check therefore
+exists, reports the count, and never fails.
+
+**Judgement calls**
+
+* **Two indicators, not one.** The sides differ on 6,174 of 13,365 days;
+  averaging them would destroy information the publisher chose to publish.
+* **One request for the whole history on every run**, so a rebuild is complete
+  by default. The BCN's two-mode design exists because its history costs 176
+  requests — and that is exactly what let a rebuild there produce 40 rows
+  instead of 5,334. Guatemala does not need it, so it does not get it.
+* **Bounds constrain the sign only.** The quetzal ran 3.41 to 8.39; a ceiling or
+  a daily-change cap would reject real history, the mistake `min_value: 1` made
+  against the córdoba in v0.1.0.
+* **The whole 1.33 MB response is committed as a fixture** (90 KB gzipped). An
+  excerpt cannot hold the 1990-91 inversions or the five missing days, which are
+  what the tests that matter are about.
+* The other 39 currencies Banguat publishes are out of scope: REIM's indicators
+  are US-dollar denominated.
+
 
 ## 10. Follow-up work (not in v0.1.0)
 
