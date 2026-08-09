@@ -472,3 +472,207 @@ def test_runs_are_listed_after_a_pipeline_executes(
     detail = client.get(f"/api/v1/pipelines/runs/{run['id']}").json()
     assert detail["id"] == run["id"]
     assert detail["quality_checks"] == []
+
+
+# --------------------------------------------------------------------------
+# Comparison
+# --------------------------------------------------------------------------
+@pytest.fixture
+def compare_client(seeded_session: Session, make_observation) -> Iterator[TestClient]:  # type: ignore[no-untyped-def]
+    """A client with one indicator held by two countries, Guatemala missing a month."""
+    from reim.services.observation_writer import write_observations
+
+    write_observations(
+        seeded_session,
+        [
+            make_observation(
+                period,
+                value,
+                indicator_code="exports_goods_monthly",
+                source_key=source,
+                country_iso3=iso3,
+                unit="current USD",
+                currency_code="USD",
+            )
+            for period, value, iso3, source in (
+                ("2024-01", "100", "NIC", "imf_imts_nicaragua"),
+                ("2024-02", "110", "NIC", "imf_imts_nicaragua"),
+                ("2024-03", "120", "NIC", "imf_imts_nicaragua"),
+                ("2024-01", "500", "GTM", "imf_imts_guatemala"),
+                ("2024-03", "520", "GTM", "imf_imts_guatemala"),
+            )
+        ],
+        connector_version="1.0.0",
+    )
+    seeded_session.commit()
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: seeded_session
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+def test_compare_aligns_periods(compare_client: TestClient) -> None:
+    body = compare_client.get(
+        "/api/v1/compare",
+        params={"indicator": "exports_goods_monthly", "country": ["NI", "GT"]},
+    ).json()
+
+    assert body["meta"]["total"] == 3
+    assert [row["period_label"] for row in body["data"]] == ["2024-01", "2024-02", "2024-03"]
+
+
+def test_compare_reports_a_gap_as_an_explicit_null(compare_client: TestClient) -> None:
+    """Guatemala has no February. The key must be present and null."""
+    body = compare_client.get(
+        "/api/v1/compare",
+        params={"indicator": "exports_goods_monthly", "country": ["NI", "GT"]},
+    ).json()
+    february = next(row for row in body["data"] if row["period_label"] == "2024-02")
+
+    assert "GTM" in february["values"]
+    assert february["values"]["GTM"] is None
+    assert february["values"]["NIC"] == "110"
+
+
+def test_compare_matches_the_observations_endpoint(compare_client: TestClient) -> None:
+    """The comparison must not transform anything."""
+    observations = compare_client.get(
+        "/api/v1/observations",
+        params={"country": "GT", "indicator": "exports_goods_monthly", "limit": 100},
+    ).json()["data"]
+    expected = {o["period_label"]: o["value_numeric"] for o in observations}
+
+    body = compare_client.get(
+        "/api/v1/compare",
+        params={"indicator": "exports_goods_monthly", "country": ["NI", "GT"]},
+    ).json()
+    got = {
+        row["period_label"]: row["values"]["GTM"]
+        for row in body["data"]
+        if row["values"]["GTM"] is not None
+    }
+
+    assert got == expected
+
+
+def test_compare_reports_series_metadata(compare_client: TestClient) -> None:
+    body = compare_client.get(
+        "/api/v1/compare",
+        params={"indicator": "exports_goods_monthly", "country": ["NI", "GT"]},
+    ).json()
+    series = {s["country_iso3"]: s for s in body["series"]}
+
+    assert body["comparable"] is True
+    assert series["NIC"]["observations"] == 3
+    assert series["GTM"]["observations"] == 2
+    assert series["NIC"]["units"] == ["current USD"]
+    assert series["NIC"]["first_period"] == "2024-01"
+
+
+def test_compare_names_a_country_holding_nothing(compare_client: TestClient) -> None:
+    body = compare_client.get(
+        "/api/v1/compare",
+        params={"indicator": "exports_goods_monthly", "country": ["NI", "HN"]},
+    ).json()
+    series = {s["country_iso3"]: s for s in body["series"]}
+
+    assert series["HND"]["observations"] == 0
+    assert all(row["values"]["HND"] is None for row in body["data"])
+    assert any("HND" in note for note in body["comparability_notes"])
+
+
+def test_compare_flags_differing_units(
+    seeded_session: Session,
+    compare_client: TestClient,
+    make_observation,  # type: ignore[no-untyped-def]
+) -> None:
+    """Not reachable from ingested data yet, but storable and served honestly."""
+    from reim.services.observation_writer import write_observations
+
+    write_observations(
+        seeded_session,
+        [
+            make_observation(
+                "2024-01",
+                "9",
+                indicator_code="exports_goods_monthly",
+                source_key="imf_imts_honduras",
+                country_iso3="HND",
+                unit="lempiras",
+                currency_code="HNL",
+            )
+        ],
+        connector_version="1.0.0",
+    )
+    seeded_session.commit()
+
+    body = compare_client.get(
+        "/api/v1/compare",
+        params={"indicator": "exports_goods_monthly", "country": ["NI", "HN"]},
+    ).json()
+
+    assert body["comparable"] is False
+    assert any("nit" in note for note in body["comparability_notes"])
+
+
+def test_compare_paginates_periods(compare_client: TestClient) -> None:
+    body = compare_client.get(
+        "/api/v1/compare",
+        params={"indicator": "exports_goods_monthly", "country": ["NI", "GT"], "limit": 1},
+    ).json()
+
+    assert body["meta"]["total"] == 3
+    assert body["meta"]["has_more"] is True
+    assert len(body["data"]) == 1
+    assert body["data"][0]["period_label"] == "2024-01"
+
+
+def test_compare_orders_descending(compare_client: TestClient) -> None:
+    body = compare_client.get(
+        "/api/v1/compare",
+        params={
+            "indicator": "exports_goods_monthly",
+            "country": ["NI", "GT"],
+            "order": "desc",
+        },
+    ).json()
+
+    assert body["data"][0]["period_label"] == "2024-03"
+
+
+def test_compare_requires_at_least_two_countries(compare_client: TestClient) -> None:
+    response = compare_client.get(
+        "/api/v1/compare",
+        params={"indicator": "exports_goods_monthly", "country": ["NI"]},
+    )
+
+    assert response.status_code == 422
+
+
+def test_compare_rejects_more_than_twenty_countries(compare_client: TestClient) -> None:
+    response = compare_client.get(
+        "/api/v1/compare",
+        params={"indicator": "exports_goods_monthly", "country": ["NI"] * 21},
+    )
+
+    assert response.status_code == 422
+
+
+def test_compare_rejects_an_unknown_indicator(compare_client: TestClient) -> None:
+    response = compare_client.get(
+        "/api/v1/compare",
+        params={"indicator": "not_an_indicator", "country": ["NI", "GT"]},
+    )
+
+    assert response.status_code == 404
+
+
+def test_compare_rejects_an_unknown_country(compare_client: TestClient) -> None:
+    response = compare_client.get(
+        "/api/v1/compare",
+        params={"indicator": "exports_goods_monthly", "country": ["NI", "ZZ"]},
+    )
+
+    assert response.status_code == 404

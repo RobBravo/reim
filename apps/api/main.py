@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.errors import register_exception_handlers
 from apps.api.routers import (
+    comparison,
     countries,
     indicators,
     observations,
@@ -113,6 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(sources.router)
     app.include_router(indicators.router)
     app.include_router(observations.router)
+    app.include_router(comparison.router)
     app.include_router(pipelines.router)
     return app
 
