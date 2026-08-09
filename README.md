@@ -460,11 +460,15 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   Managua and rest-of-country breakdowns are separate indicator codes.
   `observations` has no region dimension, so this does not generalise to
   finer geography without a schema change.
-- **One source is not openly licensed.** The IMF merchandise-trade series
-  carries "© International Monetary Fund. All Rights Reserved", unlike every
-  other source here. It is a documented exception to REIM's "openly licensed
-  only" rule; read <https://www.imf.org/external/terms.htm> before
-  redistributing it. See [`docs/sources.md`](./docs/sources.md).
+- **One source is not openly licensed, though it may be redistributed.** The
+  IMF merchandise-trade series carries "© International Monetary Fund. All
+  Rights Reserved", unlike every other source here. Its terms **do permit
+  redistribution with attribution**: cite the IMF — every observation carries
+  the Fund's suggested citation in `raw_metadata.imf_citation` once written —
+  keep the
+  figures exact, and declare any transformation. **Commercial reuse requires
+  permission from `copyright@imf.org`**, which this project has not sought. See
+  [`docs/sources.md`](./docs/sources.md).
 - **The Banco Central de Nicaragua's website blocks automation.** Its monthly
   bulletins sit behind a bot manager, so monetary aggregates and remittances
   are absent: Nicaragua reports neither to the IMF, and the regional

@@ -345,25 +345,42 @@ to about 16 significant digits, so 12 of the 436 months differ in their last
 digit. The check therefore allows a one-cent tolerance — four orders of
 magnitude above the observed noise, and still far below any real misalignment.
 
-**Licence: this source is not openly licensed.** Every row carries:
+**Licence: not open, but redistributable with attribution.** Every row carries:
 
 > © International Monetary Fund Copyright. All Rights Reserved.
 > <https://www.imf.org/external/terms.htm>
 
-REIM's roadmap says "official and openly licensed only". **This source is a
-documented exception**, adopted with the project owner's explicit decision, and
-the catalog records `license: imf_terms_of_use` — deliberately not
-`public_official_data`, which would imply an openness this source does not
-grant. Every observation carries the IMF's own `SUGGESTED_CITATION` in
-`raw_metadata`.
+That copyright line is not an open licence, and REIM's roadmap says "official
+and openly licensed only" — so this source remains a **documented exception**,
+adopted with the project owner's explicit decision. The terms themselves,
+however, do permit reuse. Their "The Use of IMF Data" section allows
+downloading, extracting, copying, creating derived works, publishing and
+distributing data obtained from IMF sites, subject to conditions.
 
-Two facts are recorded rather than reconciled, because resolving them is a
-legal question this project has not answered: the `LICENSE` field says All
-Rights Reserved, and the same rows carry `ACCESS_SHARING_LEVEL = PUBLIC_OPEN`
-and `SECURITY_CLASSIFICATION = PUB`. The terms page could not be retrieved
-programmatically — `imf.org/external/terms.htm` returns an empty document and
-`imf.org/en/About/copyright-and-terms` returns 403 — so its contents are **not**
-summarised here. Read it yourself before relying on this data.
+**What those conditions require of REIM, and how each is met:**
+
+| Condition | How REIM satisfies it |
+|---|---|
+| Attribute the IMF as the source. | The API's OpenAPI description states the requirement to anyone consuming it, and each newly written observation carries the Fund's own suggested citation in `raw_metadata.imf_citation`. **Rows written before this was added keep their old metadata**: `raw_metadata` is deliberately outside the content hash, so an unchanged figure is never rewritten. A rebuild from empty backfills it. |
+| Keep the data exact and intact; do not alter it in ways affecting its nature or accuracy. | Values are parsed as `Decimal` from the published string and stored in unconstrained `NUMERIC`. Nothing is rounded, converted or rescaled — `SCALE` is recorded and deliberately not applied. |
+| Declare any material transformation — aggregation, calculation, normalisation, derived indicators. | REIM applies **none** to this source. The figures served are the figures published. The comparison endpoint aligns periods but computes nothing. |
+| Make reasonable efforts to inform your own users of these conditions when redistributing. | The API description carries an "Attribution and terms" section; `/api/v1/sources` exposes each source's `license` and `documentation_url`. |
+| If sold as a standalone product, tell buyers the data is free from the IMF. | REIM sells nothing. |
+| Some datasets embed third-party material with separate terms. | Recorded here; not separately assessed for IMTS. |
+
+**Commercial reuse needs permission.** The IMF asks that potential commercial
+reuse be cleared with `copyright@imf.org`. Anyone deploying REIM commercially
+must do that themselves — this project has not.
+
+One oddity is recorded rather than resolved: the `LICENSE` field says All
+Rights Reserved while the same rows carry `ACCESS_SHARING_LEVEL = PUBLIC_OPEN`
+and `SECURITY_CLASSIFICATION = PUB`. The terms text above is what governs.
+
+Note that the terms page cannot be fetched programmatically —
+`imf.org/external/terms.htm` returns an empty document to an HTTP client and
+`imf.org/en/About/copyright-and-terms` returns 403 — so it must be read in a
+browser. The summary above was made from such a reading on 2026-08-09; it is a
+summary and not a substitute for the terms.
 
 **What the IMF does *not* have for Nicaragua**, measured rather than assumed:
 

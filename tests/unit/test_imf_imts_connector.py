@@ -453,3 +453,17 @@ def test_validate_now_returns_four_checks(imf_imts_csv: str) -> None:
         "imf_imts_balance_identity",
         "imf_imts_country_match",
     }
+
+
+def test_every_observation_carries_the_imf_citation(imf_imts_csv: str) -> None:
+    """The IMF's terms allow redistribution with attribution, so the citation
+    the source itself supplies travels with every datapoint."""
+    connector = build_connector()
+
+    observations = connector.transform(raw_from(imf_imts_csv))
+
+    citations = {obs.raw_metadata["imf_citation"] for obs in observations}
+    assert len(citations) == 1
+    citation = citations.pop()
+    assert citation.startswith("International Monetary Fund")
+    assert citation

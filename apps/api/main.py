@@ -37,7 +37,9 @@ DESCRIPTION = """
 An open platform that collects, normalizes and publishes economic indicators for
 Central America from official sources, with full provenance and quality controls.
 
-This release covers **Nicaragua**.
+This release covers **Nicaragua, Guatemala, El Salvador, Honduras, Costa Rica
+and Panama**. Depth varies: Nicaragua has national primary sources, the others
+currently have merchandise trade only.
 
 Every observation carries its source, source URL, retrieval timestamp, connector
 and pipeline versions, validation status and a content hash, so any figure can be
@@ -45,6 +47,20 @@ traced back to the publication it came from. Missing upstream values are never
 imputed or interpolated.
 
 The API is read-only; pipelines are run from the CLI.
+
+### Attribution and terms
+
+Each source's licence is on `/api/v1/sources`. Most are open official data, but
+**one is not**: the merchandise-trade series come from the International
+Monetary Fund, whose terms permit redistribution **with attribution**. If you
+republish those figures, cite them as the IMF asks — every observation carries
+the Fund's own suggested citation in `raw_metadata.imf_citation` — keep them
+exact and unaltered, declare any material transformation you apply, and note
+that **commercial reuse requires permission from copyright@imf.org**. The full
+terms are at <https://www.imf.org/external/terms.htm>.
+
+REIM itself alters nothing: it never converts currencies, never rounds a
+published figure and never fills a gap.
 """
 
 TAGS_METADATA = [

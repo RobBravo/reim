@@ -32,10 +32,16 @@ response that is not CSV.
 
 Licence
 -------
-Unlike every other source REIM reads, the IMF's data is **not** openly
-licensed: it carries "© International Monetary Fund Copyright. All Rights
-Reserved." The catalog records this as ``license: imf_terms_of_use`` rather
-than ``public_official_data``. See ``docs/sources.md``.
+The IMF's data carries "© International Monetary Fund Copyright. All Rights
+Reserved", which is not an open licence — but its terms of use **do permit
+redistribution with attribution**. REIM therefore records the IMF's own
+suggested citation on every observation, and the catalog says
+``license: imf_terms_of_use`` rather than ``public_official_data``.
+
+Two conditions bind REIM directly: the figures must stay exact and unaltered,
+which is why nothing here converts or rounds them, and any material
+transformation would have to be declared. Commercial reuse needs permission
+from copyright@imf.org. See ``docs/sources.md``.
 """
 
 from __future__ import annotations
@@ -239,6 +245,9 @@ class ImfImtsTradeConnector(BaseConnector):
                         # Reported by the source but deliberately NOT applied:
                         # the values are already full USD.
                         "imf_scale": (row.get("SCALE") or "").strip(),
+                        # The IMF permits redistribution with attribution, so
+                        # its own suggested citation travels with the figure.
+                        "imf_citation": (row.get("SUGGESTED_CITATION") or "").strip(),
                     },
                 )
             )
