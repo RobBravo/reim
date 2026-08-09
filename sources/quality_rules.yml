@@ -225,3 +225,27 @@ indicators:
     allow_zero: true
     freshness_max_age_days: 120
     min_observations: 300
+
+  # Services trade -------------------------------------------------------
+  # A quarterly source runs months behind by construction: 2026-Q1 was the
+  # newest quarter available in August 2026, 131 days after it ended.
+  exports_services_quarterly: &services_flow
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: false
+    max_period_change_pct: null
+    monotonic_increasing: false
+    freshness_max_age_days: 250
+
+  imports_services_quarterly: *services_flow
+
+  trade_balance_services_quarterly:
+    # 99 of 414 published quarters are deficits. Constraining the sign here
+    # would reject a quarter of the real series.
+    allow_negative: true
+    allow_zero: true
+    max_value: null
+    max_period_change_pct: null
+    monotonic_increasing: false
+    freshness_max_age_days: 250

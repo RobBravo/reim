@@ -389,3 +389,26 @@ def test_the_quetzal_rate_has_no_ceiling(quality_rules: QualityRuleSet) -> None:
     assert rule.allow_negative is False
     assert rule.max_value is None
     assert rule.max_period_change_pct is None
+
+
+def test_services_trade_indicators_have_their_own_rules(quality_rules: QualityRuleSet) -> None:
+    for code in (
+        "exports_services_quarterly",
+        "imports_services_quarterly",
+        "trade_balance_services_quarterly",
+    ):
+        assert code in quality_rules.indicators, f"{code} has no rule set of its own"
+
+
+def test_the_services_balance_may_be_negative(quality_rules: QualityRuleSet) -> None:
+    """99 of 414 quarters are deficits; the sign is the figure's point."""
+    rule = quality_rules.indicators["trade_balance_services_quarterly"]
+
+    assert rule.allow_negative is True
+
+
+def test_services_exports_may_not_be_negative(quality_rules: QualityRuleSet) -> None:
+    rule = quality_rules.indicators["exports_services_quarterly"]
+
+    assert rule.allow_negative is False
+    assert rule.max_value is None
