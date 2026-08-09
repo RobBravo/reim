@@ -12,8 +12,9 @@ from decimal import Decimal
 
 import pytest
 
+from reim.core.constants import CheckSeverity, CheckStatus, CheckType
 from reim.core.exceptions import TransformationError
-from reim.domain.pipelines.models import RawDataset
+from reim.domain.pipelines.models import QualityResult, RawDataset
 from reim.domain.sources.catalog import SourceEntry
 from reim.ingestion.connectors.guatemala.banguat_exchange_rate import (
     BanguatExchangeRateConnector,
@@ -275,3 +276,167 @@ def test_a_day_repeated_identically_is_accepted() -> None:
 def test_a_payload_that_is_not_text_is_an_error() -> None:
     with pytest.raises(TransformationError, match="XML text"):
         build_connector().transform(build_raw({"not": "xml"}))  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------------
+# validate
+# --------------------------------------------------------------------------
+def results_by_name(observations: list) -> dict[str, QualityResult]:  # type: ignore[type-arg]
+    return {result.check_name: result for result in build_connector().validate(observations)}
+
+
+def test_the_recorded_history_passes_every_check(banguat_rango_xml: str) -> None:
+    """The 84 rows where the buy rate sat above the sell rate must not fail a run."""
+    observations = build_connector().transform(build_raw(banguat_rango_xml))
+
+    results = results_by_name(observations)
+
+    assert [r.status for r in results.values()] == [CheckStatus.PASSED] * 3
+
+
+def test_both_sides_present_passes_when_every_day_carries_the_pair() -> None:
+    observations = build_connector().transform(
+        build_raw(envelope(var("01/07/2026", "7.62415", "7.62415")))
+    )
+
+    result = results_by_name(observations)["banguat_both_sides_present"]
+
+    assert result.status is CheckStatus.PASSED
+    assert result.check_type is CheckType.COMPLETENESS
+
+
+def test_a_side_missing_altogether_is_critical() -> None:
+    """A parse bug that drops one tag would otherwise ingest half a series."""
+    observations = [
+        obs
+        for obs in build_connector().transform(
+            build_raw(envelope(var("01/07/2026", "7.62415", "7.62415")))
+        )
+        if obs.indicator_code != "gt_exchange_rate_official_daily_buy"
+    ]
+
+    result = results_by_name(observations)["banguat_both_sides_present"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.CRITICAL
+
+
+def test_one_day_missing_a_side_is_critical() -> None:
+    observations = build_connector().transform(
+        build_raw(
+            envelope(
+                var("01/07/2026", "7.62415", "7.62415"),
+                var("02/07/2026", "7.62500", "7.62500"),
+            )
+        )
+    )
+    trimmed = [
+        obs
+        for obs in observations
+        if not (
+            obs.period.start == date(2026, 7, 2)
+            and obs.indicator_code == "gt_exchange_rate_official_daily_sell"
+        )
+    ]
+
+    result = results_by_name(trimmed)["banguat_both_sides_present"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.CRITICAL
+    assert "1 day(s) buy-only" in result.message
+
+
+def test_the_1990_inversions_do_not_fail_the_spread_check() -> None:
+    """Real history: the buy rate was fixed at 5.15 while the sell rate floated."""
+    observations = build_connector().transform(
+        build_raw(envelope(var("08/11/1990", "4.62181", "5.15")))
+    )
+
+    result = results_by_name(observations)["banguat_sell_not_below_buy"]
+
+    assert result.status is CheckStatus.PASSED
+
+
+def test_an_inversion_from_1992_onwards_fails() -> None:
+    observations = build_connector().transform(
+        build_raw(envelope(var("02/01/1992", "4.62181", "5.15")))
+    )
+
+    result = results_by_name(observations)["banguat_sell_not_below_buy"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.ERROR
+    assert "1992-01-02 sell 4.62181 < buy 5.15" in result.message
+
+
+def test_a_recent_inversion_fails(banguat_rango_xml: str) -> None:
+    """Doctored into the real history, so the check is proven to reach the whole run."""
+    doctored = banguat_rango_xml.replace(
+        "<fecha>01/07/2026</fecha><venta>7.62415</venta><compra>7.62415</compra>",
+        "<fecha>01/07/2026</fecha><venta>7.00000</venta><compra>7.62415</compra>",
+    )
+    assert doctored != banguat_rango_xml
+    observations = build_connector().transform(build_raw(doctored))
+
+    result = results_by_name(observations)["banguat_sell_not_below_buy"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.ERROR
+
+
+def test_the_spread_check_counts_the_days_it_assessed() -> None:
+    observations = build_connector().transform(
+        build_raw(envelope(var("01/07/2026", "7.62415", "7.62415")))
+    )
+
+    result = results_by_name(observations)["banguat_sell_not_below_buy"]
+
+    assert "1 day(s) from 1992" in result.message
+
+
+def test_the_gap_check_counts_the_days_the_source_skips(banguat_rango_xml: str) -> None:
+    observations = build_connector().transform(build_raw(banguat_rango_xml))
+
+    result = results_by_name(observations)["banguat_calendar_gaps"]
+
+    assert result.status is CheckStatus.PASSED
+    assert f"{len(MISSING_DAYS)} not published" in result.message
+    assert result.actual_value == str(PUBLISHED_DAYS)
+
+
+def test_the_gap_check_never_fails() -> None:
+    """Five days are genuinely absent; a failing check would cry wolf on every run."""
+    observations = build_connector().transform(
+        build_raw(
+            envelope(
+                var("01/07/2026", "7.62415", "7.62415"),
+                var("31/07/2026", "7.62500", "7.62500"),
+            )
+        )
+    )
+
+    result = results_by_name(observations)["banguat_calendar_gaps"]
+
+    assert result.status is CheckStatus.PASSED
+    assert "29 not published" in result.message
+
+
+def test_the_gap_check_is_quiet_on_a_single_day() -> None:
+    observations = build_connector().transform(
+        build_raw(envelope(var("01/07/2026", "7.62415", "7.62415")))
+    )
+
+    result = results_by_name(observations)["banguat_calendar_gaps"]
+
+    assert result.status is CheckStatus.PASSED
+    assert "Too few days" in result.message
+
+
+def test_validate_reports_all_three_checks(banguat_rango_xml: str) -> None:
+    observations = build_connector().transform(build_raw(banguat_rango_xml))
+
+    assert set(results_by_name(observations)) == {
+        "banguat_both_sides_present",
+        "banguat_sell_not_below_buy",
+        "banguat_calendar_gaps",
+    }
