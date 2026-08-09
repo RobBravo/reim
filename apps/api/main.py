@@ -111,7 +111,7 @@ def create_app() -> FastAPI:
             "name": "Apache-2.0",
             "url": "https://www.apache.org/licenses/LICENSE-2.0",
         },
-        contact={"name": "REIM", "url": "https://github.com/reim-project/reim"},
+        contact={"name": "REIM", "url": "https://github.com/RobBravo/reim"},
     )
 
     app.add_middleware(

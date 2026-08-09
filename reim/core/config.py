@@ -51,8 +51,7 @@ class Settings(BaseSettings):
     http_retry_backoff_seconds: float = Field(default=1.0, gt=0, le=30)
     http_user_agent: str = Field(
         default=(
-            "REIM/0.1.0 (Regional Economic Intelligence Monitor; "
-            "+https://github.com/reim-project/reim)"
+            "REIM/0.1.0 (Regional Economic Intelligence Monitor; +https://github.com/RobBravo/reim)"
         ),
         description="Sent on every outbound request so operators can identify us.",
     )

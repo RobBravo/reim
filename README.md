@@ -7,9 +7,13 @@
 stores and publishes economic indicators from official sources, keeping complete
 provenance for every figure it holds.
 
-v0.1.0 covers **Nicaragua**. The architecture is country-agnostic: adding
-Guatemala, El Salvador, Honduras, Costa Rica, Panama or Belize is a catalog entry
-plus a connector module, not a redesign.
+REIM covers **six countries**: Nicaragua, Guatemala, El Salvador, Honduras,
+Costa Rica and Panama. Depth varies sharply — Nicaragua reads its national
+central bank and statistics office directly; the other five currently have
+merchandise trade only. Belize is registered but inactive: it reports nothing to
+the dataflow the others come from.
+
+Adding a country is a catalog entry plus a connector module, not a redesign.
 
 ---
 
@@ -52,28 +56,27 @@ CLI, Docker Compose, migrations, tests and CI.
 integration, user authentication, web dashboard, distributed infrastructure.
 See [ROADMAP.md](./ROADMAP.md).
 
-### Data available in v0.1.0
+### Data available
 
-Seven live pipelines, all verified against the source on 2026-08-04. INIDE is
-Nicaragua's national statistics office — a primary national source, at monthly
-resolution:
+**14 live pipelines feeding 19 indicators**, every one verified against its
+source. Nothing here is a scrape of an aggregator.
 
-| Indicator | Source | Frequency | Coverage |
-|-----------|--------|-----------|----------|
-| **CPI index (2006=100)** | **INIDE** | **monthly** | **2007–2026** |
-| **CPI inflation, month on month** | **INIDE** | **monthly** | **2011–2026** |
-| **CPI inflation, year on year** | **INIDE** | **monthly** | **2007–2026** |
-| Official exchange rate (annual avg) | World Bank `PA.NUS.FCRF` | annual | 1960–2025 |
-| Consumer price inflation | World Bank `FP.CPI.TOTL.ZG` | annual | 2000–2025 |
-| Personal remittances received | World Bank `BX.TRF.PWKR.CD.DT` | annual | 1977–2024 |
-| Total international reserves | World Bank `FI.RES.TOTL.CD` | annual | 1960–2025 |
-| Exports of goods and services | World Bank `NE.EXP.GNFS.CD` | annual | 1960–2025 |
-| Imports of goods and services | World Bank `NE.IMP.GNFS.CD` | annual | 1960–2025 |
+| Source | Countries | Frequency | Series | Coverage |
+|--------|-----------|-----------|--------|----------|
+| **BCN** — Banco Central de Nicaragua | Nicaragua | **daily** | official NIO/USD rate | 2012-01 onward |
+| **INIDE** — national statistics office | Nicaragua | **monthly** | CPI index, month-on-month, year-on-year, each for the country, Managua and the rest of the country | 2007 onward |
+| **IMF** — International Merchandise Trade Statistics | all six | **monthly** | exports FOB, imports CIF, trade balance | 1990-01 onward |
+| **World Bank** — Indicators API v2 | Nicaragua | annual | exchange rate, inflation, remittances, reserves, exports, imports | 1960 onward |
 
-One connector ships **disabled**: the BCN daily exchange rate. Its endpoint only
-negotiates a pre-TLS 1.2 handshake that modern OpenSSL rejects, so its response
-contract was never verified. See [docs/sources.md](./docs/sources.md) — this is
-recorded rather than papered over, on purpose.
+The BCN and INIDE series are **national primary sources** — the publisher
+itself, not a multilateral restatement. The IMF series are the exception to
+REIM's "openly licensed only" rule and carry attribution requirements; see the
+limitations below.
+
+No connector currently ships disabled. When one does, it ships with its blocker
+documented rather than papered over — that has happened twice, and both times
+the blocker turned out to be worth recording in
+[docs/sources.md](./docs/sources.md).
 
 ---
 
@@ -146,7 +149,7 @@ Full rationale: [docs/implementation-plan.md](./docs/implementation-plan.md).
 ### With Docker Compose (recommended)
 
 ```bash
-git clone https://github.com/reim-project/reim.git
+git clone https://github.com/RobBravo/reim.git
 cd reim
 cp .env.example .env
 
