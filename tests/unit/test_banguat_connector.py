@@ -10,12 +10,15 @@ import re
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+import httpx
 import pytest
+import respx
 
 from reim.core.constants import CheckSeverity, CheckStatus, CheckType
-from reim.core.exceptions import TransformationError
+from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.pipelines.models import QualityResult, RawDataset
 from reim.domain.sources.catalog import SourceEntry
+from reim.ingestion.connectors.guatemala import banguat_exchange_rate
 from reim.ingestion.connectors.guatemala.banguat_exchange_rate import (
     BanguatExchangeRateConnector,
 )
@@ -440,3 +443,126 @@ def test_validate_reports_all_three_checks(banguat_rango_xml: str) -> None:
         "banguat_sell_not_below_buy",
         "banguat_calendar_gaps",
     }
+
+
+# --------------------------------------------------------------------------
+# extract
+# --------------------------------------------------------------------------
+@pytest.fixture
+def pinned_today(monkeypatch: pytest.MonkeyPatch) -> date:
+    """Pin the connector's notion of today so the requested range is deterministic."""
+    today = date(2026, 8, 9)
+    monkeypatch.setattr(banguat_exchange_rate, "_utc_today", lambda: today)
+    return today
+
+
+def xml_response(body: str) -> httpx.Response:
+    return httpx.Response(200, text=body, headers={"Content-Type": "text/xml; charset=utf-8"})
+
+
+@respx.mock
+async def test_the_whole_history_costs_one_request(
+    pinned_today: date, banguat_rango_xml: str
+) -> None:
+    """No windowing and no separate backfill: a rebuild is complete by default."""
+    route = respx.post(SOAP_URL).mock(return_value=xml_response(banguat_rango_xml))
+
+    raw = await build_connector().extract()
+
+    assert route.call_count == 1
+    assert raw.http_status == 200
+    assert raw.payload == banguat_rango_xml
+    assert raw.metadata["range"] == "1990-01-01/2026-08-09"
+
+
+@respx.mock
+async def test_extract_asks_for_1990_to_today_day_first(pinned_today: date) -> None:
+    route = respx.post(SOAP_URL).mock(return_value=xml_response(envelope()))
+
+    await build_connector().extract()
+    body = route.calls.last.request.content.decode("utf-8")
+
+    assert '<TipoCambioRango xmlns="http://www.banguat.gob.gt/variables/ws/">' in body
+    assert "<fechainit>01/01/1990</fechainit>" in body
+    assert "<fechafin>09/08/2026</fechafin>" in body
+
+
+@respx.mock
+async def test_the_soap_action_is_quoted(pinned_today: date) -> None:
+    """Banguat's IIS host answers an unquoted action with a 500."""
+    route = respx.post(SOAP_URL).mock(return_value=xml_response(envelope()))
+
+    await build_connector().extract()
+
+    assert route.calls.last.request.headers["SOAPAction"] == (
+        '"http://www.banguat.gob.gt/variables/ws/TipoCambioRango"'
+    )
+
+
+@respx.mock
+async def test_extract_sends_the_soap_content_type(pinned_today: date) -> None:
+    route = respx.post(SOAP_URL).mock(return_value=xml_response(envelope()))
+
+    await build_connector().extract()
+
+    assert route.calls.last.request.headers["Content-Type"] == "text/xml; charset=utf-8"
+
+
+@respx.mock
+async def test_extract_records_what_the_service_answered(pinned_today: date) -> None:
+    respx.post(SOAP_URL).mock(return_value=xml_response(envelope()))
+
+    raw = await build_connector().extract()
+
+    assert raw.content_type == "text/xml; charset=utf-8"
+    assert raw.source_url == SOAP_URL
+    assert raw.metadata["operation"] == "TipoCambioRango"
+
+
+@respx.mock
+async def test_an_html_answer_is_rejected(pinned_today: date) -> None:
+    """A captive portal or an error page must not reach transform as data."""
+    respx.post(SOAP_URL).mock(
+        return_value=httpx.Response(
+            200, text="<html>maintenance</html>", headers={"Content-Type": "text/html"}
+        )
+    )
+
+    with pytest.raises(ExtractionError, match="xml"):
+        await build_connector().extract()
+
+
+@respx.mock
+async def test_extract_raises_when_the_service_errors(pinned_today: date) -> None:
+    # 404 rather than 500: a real answer, so ensure_ok raises immediately
+    # instead of burning four attempts of exponential backoff.
+    respx.post(SOAP_URL).mock(return_value=httpx.Response(404, text="not found"))
+
+    with pytest.raises(ExtractionError, match="HTTP 404"):
+        await build_connector().extract()
+
+
+@respx.mock
+async def test_an_empty_body_is_rejected(pinned_today: date) -> None:
+    respx.post(SOAP_URL).mock(
+        return_value=httpx.Response(200, text="", headers={"Content-Type": "text/xml"})
+    )
+
+    with pytest.raises(ExtractionError, match="empty body"):
+        await build_connector().extract()
+
+
+@pytest.mark.live
+async def test_live_service_still_answers_the_recorded_contract() -> None:
+    """Opt-in: hits the real Banguat service. Run with `pytest -m live`."""
+    connector = build_connector()
+
+    raw = await connector.extract()
+    observations = connector.transform(raw)
+
+    days = {obs.period.start for obs in observations}
+    assert min(days) == date(1990, 1, 1)
+    assert len(days) >= PUBLISHED_DAYS
+    assert len(observations) == 2 * len(days)
+    assert all(obs.value_numeric is not None and obs.value_numeric > 0 for obs in observations)
+    assert all(result.status is CheckStatus.PASSED for result in connector.validate(observations))
