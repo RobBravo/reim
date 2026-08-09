@@ -28,11 +28,13 @@ field, which is why the payload is decoded twice.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, ClassVar
+from urllib.parse import urlencode
 
 from reim.core.constants import CheckSeverity, CheckType, Frequency
-from reim.core.exceptions import TransformationError
+from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
     NormalizedObservation,
@@ -40,6 +42,7 @@ from reim.domain.pipelines.models import (
     RawDataset,
 )
 from reim.ingestion.base import BaseConnector
+from reim.ingestion.http import ensure_ok, http_client, post
 
 #: ``(flujo code, indicator code, record-id suffix)`` for each published flow.
 FLOWS: tuple[tuple[str, str, str], ...] = (
@@ -118,9 +121,89 @@ class SiecaServicesTradeConnector(BaseConnector):
     unit: ClassVar[str] = "current USD"
     currency_code: ClassVar[str] = "USD"
 
-    async def extract(self) -> RawDataset:  # pragma: no cover - written in Task 6
-        """Not yet implemented; the four ``LoadFilters``/``LoadData`` requests land in Task 6."""
-        raise NotImplementedError
+    async def extract(self) -> RawDataset:
+        """Fetch the available quarters, then one payload per flow.
+
+        Four requests. The window comes from ``LoadFilters`` rather than a
+        constant, so a newly published quarter is picked up without a code
+        change.
+
+        Raises:
+            ExtractionError: The service was unreachable, kept failing, or
+                answered with something other than JSON — including the empty
+                ``202`` it returns to a client it will not serve.
+        """
+        base = str(self.source.base_url).rstrip("/")
+        retrieved_at = datetime.now(UTC)
+        payload: dict[str, str] = {}
+        status: int | None = None
+        content_type: str | None = None
+
+        async with http_client(user_agent=self.source.user_agent) as client:
+            filters = await post(
+                client,
+                f"{base}/LoadFilters",
+                content=b"{}",
+                headers={"Content-Type": "application/json; charset=UTF-8"},
+            )
+            ensure_ok(filters, expected_content_type="json")
+            quarters = self._quarters_of(filters.text)
+
+            for flow, _, _ in FLOWS:
+                body = urlencode(
+                    {
+                        "flujo": flow,
+                        "unidadMedida": "MD",
+                        "paises": "1,2,3,4,5,6",
+                        "paisesDestino": "0",
+                        "periodos": ",".join(quarters),
+                        "categoria": "0",
+                    }
+                ).encode("utf-8")
+                response = await post(
+                    client,
+                    f"{base}/LoadData",
+                    content=body,
+                    headers={"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"},
+                )
+                ensure_ok(response, expected_content_type="json")
+                payload[flow] = response.text
+                status = response.status_code
+                content_type = response.headers.get("content-type")
+
+        return RawDataset(
+            source_key=self.source.key,
+            retrieved_at=retrieved_at,
+            source_url=base,
+            payload=payload,
+            content_type=content_type,
+            http_status=status,
+            metadata={
+                "operation": "LoadData",
+                "quarters": len(quarters),
+                "component": "1.A.b.0",
+                "flows": [flow for flow, _, _ in FLOWS],
+            },
+        )
+
+    def _quarters_of(self, text: str) -> list[str]:
+        """Read the available quarter labels from a ``LoadFilters`` response.
+
+        Raises:
+            ExtractionError: The response carries no usable period list.
+        """
+        try:
+            document = json.loads(text)
+            periods = document["Periodo"]
+            quarters = [f"{period['Trimestre']} {period['Anio']}" for period in periods]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            msg = f"SIECA LoadFilters returned no usable period list: {exc}"
+            raise ExtractionError(msg, source_key=self.source.key) from exc
+
+        if not quarters:
+            msg = "SIECA LoadFilters returned an empty period list"
+            raise ExtractionError(msg, source_key=self.source.key)
+        return quarters
 
     def transform(self, raw: RawDataset) -> list[NormalizedObservation]:
         """Normalize the three flow payloads into one observation per cell.

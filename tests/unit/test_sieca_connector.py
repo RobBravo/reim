@@ -9,10 +9,12 @@ import json
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+import httpx
 import pytest
+import respx
 
 from reim.core.constants import CheckSeverity, CheckStatus
-from reim.core.exceptions import TransformationError
+from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.connectors.regional.sieca_services_trade import (
@@ -429,3 +431,169 @@ def test_flows_covering_different_cells_fail(raw: RawDataset) -> None:
 
     assert result.status is CheckStatus.FAILED
     assert result.severity is CheckSeverity.ERROR
+
+
+FILTERS_URL = "https://www.servicios.sieca.int/ReporteGeneralServicios/LoadFilters"
+DATA_URL = "https://www.servicios.sieca.int/ReporteGeneralServicios/LoadData"
+
+
+def json_response(body: str) -> httpx.Response:
+    return httpx.Response(
+        200, text=body, headers={"Content-Type": "application/json; charset=utf-8"}
+    )
+
+
+@respx.mock
+async def test_a_run_makes_one_filters_call_and_one_per_flow(
+    sieca_filters_json: str,
+    sieca_exports_json: str,
+    sieca_imports_json: str,
+    sieca_balance_json: str,
+) -> None:
+    filters = respx.post(FILTERS_URL).mock(return_value=json_response(sieca_filters_json))
+    data = respx.post(DATA_URL).mock(
+        side_effect=[
+            json_response(sieca_exports_json),
+            json_response(sieca_imports_json),
+            json_response(sieca_balance_json),
+        ]
+    )
+
+    raw = await build_connector().extract()
+
+    assert filters.call_count == 1
+    assert data.call_count == 3
+    assert set(raw.payload) == {"E", "I", "S"}
+    assert raw.payload["E"] == sieca_exports_json
+
+
+@respx.mock
+async def test_the_requested_quarters_come_from_the_source(
+    sieca_filters_json: str,
+    sieca_exports_json: str,
+    sieca_imports_json: str,
+    sieca_balance_json: str,
+) -> None:
+    """Not a hardcoded list: a new quarter must be picked up without a code change."""
+    respx.post(FILTERS_URL).mock(return_value=json_response(sieca_filters_json))
+    data = respx.post(DATA_URL).mock(
+        side_effect=[
+            json_response(sieca_exports_json),
+            json_response(sieca_imports_json),
+            json_response(sieca_balance_json),
+        ]
+    )
+
+    await build_connector().extract()
+    body = data.calls[0].request.content.decode("utf-8")
+
+    assert "I+Trim+2026" in body
+    assert "IV+Trim+2009" in body
+    assert body.count("Trim") == QUARTERS
+
+
+@respx.mock
+async def test_extract_sends_the_declared_user_agent(
+    sieca_filters_json: str,
+    sieca_exports_json: str,
+    sieca_imports_json: str,
+    sieca_balance_json: str,
+) -> None:
+    """The host answers REIM's own identifier with 202 and an empty body."""
+    respx.post(FILTERS_URL).mock(return_value=json_response(sieca_filters_json))
+    data = respx.post(DATA_URL).mock(
+        side_effect=[
+            json_response(sieca_exports_json),
+            json_response(sieca_imports_json),
+            json_response(sieca_balance_json),
+        ]
+    )
+
+    await build_connector().extract()
+
+    assert data.calls[0].request.headers["User-Agent"].startswith("Mozilla/5.0")
+
+
+@respx.mock
+async def test_extract_asks_for_all_six_countries_and_the_total_component(
+    sieca_filters_json: str,
+    sieca_exports_json: str,
+    sieca_imports_json: str,
+    sieca_balance_json: str,
+) -> None:
+    respx.post(FILTERS_URL).mock(return_value=json_response(sieca_filters_json))
+    data = respx.post(DATA_URL).mock(
+        side_effect=[
+            json_response(sieca_exports_json),
+            json_response(sieca_imports_json),
+            json_response(sieca_balance_json),
+        ]
+    )
+
+    await build_connector().extract()
+    body = data.calls[0].request.content.decode("utf-8")
+
+    assert "paises=1%2C2%2C3%2C4%2C5%2C6" in body
+    assert "categoria=0" in body
+    assert "unidadMedida=MD" in body
+    assert "paisesDestino=0" in body
+
+
+@respx.mock
+async def test_an_empty_202_is_rejected(sieca_filters_json: str) -> None:
+    """This is exactly what the host returns to a client it will not serve."""
+    respx.post(FILTERS_URL).mock(
+        return_value=httpx.Response(202, text="", headers={"Content-Type": "text/html"})
+    )
+
+    with pytest.raises(ExtractionError, match="empty body"):
+        await build_connector().extract()
+
+
+@respx.mock
+async def test_an_html_answer_is_rejected(sieca_filters_json: str) -> None:
+    respx.post(FILTERS_URL).mock(
+        return_value=httpx.Response(
+            403, text="<html>forbidden</html>", headers={"Content-Type": "text/html"}
+        )
+    )
+
+    with pytest.raises(ExtractionError, match="HTTP 403"):
+        await build_connector().extract()
+
+
+@respx.mock
+async def test_extract_records_what_the_service_answered(
+    sieca_filters_json: str,
+    sieca_exports_json: str,
+    sieca_imports_json: str,
+    sieca_balance_json: str,
+) -> None:
+    respx.post(FILTERS_URL).mock(return_value=json_response(sieca_filters_json))
+    respx.post(DATA_URL).mock(
+        side_effect=[
+            json_response(sieca_exports_json),
+            json_response(sieca_imports_json),
+            json_response(sieca_balance_json),
+        ]
+    )
+
+    raw = await build_connector().extract()
+
+    assert raw.http_status == 200
+    assert raw.content_type == "application/json; charset=utf-8"
+    assert raw.metadata["quarters"] == QUARTERS
+    assert raw.metadata["component"] == "1.A.b.0"
+
+
+@pytest.mark.live
+async def test_live_service_still_answers_the_recorded_contract() -> None:
+    """Opt-in: hits the real SIECA portal. Run with `pytest -m live`."""
+    connector = build_connector()
+
+    raw = await connector.extract()
+    observations = connector.transform(raw)
+
+    assert len(observations) >= OBSERVATIONS
+    assert {o.country_iso3 for o in observations} == {"CRI", "SLV", "GTM", "HND", "NIC", "PAN"}
+    assert all(result.status is CheckStatus.PASSED for result in connector.validate(observations))
