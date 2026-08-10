@@ -138,7 +138,12 @@ def test_every_flow_country_and_quarter_becomes_an_observation(raw: RawDataset) 
 
 
 def test_millions_become_whole_usd(raw: RawDataset) -> None:
-    """375.3 million is 375,300,000 exactly — no float anywhere in the path."""
+    """356.5 million becomes 356,500,000 USD, unit and currency set correctly.
+
+    356.5 happens to be exact in IEEE-754 float, so this test alone would not
+    catch a regression to plain ``float`` parsing — that guarantee is
+    ``test_a_value_not_exact_in_binary_float_still_lands_exactly`` below.
+    """
     observations = build_connector().transform(raw)
     nicaragua = next(
         o

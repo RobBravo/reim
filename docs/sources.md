@@ -478,7 +478,7 @@ investigation, and none was in scope for the Guatemalan increment.
 | **Frequency** | Quarterly — REIM's first |
 | **Coverage** | **2009-Q1 … 2026-Q1**, verified — 69 consecutive quarters, no gaps |
 | **Countries** | All six, from one request; REIM's first source with no country of its own |
-| **Licence** | Public official data |
+| **Licence** | ⚠️ All rights reserved. See below. |
 | **Status** | ✅ **Enabled** — 1,242 observations, measured 2026-08-09 |
 
 **What the roadmap wanted was not what exists.** The roadmap named "SIECA
@@ -538,8 +538,8 @@ from the published balance by up to **0.1 million USD**, and **71 of 414 cells**
 deviate by more than 0.05. The source rounds each flow to one decimal in
 millions, so two roundings of ±0.05 accumulate; this is arithmetic, not a data
 error. The tolerance is therefore **100,000 USD** — equal to the worst deviation
-observed, and still four orders of magnitude below the smallest quarterly figure
-in the series (147.5 million USD). The same mistake was already corrected once
+observed, and still three orders of magnitude below the smallest quarterly figure
+in the series (114.4 million USD). The same mistake was already corrected once
 in the IMF connector, where the tolerance is one cent.
 
 **Values arrive as JSON floats, not strings.** `Decimal(375.3)` is
@@ -560,6 +560,22 @@ shares the methodology.
 `sieca_balance_identity` (consistency, `error`),
 `sieca_quarterly_continuity` (completeness, `warning`) and
 `sieca_flow_coverage` (consistency, `error`).
+
+**Licence: no grant found.** Measured on 2026-08-09: `www.sieca.int`'s footer
+reads `© Todos los derechos reservados · SIECA 2026`, and
+`www.servicios.sieca.int`'s reads `© SIECA: Todos los derechos reservados` —
+both "all rights reserved", not an open licence. No terms-of-use, legal-notice
+or privacy page could be located: `/terminos-de-uso/`, `/aviso-legal/`,
+`/politica-de-privacidad/` and `/terminos-y-condiciones/` all return `404`, and
+neither the site footer nor the sitemap page links to one.
+`www.sieca.int/robots.txt` disallows only WooCommerce and `wp-admin` paths and
+otherwise allows crawling; `www.servicios.sieca.int` serves no `robots.txt` at
+all. Unlike the IMF entry above, there is no terms page to read and summarise —
+there is nothing to read. REIM has found no licence grant of any kind for this
+data, and redistributes these figures anyway, with attribution, as official
+public statistics from a regional intergovernmental body. A reader who needs
+certainty about reuse rights should ask SIECA directly rather than rely on this
+paragraph.
 
 #### The access decision, and the rule it rewrites
 

@@ -425,7 +425,7 @@ sources:
       - exports_services_quarterly
       - imports_services_quarterly
       - trade_balance_services_quarterly
-    license: public_official_data
+    license: sieca_all_rights_reserved
     official: true
     enabled: true
     user_agent: >-

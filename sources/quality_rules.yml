@@ -237,6 +237,11 @@ indicators:
     max_period_change_pct: null
     monotonic_increasing: false
     freshness_max_age_days: 250
+    # SIECA returns its complete history on every run: 69 quarters x 6
+    # countries = 414 cells per flow. 400 leaves room for a quarter or two
+    # of genuine gaps while still catching a run truncated to only the
+    # newest quarter, which would otherwise pass every other SIECA check.
+    min_observations: 400
 
   imports_services_quarterly: *services_flow
 
@@ -249,3 +254,6 @@ indicators:
     max_period_change_pct: null
     monotonic_increasing: false
     freshness_max_age_days: 250
+    # Same floor and the same reason as the two flows above: 414 is the real
+    # per-indicator count, and a run returning far less should not pass.
+    min_observations: 400

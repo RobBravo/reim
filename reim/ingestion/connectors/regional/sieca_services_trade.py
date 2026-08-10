@@ -193,6 +193,9 @@ class SiecaServicesTradeConnector(BaseConnector):
             ExtractionError: The response carries no usable period list.
         """
         try:
+            # Plain json.loads, not parse_float=Decimal: LoadFilters carries only
+            # quarter labels ("I Trim 2026") and country names, no decimal
+            # figures, so there is nothing here for float parsing to corrupt.
             document = json.loads(text)
             periods = document["Periodo"]
             quarters = [f"{period['Trimestre']} {period['Anio']}" for period in periods]

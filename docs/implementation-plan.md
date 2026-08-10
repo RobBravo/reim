@@ -555,8 +555,8 @@ have been silent.
 0.05. The source rounds each flow to one decimal in millions, so two roundings
 of ±0.05 accumulate; this is arithmetic, not a data error, and an exact check
 would have failed on every run forever. The tolerance is **100,000 USD** —
-equal to the worst deviation observed, and four orders of magnitude below the
-smallest quarterly figure in the series (147.5 million USD). The same mistake
+equal to the worst deviation observed, and three orders of magnitude below the
+smallest quarterly figure in the series (114.4 million USD). The same mistake
 had already been corrected once, in the IMF connector, where the tolerance is
 one cent.
 
