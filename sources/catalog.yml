@@ -398,3 +398,42 @@ sources:
     license: public_official_data
     official: true
     enabled: true
+
+  # ------------------------------------------------------------------------
+  # Regional — Secretaría de Integración Económica Centroamericana
+  #
+  # REIM's first quarterly source and its first source with no country of its
+  # own: one request returns all six. The host serves nothing to a client that
+  # identifies itself honestly, so the User-Agent is declared below rather
+  # than hidden in the connector. See docs/sources.md.
+  # ------------------------------------------------------------------------
+  - key: sieca_services_trade
+    name: Central American trade in services (quarterly)
+    description: >-
+      Quarterly exports, imports and balance of services for the six Central
+      American countries, from SIECA's regional compilation, covering
+      2009-Q1 onwards. Services only; merchandise comes from the IMF.
+    organization: SIECA
+    category: external_sector
+    access_type: http_api
+    frequency: quarterly
+    format: json
+    base_url: https://www.servicios.sieca.int/ReporteGeneralServicios
+    documentation_url: https://www.servicios.sieca.int/ReporteGeneralServicios
+    connector: reim.ingestion.connectors.regional.sieca_services_trade
+    indicators:
+      - exports_services_quarterly
+      - imports_services_quarterly
+      - trade_balance_services_quarterly
+    license: sieca_all_rights_reserved
+    official: true
+    enabled: true
+    user_agent: >-
+      Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko)
+      Chrome/126.0 Safari/537.36
+    user_agent_note: >-
+      www.servicios.sieca.int answers REIM's own User-Agent with 202 and an
+      empty body, and curl with 403; only a browser User-Agent receives data.
+      The filter covers the whole host, including its static PDFs. No active
+      control is defeated — this is a header check, not a challenge. Remove
+      this override if SIECA opens the host to identified clients.

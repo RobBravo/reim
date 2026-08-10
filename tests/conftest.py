@@ -106,6 +106,30 @@ def inide_index_html() -> str:
     return (FIXTURES / "inide_ipc_index.html").read_text(encoding="utf-8")
 
 
+@pytest.fixture(scope="session")
+def sieca_filters_json() -> str:
+    """Real SIECA LoadFilters response: the country list and 69 quarters."""
+    return (FIXTURES / "sieca_filters.json").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
+def sieca_exports_json() -> str:
+    """Real SIECA LoadData response, exports, six countries, whole history."""
+    return (FIXTURES / "sieca_flow_exports.json").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
+def sieca_imports_json() -> str:
+    """Real SIECA LoadData response, imports, six countries, whole history."""
+    return (FIXTURES / "sieca_flow_imports.json").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
+def sieca_balance_json() -> str:
+    """Real SIECA LoadData response, balance, six countries, whole history."""
+    return (FIXTURES / "sieca_flow_balance.json").read_text(encoding="utf-8")
+
+
 @pytest.fixture
 def inide_source(catalog: SourceCatalog) -> SourceEntry:
     """Catalog entry for the INIDE monthly CPI source."""

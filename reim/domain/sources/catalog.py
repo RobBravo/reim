@@ -61,6 +61,10 @@ class SourceEntry(BaseModel):
     #: TLS policy this host requires. ``LEGACY`` must justify itself.
     tls_profile: TlsProfile = TlsProfile.MODERN
     tls_note: str | None = None
+    #: User-Agent this host requires. Anything but ``None`` must justify itself
+    #: in ``user_agent_note``, exactly as ``tls_profile: legacy`` must.
+    user_agent: str | None = None
+    user_agent_note: str | None = None
     #: Free-form connector configuration, passed through unchanged.
     options: dict[str, Any] = Field(default_factory=dict)
 
@@ -97,6 +101,10 @@ class SourceEntry(BaseModel):
 
         if self.tls_profile is TlsProfile.LEGACY and not self.tls_note:
             msg = "a source with tls_profile 'legacy' must document 'tls_note'"
+            raise ValueError(msg)
+
+        if self.user_agent and not self.user_agent_note:
+            msg = "a source overriding 'user_agent' must document 'user_agent_note'"
             raise ValueError(msg)
 
         return self

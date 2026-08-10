@@ -73,6 +73,7 @@ async def http_client(
     settings: Settings | None = None,
     *,
     tls_profile: TlsProfile = TlsProfile.MODERN,
+    user_agent: str | None = None,
 ) -> AsyncIterator[httpx.AsyncClient]:
     """Yield a configured :class:`httpx.AsyncClient`.
 
@@ -81,6 +82,9 @@ async def http_client(
         tls_profile: TLS policy the source requires. ``LEGACY`` downgrades the
             handshake and is logged at warning level on every use, so no
             connector can quietly weaken its transport.
+        user_agent: Override the project-wide User-Agent for one host. Logged
+            at warning level on every use, so no connector can quietly
+            misrepresent the client.
     """
     resolved = settings or get_settings()
     verify: ssl.SSLContext | bool = True
@@ -88,9 +92,13 @@ async def http_client(
         logger.warning("http.legacy_tls_enabled", tls_profile=tls_profile.value)
         verify = legacy_tls_context()
 
+    resolved_agent = user_agent or resolved.http_user_agent
+    if user_agent:
+        logger.warning("http.user_agent_override", user_agent=user_agent)
+
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(resolved.http_timeout_seconds),
-        headers={"User-Agent": resolved.http_user_agent, "Accept-Encoding": "gzip, deflate"},
+        headers={"User-Agent": resolved_agent, "Accept-Encoding": "gzip, deflate"},
         follow_redirects=True,
         limits=httpx.Limits(max_connections=5, max_keepalive_connections=2),
         verify=verify,

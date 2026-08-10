@@ -43,6 +43,8 @@ _IMF_TERMS = "https://www.imf.org/external/terms.htm"
 #: Banguat publishes no separate methodology page; the service description
 #: is the closest stable reference.
 _BANGUAT_WS = "https://www.banguat.gob.gt/variables/ws/TipoCambio.asmx"
+#: SIECA publishes no separate methodology page; the report is its own reference.
+_SIECA_REPORT = "https://www.servicios.sieca.int/ReporteGeneralServicios"
 
 INDICATORS: tuple[IndicatorDefinition, ...] = (
     IndicatorDefinition(
@@ -331,6 +333,48 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         unit="current USD",
         value_type=ValueType.LEVEL,
         methodology_url=_IMF_TERMS,
+    ),
+    IndicatorDefinition(
+        code="exports_services_quarterly",
+        name="Exports of services (quarterly)",
+        description=(
+            "Exports of services to the world, quarterly, from SIECA's regional "
+            "compilation. Services only: this does not include merchandise, "
+            "which REIM holds monthly from the IMF, and it is not the World "
+            "Bank's annual goods-and-services aggregate."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=_SIECA_REPORT,
+    ),
+    IndicatorDefinition(
+        code="imports_services_quarterly",
+        name="Imports of services (quarterly)",
+        description=(
+            "Imports of services from the world, quarterly, from SIECA's "
+            "regional compilation. Services only; see exports_services_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=_SIECA_REPORT,
+    ),
+    IndicatorDefinition(
+        code="trade_balance_services_quarterly",
+        name="Services trade balance (quarterly)",
+        description=(
+            "Exports minus imports of services, quarterly, as published by "
+            "SIECA. Taken from the source rather than derived; REIM checks the "
+            "identity but does not compute the figure."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=_SIECA_REPORT,
     ),
 )
 

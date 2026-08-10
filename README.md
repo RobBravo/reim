@@ -58,7 +58,7 @@ See [ROADMAP.md](./ROADMAP.md).
 
 ### Data available
 
-**15 live pipelines feeding 21 indicators**, every one verified against its
+**16 live pipelines feeding 24 indicators**, every one verified against its
 source. Nothing here is a scrape of an aggregator.
 
 | Source | Countries | Frequency | Series | Coverage |
@@ -67,6 +67,7 @@ source. Nothing here is a scrape of an aggregator.
 | **Banguat** — Banco de Guatemala | Guatemala | **daily** | official GTQ/USD rate, buy and sell | 1990-01 onward |
 | **INIDE** — national statistics office | Nicaragua | **monthly** | CPI index, month-on-month, year-on-year, each for the country, Managua and the rest of the country | 2007 onward |
 | **IMF** — International Merchandise Trade Statistics | all six | **monthly** | exports FOB, imports CIF, trade balance | 1990-01 onward |
+| **SIECA** — Secretaría de Integración Económica Centroamericana | all six | **quarterly** | services exports, imports, balance | 2009-Q1 onward |
 | **World Bank** — Indicators API v2 | Nicaragua | annual | exchange rate, inflation, remittances, reserves, exports, imports | 1960 onward |
 
 The BCN, Banguat and INIDE series are **national primary sources** — the
@@ -207,7 +208,7 @@ Most commonly changed:
 | `REIM_LOG_JSON` | `false` | JSON logs for containers and CI |
 | `REIM_HTTP_TIMEOUT_SECONDS` | `30` | Per-request timeout for connectors |
 | `REIM_HTTP_MAX_RETRIES` | `3` | Retries on transport errors and 5xx |
-| `REIM_HTTP_USER_AGENT` | identifies REIM | Sent to every official source |
+| `REIM_HTTP_USER_AGENT` | identifies REIM | Sent to every official source, except where a catalog entry declares its own `user_agent` (only `sieca_services_trade` does; see the limitations) |
 | `REIM_CATALOG_PATH` | `sources/catalog.yml` | Source catalog location |
 | `REIM_CORS_ALLOW_ORIGINS` | `*` | Narrow before exposing publicly |
 | `REIM_MAX_PAGE_SIZE` | `1000` | Hard cap on page size |
@@ -245,7 +246,7 @@ second is easy to forget:
 ```bash
 alembic upgrade head
 python -m reim.cli db seed
-python -m reim.cli pipeline run-all          # ~36,000 observations
+python -m reim.cli pipeline run-all          # ~37,000 observations
 ```
 
 That leaves **`bcn_exchange_rate` with about 40 rows**, not the 5,334 it holds
@@ -259,9 +260,10 @@ scheduled runs return to two requests:
 python -m reim.cli pipeline run bcn_exchange_rate   # ~5,300 inserted, ~30 s
 ```
 
-Everything else — INIDE, Banguat and the six IMF trade series — ships its full
-history in the routine run, because each of those sources publishes the
-complete series on every request. Banguat's 36 years cost one request of 1.3 MB.
+Everything else — INIDE, Banguat, SIECA and the six IMF trade series — ships its
+full history in the routine run, because each of those sources publishes the
+complete series on every request. Banguat's 36 years cost one request of 1.3 MB;
+SIECA's 69 quarters for six countries cost four requests of 16.7 KB each.
 
 A complete rebuild lands on the order of **42,000 observations**. No exact
 figure is given on purpose: the BCN and Banguat each publish a rate every
@@ -273,7 +275,7 @@ To see the real composition:
 python -m reim.cli pipeline status
 ```
 
-A `run-all` that reports fewer than 15 successes is usually an upstream problem
+A `run-all` that reports fewer than 16 successes is usually an upstream problem
 rather than a REIM fault: connectors retry and then fail loudly instead of
 writing partial data. The error message carries the exact URL, so request it
 yourself before assuming a bug — outages are often **per series**, not per host.
@@ -440,8 +442,9 @@ make test-cov       # with coverage
 make check          # lint + typecheck + catalog + tests (what CI runs)
 ```
 
-406 tests. Integration tests skip cleanly when `REIM_TEST_DATABASE_URL` is unset,
-so `pytest` works on a bare checkout.
+493 tests — 377 offline, 112 integration and 4 opt-in live. Integration tests
+skip cleanly when `REIM_TEST_DATABASE_URL` is unset, so `pytest` works on a bare
+checkout.
 
 **No test calls a live official source.** Connector tests replay recorded
 fixtures through `respx`. To check the real services on purpose:
@@ -460,7 +463,7 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
 - **Three national primary sources, the rest multilateral.** INIDE's monthly
   CPI — national, Managua and rest-of-country — the BCN's daily exchange rate
   and Banguat's daily rate pair come straight from the publisher; the remaining
-  connectors read the World Bank and the IMF, which compile from national
+  connectors read the World Bank, the IMF and SIECA, which compile from national
   statistics and are one step removed from it.
 - **Subnational coverage is two regions, not a geography model.** INIDE's
   Managua and rest-of-country breakdowns are separate indicator codes.
@@ -475,10 +478,31 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   figures exact, and declare any transformation. **Commercial reuse requires
   permission from `copyright@imf.org`**, which this project has not sought. See
   [`docs/sources.md`](./docs/sources.md).
-- **The Banco Central de Nicaragua's website blocks automation.** Its monthly
-  bulletins sit behind a bot manager, so monetary aggregates and remittances
-  are absent: Nicaragua reports neither to the IMF, and the regional
-  alternative requires a credentialed account.
+- **Publishers' edge rules, stated in two parts rather than as one absolute.**
+
+  **REIM does not defeat an active access control.** `www.bcn.gob.ni` sits
+  behind a Radware bot manager that answers every automated request with a
+  JavaScript challenge; REIM does not execute it, and that has not changed. The
+  consequence is real: the BCN's monthly bulletins stay out of reach, so
+  monetary aggregates and remittances are absent — Nicaragua reports neither to
+  the IMF, and the regional alternative requires a credentialed account.
+
+  **REIM does satisfy a static header check.** SIECA's edge allows or denies on
+  the `User-Agent` string alone: REIM's own identifier receives `202` with an
+  empty body, `curl` receives `403`, a browser string receives the data. REIM
+  sends a string the host accepts, changes nothing else, keeps the same timeout
+  and retry policy as every other source, and declares it in the catalog entry.
+
+  These are different things, and the project's rule is stated in both parts
+  rather than as one absolute that its own catalog would contradict. See
+  [`docs/sources.md`](./docs/sources.md).
+- **One source is converted, and says so.** SIECA publishes services trade in
+  **millions of USD**; REIM stores whole USD, multiplying by 10⁶ in `Decimal`.
+  It is the project's first declared transformation and the only one: every
+  observation keeps `sieca_published_value`, `sieca_published_unit` and
+  `sieca_scale_applied` in `raw_metadata`, so the published figure is
+  recoverable exactly. Nothing else in REIM rescales, converts a currency or
+  restates a unit.
 - **The BCN endpoint requires a TLS 1.0 handshake.** REIM relaxes the protocol
   version and cipher security level for that one host, declared and justified in
   `sources/catalog.yml`. Certificate and hostname verification stay enforced.
@@ -488,10 +512,10 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   freshness thresholds are measured in hundreds of days, not days.
 - **Six countries, but only two of them beyond trade.** Nicaragua has the
   BCN's daily exchange rate and INIDE's monthly CPI; Guatemala has Banguat's
-  daily rate pair. El Salvador, Honduras, Costa Rica and Panama have
-  **merchandise trade only**, from the IMF. Belize has nothing: it reports
-  nothing to that dataflow at any frequency, and stays inactive in the
-  registry.
+  daily rate pair. El Salvador, Honduras, Costa Rica and Panama have **trade
+  only** — monthly merchandise from the IMF and quarterly services from SIECA.
+  Belize has neither: it reports nothing to the IMF dataflow at any frequency
+  and is not one of SIECA's six, so it stays inactive in the registry.
 - **No authentication or rate limiting.** Do not expose this publicly without
   putting a gateway in front and narrowing `REIM_CORS_ALLOW_ORIGINS`.
 - **Revisions are recorded, not reconciled.** REIM keeps the history but does

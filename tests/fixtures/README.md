@@ -16,6 +16,15 @@ never calls an official source.
 | `bcn_tc_mes_2020_03.xml` | Same endpoint, `RecuperaTC_Mes(2020, 3)` — the crawling peg, rows in the source's own arbitrary order | 2026-08-08 |
 | `bcn_tc_mes_2011_12.xml` | Same endpoint, `RecuperaTC_Mes(2011, 12)` — one month before coverage; the service answers with an empty result and no SOAP fault | 2026-08-08 |
 | `bcn_tc_mes_2026_12.xml` | Same endpoint, `RecuperaTC_Mes(2026, 12)` — a month that has not happened. The service projects the frozen rate forward to the end of the current calendar year; the connector discards these rows | 2026-08-08 |
+| `sieca_filters.json` | `POST https://www.servicios.sieca.int/ReporteGeneralServicios/LoadFilters` with `{}`, byte-for-byte. Holds the country list, the 69 available quarters and the 33-component services taxonomy. | 2026-08-09 |
+| `sieca_flow_exports.json` | `POST .../LoadData` with `flujo=E`, `unidadMedida=MD`, `paises=1,2,3,4,5,6`, `paisesDestino=0`, all 69 quarters, `categoria=0`. The **complete** series — six countries × 69 quarters, no holes. | 2026-08-09 |
+| `sieca_flow_imports.json` | Same request with `flujo=I`. | 2026-08-09 |
+| `sieca_flow_balance.json` | Same request with `flujo=S`. Recorded so the balance identity is checked against the published figure rather than a computed one. | 2026-08-09 |
+
+The SIECA host serves nothing to a client that identifies itself honestly: a
+`202` with an empty body for REIM's own User-Agent, a `403` for `curl`. These
+four recordings were therefore made with a browser User-Agent, which the
+catalog entry declares and `docs/sources.md` explains.
 
 The BCN service requires a TLS 1.0 handshake, so the four recordings above were
 made through `reim.ingestion.http.legacy_tls_context()`. The exact script is in

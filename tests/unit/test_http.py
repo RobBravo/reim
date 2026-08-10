@@ -11,7 +11,7 @@ import respx
 from reim.core.config import get_settings
 from reim.core.constants import TlsProfile
 from reim.core.exceptions import ExtractionError
-from reim.ingestion.http import http_client, legacy_tls_context, post
+from reim.ingestion.http import fetch, http_client, legacy_tls_context, post
 
 SOAP_URL = "https://servicios.bcn.gob.ni/Tc_Servicio/ServicioTC.asmx"
 
@@ -117,3 +117,25 @@ async def test_post_sends_the_body_and_headers_unchanged() -> None:
     request = route.calls.last.request
     assert request.content == b"<envelope/>"
     assert request.headers["SOAPAction"] == "http://servicios.bcn.gob.ni/RecuperaTC_Mes"
+
+
+@respx.mock
+async def test_the_honest_user_agent_is_the_default() -> None:
+    route = respx.get("https://example.invalid/x").mock(return_value=httpx.Response(200, text="ok"))
+
+    async with http_client() as client:
+        await fetch(client, "https://example.invalid/x")
+
+    assert route.calls.last.request.headers["User-Agent"].startswith("REIM/")
+
+
+@respx.mock
+async def test_a_source_can_override_the_user_agent() -> None:
+    route = respx.get("https://example.invalid/x").mock(return_value=httpx.Response(200, text="ok"))
+
+    async with http_client(user_agent="Mozilla/5.0 (X11; Linux x86_64) Chrome/126.0") as client:
+        await fetch(client, "https://example.invalid/x")
+
+    assert route.calls.last.request.headers["User-Agent"] == (
+        "Mozilla/5.0 (X11; Linux x86_64) Chrome/126.0"
+    )
