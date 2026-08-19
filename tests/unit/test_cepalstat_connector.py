@@ -47,18 +47,41 @@ def test_each_fixture_covers_the_seven_countries_completely(
             assert sum(1 for c, _ in cells if c == iso3) == 36
 
 
+#: 33 countries + 3 regional aggregates ("Caribbean", "Latin America", and
+#: "Latin America and the Caribbean"), counted directly from a complete
+#: recording of indicator 2203 on 2026-08-18 (`in == 1` members of the
+#: country dimension, id 208).
+INCLUDED_COUNTRY_DIMENSION_MEMBERS = 36
+
+
 def test_the_fixtures_hold_the_other_countries_and_the_aggregates(
     cepalstat_gdp_2203_json: str,
+    cepalstat_gdp_2204_json: str,
+    cepalstat_gdp_2205_json: str,
+    cepalstat_gdp_2206_json: str,
 ) -> None:
-    """Not trimmed to seven: the filter has to have something to filter."""
-    body = json.loads(cepalstat_gdp_2203_json)["body"]
-    countries = next(d for d in body["dimensions"] if d["id"] == COUNTRY_DIMENSION)
-    included = [m["name"] for m in countries["members"] if m["in"] == 1]
+    """Not trimmed to seven: the filter has to have something to filter.
 
-    assert "Mexico" in included
-    assert "Brazil" in included
-    assert "Latin America" in included
-    assert any(row.get("iso3") is None for row in body["data"])
+    Checked on all four fixtures independently — a re-recording of just one
+    of 2204, 2205 or 2206 trimmed to the seven would otherwise pass unnoticed,
+    since `test_each_fixture_covers_the_seven_countries_completely` pre-filters
+    to Central America and cannot see whether the other countries survived.
+    """
+    for payload in (
+        cepalstat_gdp_2203_json,
+        cepalstat_gdp_2204_json,
+        cepalstat_gdp_2205_json,
+        cepalstat_gdp_2206_json,
+    ):
+        body = json.loads(payload)["body"]
+        countries = next(d for d in body["dimensions"] if d["id"] == COUNTRY_DIMENSION)
+        included = [m["name"] for m in countries["members"] if m["in"] == 1]
+
+        assert len(included) == INCLUDED_COUNTRY_DIMENSION_MEMBERS
+        assert "Mexico" in included
+        assert "Brazil" in included
+        assert "Latin America" in included
+        assert any(row.get("iso3") is None for row in body["data"])
 
 
 def test_the_fixtures_keep_their_exact_published_digits(
