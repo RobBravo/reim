@@ -1,8 +1,9 @@
 """Canonical country definitions for the Central American region.
 
-Six countries are active: REIM holds IMF merchandise-trade data for each.
-Belize stays inactive because it reports nothing to that dataflow. Enabling a
-country is a data change, not a code change.
+All seven countries are active. Six carry IMF merchandise-trade data; Belize
+carries none, because it reports nothing to that dataflow, and is active on
+the strength of CEPALSTAT's national accounts instead. Enabling a country is
+a data change, not a code change.
 """
 
 from __future__ import annotations
@@ -88,9 +89,11 @@ COUNTRIES: tuple[CountryDefinition, ...] = (
         name_local="Belize",
         currency_code="BZD",
         currency_name="Belize dollar",
-        # Belize reports nothing to the IMF's IMTS dataflow at any
-        # frequency, so REIM holds no data for it yet. See docs/sources.md.
-        is_active=False,
+        # Belize still reports nothing to the IMF's IMTS dataflow at any
+        # frequency, so REIM holds no trade data for it. CEPALSTAT publishes
+        # its national accounts in full — 1990 onwards, no gaps — which is
+        # where Belize's data comes from. See docs/sources.md.
+        is_active=True,
     ),
 )
 

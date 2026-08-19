@@ -45,6 +45,10 @@ _IMF_TERMS = "https://www.imf.org/external/terms.htm"
 _BANGUAT_WS = "https://www.banguat.gob.gt/variables/ws/TipoCambio.asmx"
 #: SIECA publishes no separate methodology page; the report is its own reference.
 _SIECA_REPORT = "https://www.servicios.sieca.int/ReporteGeneralServicios"
+#: CEPAL publishes no separate methodology page per indicator; the dashboard
+#: for the indicator is the closest stable reference, and it carries the
+#: definition, the unit and the source note the API also returns.
+_CEPALSTAT_DASHBOARD = "https://statistics.cepal.org/portal/cepalstat/dashboard.html"
 
 INDICATORS: tuple[IndicatorDefinition, ...] = (
     IndicatorDefinition(
@@ -375,6 +379,67 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         unit="current USD",
         value_type=ValueType.LEVEL,
         methodology_url=_SIECA_REPORT,
+    ),
+    IndicatorDefinition(
+        code="gdp_current_usd_annual",
+        name="Gross domestic product (annual, current USD)",
+        description=(
+            "Total annual GDP at current prices in US dollars, from CEPAL's "
+            "harmonised national-accounts compilation. These are CEPAL's own "
+            "estimates based on national sources, not the figure each national "
+            "statistics office publishes: the series is built for "
+            "cross-country comparability and need not match any country's "
+            "official GDP."
+        ),
+        category=IndicatorCategory.REAL_SECTOR,
+        frequency=Frequency.ANNUAL,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=2203&lang=en",
+    ),
+    IndicatorDefinition(
+        code="gdp_constant_usd_annual",
+        name="Gross domestic product (annual, constant 2018 USD)",
+        description=(
+            "Total annual GDP in volume terms, valued at 2018 prices and "
+            "converted with CEPAL's base-year reference exchange rate, so "
+            "movements reflect output rather than prices or the exchange rate. "
+            "CEPAL's own estimates; see gdp_current_usd_annual."
+        ),
+        category=IndicatorCategory.REAL_SECTOR,
+        frequency=Frequency.ANNUAL,
+        unit="constant 2018 USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=2204&lang=en",
+    ),
+    IndicatorDefinition(
+        code="gdp_per_capita_current_usd_annual",
+        name="GDP per inhabitant (annual, current USD)",
+        description=(
+            "Total annual GDP at current prices divided by total population. "
+            "The population is CELADE's official estimate and projection, "
+            "harmonised across countries, not each country's own census "
+            "figure. REIM stores no population series, so this cannot be "
+            "derived from the GDP totals it holds."
+        ),
+        category=IndicatorCategory.REAL_SECTOR,
+        frequency=Frequency.ANNUAL,
+        unit="current USD per person",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=2205&lang=en",
+    ),
+    IndicatorDefinition(
+        code="gdp_per_capita_constant_usd_annual",
+        name="GDP per inhabitant (annual, constant 2018 USD)",
+        description=(
+            "Total annual GDP at 2018 prices divided by CELADE's population "
+            "estimate; see gdp_per_capita_current_usd_annual."
+        ),
+        category=IndicatorCategory.REAL_SECTOR,
+        frequency=Frequency.ANNUAL,
+        unit="constant 2018 USD per person",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=2206&lang=en",
     ),
 )
 
