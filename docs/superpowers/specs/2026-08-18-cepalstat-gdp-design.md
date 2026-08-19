@@ -101,8 +101,11 @@ exception rather than hide it.** Concretely:
 * `license: cepal_terms_of_use` in the catalog entry.
 * A `docs/sources.md` section quoting the terms verbatim and stating the
   conflict in plain words.
-* The API's `credits` block propagated into every observation's `raw_metadata`,
-  so the required citation travels with the data.
+* The citation elements of the API's `credits` block propagated into every
+  observation's `raw_metadata`, so the required citation travels with the data.
+  `credits[0]` is excluded: it is CEPAL's own fetch date, which moves between
+  runs — two downloads twelve hours apart returned `2026-08-18` and
+  `2026-08-19` — and REIM already records when it fetched, in `retrieved_at`.
 * **The ROADMAP line is rewritten, not excepted.** "Explicitly not planned —
   Scraping paywalled or licence-restricted data. Official and openly licensed
   only" (`ROADMAP.md:172-173`) is already contradicted by the IMF and SIECA
@@ -238,7 +241,8 @@ with `source_record_id = cepalstat:{indicator_id}:{iso3}:{year}`.
 
 `raw_metadata` keeps the published value and unit, the scale applied, the
 `source_id` with its description, the `notes_ids` with their footnote text, and
-the `credits` block.
+the citation elements of `credits` — not `credits[0]`, which is CEPAL's own
+fetch date and changes between runs.
 
 A missing years dimension, an unmapped `dim_29117` member or an unparseable
 value raises `TransformationError`. Dropping a non-Central-American `iso3` is
