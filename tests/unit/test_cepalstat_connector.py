@@ -6,12 +6,25 @@ Every payload replayed here is a real recording; see `tests/fixtures/README.md`.
 from __future__ import annotations
 
 import json
+from collections import Counter
+from datetime import UTC, date, datetime
 from decimal import Decimal
+
+import pytest
+
+from reim.core.constants import Frequency
+from reim.core.exceptions import TransformationError
+from reim.domain.pipelines.models import RawDataset
+from reim.domain.sources.catalog import load_catalog
+from reim.ingestion.connectors.regional.cepalstat_gdp import (
+    CENTRAL_AMERICA,
+    CepalstatGdpConnector,
+)
+from tests.conftest import REPO_ROOT
 
 #: What the recorded responses hold, measured on 2026-08-18.
 YEARS_DIMENSION = 29117
 COUNTRY_DIMENSION = 208
-CENTRAL_AMERICA = frozenset({"NIC", "GTM", "SLV", "HND", "CRI", "PAN", "BLZ"})
 CELLS_PER_INDICATOR = 252
 
 
@@ -102,3 +115,154 @@ def test_the_constant_price_fixtures_carry_the_base_year_footnote(
         assert [f["description"] for f in footnotes] == ["At prices 2018"]
 
     assert json.loads(cepalstat_gdp_2203_json)["body"]["footnotes"] == []
+
+
+OBSERVATIONS = 1008
+
+
+def build_connector() -> CepalstatGdpConnector:
+    catalog = load_catalog(REPO_ROOT / "sources" / "catalog.yml")
+    return CepalstatGdpConnector(catalog.get("cepalstat_gdp_annual"))
+
+
+def build_raw(payloads: dict[int, str]) -> RawDataset:
+    return RawDataset(
+        source_key="cepalstat_gdp_annual",
+        retrieved_at=datetime(2026, 8, 18, 12, 0, tzinfo=UTC),
+        source_url="https://api-cepalstat.cepal.org/cepalstat/api/v1",
+        payload=payloads,
+        content_type="application/json",
+        http_status=200,
+        metadata={"indicator_ids": sorted(payloads)},
+    )
+
+
+@pytest.fixture
+def raw(
+    cepalstat_gdp_2203_json: str,
+    cepalstat_gdp_2204_json: str,
+    cepalstat_gdp_2205_json: str,
+    cepalstat_gdp_2206_json: str,
+) -> RawDataset:
+    return build_raw(
+        {
+            2203: cepalstat_gdp_2203_json,
+            2204: cepalstat_gdp_2204_json,
+            2205: cepalstat_gdp_2205_json,
+            2206: cepalstat_gdp_2206_json,
+        }
+    )
+
+
+def test_transform_produces_every_cell(raw: RawDataset) -> None:
+    observations = build_connector().transform(raw)
+
+    assert len(observations) == OBSERVATIONS
+    per_indicator = Counter(obs.indicator_code for obs in observations)
+    assert set(per_indicator) == {
+        "gdp_current_usd_annual",
+        "gdp_constant_usd_annual",
+        "gdp_per_capita_current_usd_annual",
+        "gdp_per_capita_constant_usd_annual",
+    }
+    assert set(per_indicator.values()) == {CELLS_PER_INDICATOR}
+
+
+def test_only_the_seven_countries_survive(raw: RawDataset) -> None:
+    """26 other countries and 3 aggregates are in the payload and must not land."""
+    observations = build_connector().transform(raw)
+
+    assert {obs.country_iso3 for obs in observations} == CENTRAL_AMERICA
+
+
+def test_belize_gets_its_first_data(raw: RawDataset) -> None:
+    belize = [obs for obs in build_connector().transform(raw) if obs.country_iso3 == "BLZ"]
+
+    assert len(belize) == 144
+    assert {obs.period.label for obs in belize} == {str(y) for y in range(1990, 2026)}
+
+
+def test_the_totals_are_scaled_and_the_per_capita_series_are_not(raw: RawDataset) -> None:
+    """Nicaragua 2024, verified by hand against the source."""
+    by_key = {
+        (obs.indicator_code, obs.country_iso3, obs.period.label): obs
+        for obs in build_connector().transform(raw)
+    }
+
+    total = by_key[("gdp_current_usd_annual", "NIC", "2024")]
+    assert total.value_numeric == Decimal("19696311849.18235")
+    assert total.unit == "current USD"
+    assert total.currency_code == "USD"
+
+    per_capita = by_key[("gdp_per_capita_current_usd_annual", "NIC", "2024")]
+    assert per_capita.value_numeric == Decimal("2757.621539962527")
+    assert per_capita.unit == "current USD per person"
+
+
+def test_the_published_figure_is_kept_alongside(raw: RawDataset) -> None:
+    by_key = {
+        (obs.indicator_code, obs.country_iso3, obs.period.label): obs
+        for obs in build_connector().transform(raw)
+    }
+    metadata = by_key[("gdp_constant_usd_annual", "NIC", "2024")].raw_metadata
+
+    assert metadata["cepalstat_indicator_id"] == 2204
+    assert metadata["cepalstat_published_value"] == "15301.62516515467"
+    assert metadata["cepalstat_published_unit"] == "Millions of dollars"
+    assert metadata["cepalstat_scale_applied"] == "1e6"
+    assert metadata["cepalstat_source"] == "Own estimates based on national sources"
+    assert metadata["cepalstat_footnotes"] == ["At prices 2018"]
+
+
+def test_the_fetch_date_is_not_stored(raw: RawDataset) -> None:
+    """credits[0] is CEPAL's own fetch date and changes between runs."""
+    metadata = build_connector().transform(raw)[0].raw_metadata
+
+    assert metadata["cepalstat_credits"] == [
+        "CEPALSTAT",
+        "Economic Commission for Latin America and the Caribbean – ECLAC",  # noqa: RUF001
+        "United Nations",
+    ]
+
+
+def test_periods_are_annual_and_span_the_calendar_year(raw: RawDataset) -> None:
+    observation = next(
+        obs for obs in build_connector().transform(raw) if obs.period.label == "1990"
+    )
+
+    assert observation.period.frequency is Frequency.ANNUAL
+    assert observation.period.start == date(1990, 1, 1)
+    assert observation.period.end == date(1990, 12, 31)
+
+
+def test_source_record_ids_are_unique_and_readable(raw: RawDataset) -> None:
+    observations = build_connector().transform(raw)
+    ids = [obs.source_record_id for obs in observations]
+
+    assert len(set(ids)) == OBSERVATIONS
+    assert "cepalstat:2203:NIC:2024" in ids
+
+
+def test_a_missing_years_dimension_raises(raw: RawDataset) -> None:
+    broken = json.loads(raw.payload[2203])
+    broken["body"]["dimensions"] = [
+        d for d in broken["body"]["dimensions"] if d["id"] != YEARS_DIMENSION
+    ]
+    payloads = dict(raw.payload) | {2203: json.dumps(broken)}
+
+    with pytest.raises(TransformationError, match="years dimension"):
+        build_connector().transform(build_raw(payloads))
+
+
+def test_an_unmapped_year_member_raises(raw: RawDataset) -> None:
+    """A year id with no member is a contract change, not a row to skip."""
+    broken = json.loads(raw.payload[2203])
+    # data[0] is Argentina, which transform filters out before it ever looks
+    # at the year; the mutated row has to belong to one of the seven or the
+    # broken value is discarded unnoticed.
+    row = next(r for r in broken["body"]["data"] if r.get("iso3") in CENTRAL_AMERICA)
+    row[f"dim_{YEARS_DIMENSION}"] = 999999
+    payloads = dict(raw.payload) | {2203: json.dumps(broken)}
+
+    with pytest.raises(TransformationError, match="unknown year member"):
+        build_connector().transform(build_raw(payloads))

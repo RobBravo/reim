@@ -437,3 +437,46 @@ sources:
       The filter covers the whole host, including its static PDFs. No active
       control is defeated — this is a header check, not a challenge. Remove
       this override if SIECA opens the host to identified clients.
+
+  # ------------------------------------------------------------------------
+  # Regional — Comisión Económica para América Latina y el Caribe
+  #
+  # REIM's first GDP data and Belize's first data of any kind. One request
+  # returns an indicator's whole matrix: every country, every year.
+  #
+  # The licence is the hard part and it is stated, not hidden: CEPAL's terms
+  # expressly forbid redistribution and derivative works, which is stricter
+  # than the IMF's terms or SIECA's absence of any grant. REIM ingests, carries
+  # CEPAL's required citation on every observation, and documents the
+  # exception. See docs/sources.md.
+  #
+  # These figures are CEPAL's own harmonised estimates, not the numbers each
+  # national statistics office publishes.
+  # ------------------------------------------------------------------------
+  - key: cepalstat_gdp_annual
+    name: Central American gross domestic product (annual)
+    description: >-
+      Annual GDP for the seven Central American countries from CEPALSTAT:
+      totals at current and constant 2018 prices in US dollars, and the same
+      pair per inhabitant, covering 1990 onwards. CEPAL's own harmonised
+      estimates, built for cross-country comparability rather than to match
+      each country's official national accounts.
+    organization: CEPAL
+    category: real_sector
+    access_type: http_api
+    frequency: annual
+    format: json
+    base_url: https://api-cepalstat.cepal.org/cepalstat/api/v1
+    documentation_url: https://statistics.cepal.org/portal/cepalstat/
+    connector: reim.ingestion.connectors.regional.cepalstat_gdp
+    indicators:
+      - gdp_current_usd_annual
+      - gdp_constant_usd_annual
+      - gdp_per_capita_current_usd_annual
+      - gdp_per_capita_constant_usd_annual
+    license: cepal_terms_of_use
+    official: true
+    enabled: false
+    disabled_reason: >-
+      Connector under construction; enabled once it has been run end to end
+      against a real database.
