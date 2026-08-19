@@ -136,12 +136,33 @@ Add the imports these need at the top of the file:
 from reim.core.constants import Frequency, IndicatorCategory, ValueType
 from reim.domain.countries.registry import COUNTRIES, COUNTRIES_BY_ISO3
 from reim.domain.indicators.registry import INDICATORS_BY_CODE
-from reim.domain.quality.rules import load_quality_rules
+from reim.domain.quality.rules import QualityRuleSet
 ```
 
-If `load_quality_rules` or `for_indicator` is named differently in
-`reim/domain/quality/rules.py`, use the real names — read that module first
-rather than guessing.
+`tests/conftest.py:146` already provides a session `quality_rules` fixture
+holding the repository's real rules, so the last test takes it as an argument
+rather than loading the file again:
+
+```python
+def test_every_gdp_indicator_has_a_quality_rule(quality_rules: QualityRuleSet) -> None:
+    for code in (
+        "gdp_current_usd_annual",
+        "gdp_constant_usd_annual",
+        "gdp_per_capita_current_usd_annual",
+        "gdp_per_capita_constant_usd_annual",
+    ):
+        rule = quality_rules.for_indicator(code)
+        assert rule is not quality_rules.defaults, f"{code} fell through to the defaults"
+        assert rule.min_observations == 240
+        assert rule.max_period_change_pct == 40
+        assert rule.allow_negative is False
+        assert rule.allow_zero is False
+```
+
+Use this version and drop the `load_quality_rules` one written above. The
+`is not quality_rules.defaults` assertion matters: `for_indicator` falls back
+to the defaults for an unknown code rather than raising, so a typo in the YAML
+key would otherwise pass silently.
 
 - [ ] **Step 2: Run them and watch them fail**
 
@@ -1625,12 +1646,18 @@ import respx
 from reim.core.exceptions import ExtractionError, TransformationError
 ```
 
-- [ ] **Step 2: Run them and watch the right ones fail**
+- [ ] **Step 2: Run them**
 
 Run: `.venv/bin/python -m pytest tests/unit/test_cepalstat_connector.py -m "not live" -v`
-Expected: PASS. `extract` already exists, so these tests document and pin it
-rather than drive it. If any fails, the failure is real — fix `extract`, not
-the test.
+Expected: PASS.
+
+These tests do not follow the write-red-first cycle the rest of the plan does,
+and that is deliberate: `extract` had to exist in Task 3 for the module to
+import at all, so there is no red state to observe here. They pin behaviour
+rather than drive it. **If any of them fails, the failure is real — fix
+`extract`, never the test.** In particular, do not relax the
+`match="reported failure 404"` or `match="no rows"` patterns to make a test
+pass; those two strings are the whole point of the envelope check.
 
 - [ ] **Step 3: Run the live test once, deliberately**
 
