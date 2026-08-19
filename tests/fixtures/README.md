@@ -20,6 +20,15 @@ never calls an official source.
 | `sieca_flow_exports.json` | `POST .../LoadData` with `flujo=E`, `unidadMedida=MD`, `paises=1,2,3,4,5,6`, `paisesDestino=0`, all 69 quarters, `categoria=0`. The **complete** series — six countries × 69 quarters, no holes. | 2026-08-09 |
 | `sieca_flow_imports.json` | Same request with `flujo=I`. | 2026-08-09 |
 | `sieca_flow_balance.json` | Same request with `flujo=S`. Recorded so the balance identity is checked against the published figure rather than a computed one. | 2026-08-09 |
+| `cepalstat_gdp_2203.json.gz` | `GET https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/2203/data?lang=en`, byte-for-byte, gzipped only to keep the repo small (163 KB → 23 KB). Tests decompress it before parsing. The **complete** response — all 33 countries and the 3 regional aggregates — because that is what proves the connector's filter to the seven Central American countries works at all. | 2026-08-18 |
+| `cepalstat_gdp_2204.json.gz` | Same endpoint, indicator `2204` — total GDP at constant 2018 prices (171 KB → 24 KB). Recorded so the implied-population identity is checked against two published series rather than one computed one. | 2026-08-18 |
+| `cepalstat_gdp_2205.json.gz` | Same endpoint, indicator `2205` — GDP per inhabitant at current prices (164 KB → 24 KB). | 2026-08-18 |
+| `cepalstat_gdp_2206.json.gz` | Same endpoint, indicator `2206` — GDP per inhabitant at constant 2018 prices (173 KB → 25 KB). | 2026-08-18 |
+
+The CEPALSTAT API needs no User-Agent override and no TLS accommodation; these
+four were recorded with REIM's own identifier. `body.credits[0].description` is
+CEPAL's own fetch date and differs between recordings — nothing asserts it, and
+`raw_metadata` stores only the citation elements that follow it.
 
 The SIECA host serves nothing to a client that identifies itself honestly: a
 `202` with an empty body for REIM's own User-Agent, a `403` for `curl`. These
