@@ -16,7 +16,8 @@ Severity semantics enforced by the runner:
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
+from collections.abc import Iterable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from itertools import pairwise
@@ -35,6 +36,23 @@ CheckList = list[QualityResult]
 
 def _label(obs: NormalizedObservation) -> dict[str, str]:
     return {"indicator_code": obs.indicator_code, "period_label": obs.period.label}
+
+
+def _series_by_country(
+    observations: Iterable[NormalizedObservation],
+) -> list[list[NormalizedObservation]]:
+    """Split a batch into one chronological series per country.
+
+    A batch holds one series per country, not one long series: CEPALSTAT
+    returns seven countries at once, SIECA six. Any check that compares
+    consecutive periods must split here first — ordering the whole batch by
+    period alone interleaves the countries, and the pair straddling a period
+    boundary then compares two of them.
+    """
+    grouped: dict[str, list[NormalizedObservation]] = defaultdict(list)
+    for observation in observations:
+        grouped[observation.country_iso3].append(observation)
+    return [sorted(series, key=lambda o: o.period.start) for _, series in sorted(grouped.items())]
 
 
 # --------------------------------------------------------------------------
@@ -234,13 +252,10 @@ def check_temporal_monotonicity(
             )
         ]
 
-    ordered = sorted(
-        (o for o in observations if o.value_numeric is not None),
-        key=lambda o: o.period.start,
-    )
     breaches = [
         (previous, current)
-        for previous, current in pairwise(ordered)
+        for series in _series_by_country(o for o in observations if o.value_numeric is not None)
+        for previous, current in pairwise(series)
         if current.value_numeric < previous.value_numeric  # type: ignore[operator]
     ]
     if not breaches:
@@ -251,7 +266,7 @@ def check_temporal_monotonicity(
                 "Series is non-decreasing",
             )
         ]
-    first_prev, first_cur = breaches[0]
+    first_prev, first_cur = min(breaches, key=lambda pair: pair[1].period.start)
     return [
         QualityResult.failure(
             "temporal_monotonicity",
@@ -277,35 +292,32 @@ def check_period_change(
             )
         ]
 
-    ordered = sorted(
-        (o for o in observations if o.value_numeric is not None),
-        key=lambda o: o.period.start,
-    )
     results: CheckList = []
     skipped_gaps = 0
-    for previous, current in pairwise(ordered):
-        prior = previous.value_numeric
-        assert prior is not None and current.value_numeric is not None
-        if (current.period.start - previous.period.end).days != 1:
-            skipped_gaps += 1
-            continue
-        if prior == 0:
-            continue
-        change_pct = abs((current.value_numeric - prior) / prior) * Decimal(100)
-        if change_pct > rule.max_period_change_pct:
-            results.append(
-                QualityResult.failure(
-                    "period_change",
-                    CheckType.ACCURACY,
-                    rule.change_severity,
-                    f"{current.period.label} changed {change_pct:.2f}% versus "
-                    f"{previous.period.label}",
-                    expected_value=f"<= {rule.max_period_change_pct}%",
-                    actual_value=f"{change_pct:.2f}%",
-                    observation_index=observations.index(current),
-                    **_label(current),
+    for series in _series_by_country(o for o in observations if o.value_numeric is not None):
+        for previous, current in pairwise(series):
+            prior = previous.value_numeric
+            assert prior is not None and current.value_numeric is not None
+            if (current.period.start - previous.period.end).days != 1:
+                skipped_gaps += 1
+                continue
+            if prior == 0:
+                continue
+            change_pct = abs((current.value_numeric - prior) / prior) * Decimal(100)
+            if change_pct > rule.max_period_change_pct:
+                results.append(
+                    QualityResult.failure(
+                        "period_change",
+                        CheckType.ACCURACY,
+                        rule.change_severity,
+                        f"{current.period.label} changed {change_pct:.2f}% versus "
+                        f"{previous.period.label}",
+                        expected_value=f"<= {rule.max_period_change_pct}%",
+                        actual_value=f"{change_pct:.2f}%",
+                        observation_index=observations.index(current),
+                        **_label(current),
+                    )
                 )
-            )
     if not results:
         results.append(
             QualityResult.passed(

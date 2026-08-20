@@ -7,11 +7,12 @@
 stores and publishes economic indicators from official sources, keeping complete
 provenance for every figure it holds.
 
-REIM covers **six countries**: Nicaragua, Guatemala, El Salvador, Honduras,
-Costa Rica and Panama. Depth varies sharply — Nicaragua reads its national
-central bank and statistics office directly, Guatemala its central bank; the
-other four currently have merchandise trade only. Belize is registered but
-inactive: it reports nothing to the dataflow the others come from.
+REIM covers **seven countries**: Nicaragua, Guatemala, El Salvador, Honduras,
+Costa Rica, Panama and Belize. Depth varies sharply — Nicaragua reads its
+national central bank and statistics office directly, Guatemala its central
+bank; four more have trade alongside CEPAL's annual GDP. Belize was registered
+but inactive until CEPALSTAT gave it its first data of any kind: it reports
+nothing to the dataflow the trade series come from, and it has GDP only.
 
 Adding a country is a catalog entry plus a connector module, not a redesign.
 
@@ -58,7 +59,7 @@ See [ROADMAP.md](./ROADMAP.md).
 
 ### Data available
 
-**16 live pipelines feeding 24 indicators**, every one verified against its
+**17 live pipelines feeding 28 indicators**, every one verified against its
 source. Nothing here is a scrape of an aggregator.
 
 | Source | Countries | Frequency | Series | Coverage |
@@ -67,13 +68,17 @@ source. Nothing here is a scrape of an aggregator.
 | **Banguat** — Banco de Guatemala | Guatemala | **daily** | official GTQ/USD rate, buy and sell | 1990-01 onward |
 | **INIDE** — national statistics office | Nicaragua | **monthly** | CPI index, month-on-month, year-on-year, each for the country, Managua and the rest of the country | 2007 onward |
 | **IMF** — International Merchandise Trade Statistics | all six | **monthly** | exports FOB, imports CIF, trade balance | 1990-01 onward |
-| **SIECA** — Secretaría de Integración Económica Centroamericana | all six | **quarterly** | services exports, imports, balance | 2009-Q1 onward |
+| **SIECA** — Secretaría de Integración Económica Centroamericana | six (not Belize) | **quarterly** | services exports, imports, balance | 2009-Q1 onward |
+| **CEPAL** — CEPALSTAT | **all seven** | annual | GDP and GDP per inhabitant, each at current and at constant 2018 prices | 1990 onward |
 | **World Bank** — Indicators API v2 | Nicaragua | annual | exchange rate, inflation, remittances, reserves, exports, imports | 1960 onward |
 
 The BCN, Banguat and INIDE series are **national primary sources** — the
-publisher itself, not a multilateral restatement. The IMF series are the exception to
-REIM's "openly licensed only" rule and carry attribution requirements; see the
-limitations below.
+publisher itself, not a multilateral restatement. The World Bank, IMF, SIECA and
+CEPAL series compile from national statistics and are one step removed from
+them; CEPAL's are its own harmonised estimates and need not match a country's
+official national accounts. **Three sources are not openly licensed** — the IMF,
+SIECA and CEPAL — and each carries its terms and its attribution requirement;
+see the limitations below.
 
 No connector currently ships disabled. When one does, it ships with its blocker
 documented rather than papered over — that has happened twice, and both times
@@ -246,7 +251,7 @@ second is easy to forget:
 ```bash
 alembic upgrade head
 python -m reim.cli db seed
-python -m reim.cli pipeline run-all          # ~37,000 observations
+python -m reim.cli pipeline run-all          # ~38,000 observations
 ```
 
 That leaves **`bcn_exchange_rate` with about 40 rows**, not the 5,334 it holds
@@ -260,12 +265,13 @@ scheduled runs return to two requests:
 python -m reim.cli pipeline run bcn_exchange_rate   # ~5,300 inserted, ~30 s
 ```
 
-Everything else — INIDE, Banguat, SIECA and the six IMF trade series — ships its
-full history in the routine run, because each of those sources publishes the
-complete series on every request. Banguat's 36 years cost one request of 1.3 MB;
-SIECA's 69 quarters for six countries cost four requests of 16.7 KB each.
+Everything else — INIDE, Banguat, SIECA, CEPAL and the six IMF trade series —
+ships its full history in the routine run, because each of those sources
+publishes the complete series on every request. Banguat's 36 years cost one
+request of 1.3 MB; SIECA's 69 quarters for six countries cost four requests of
+16.7 KB each; CEPAL's 36 years for seven countries cost four of about 170 KB.
 
-A complete rebuild lands on the order of **42,000 observations**. No exact
+A complete rebuild lands on the order of **43,000 observations**. No exact
 figure is given on purpose: the BCN and Banguat each publish a rate every
 calendar day, so the total grows daily and any number printed here would be
 wrong tomorrow.
@@ -463,20 +469,31 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
 - **Three national primary sources, the rest multilateral.** INIDE's monthly
   CPI — national, Managua and rest-of-country — the BCN's daily exchange rate
   and Banguat's daily rate pair come straight from the publisher; the remaining
-  connectors read the World Bank, the IMF and SIECA, which compile from national
-  statistics and are one step removed from it.
+  connectors read the World Bank, the IMF, SIECA and CEPAL, which compile from
+  national statistics and are one step removed from it. CEPAL's GDP figures are
+  a further step: they are its **own harmonised estimates**, built so countries
+  can be compared with each other, and need not match the national accounts each
+  statistics office publishes.
 - **Subnational coverage is two regions, not a geography model.** INIDE's
   Managua and rest-of-country breakdowns are separate indicator codes.
   `observations` has no region dimension, so this does not generalise to
   finer geography without a schema change.
-- **One source is not openly licensed, though it may be redistributed.** The
-  IMF merchandise-trade series carries "© International Monetary Fund. All
-  Rights Reserved", unlike every other source here. Its terms **do permit
-  redistribution with attribution**: cite the IMF — every observation carries
-  the Fund's suggested citation in `raw_metadata.imf_citation` once written —
-  keep the
-  figures exact, and declare any transformation. **Commercial reuse requires
-  permission from `copyright@imf.org`**, which this project has not sought. See
+- **Three sources are not openly licensed, and they are not alike.** The IMF
+  merchandise-trade series carries "© International Monetary Fund. All Rights
+  Reserved", but its terms **do permit redistribution with attribution**: cite
+  the IMF — every observation carries the Fund's suggested citation in
+  `raw_metadata.imf_citation` — keep the figures exact, and declare any
+  transformation. **Commercial reuse requires permission from
+  `copyright@imf.org`**, which this project has not sought. SIECA publishes **no
+  licence grant at all**: both its hosts read "all rights reserved" and no
+  terms-of-use page could be found to read. **CEPAL goes further and expressly
+  forbids what REIM does**: its usage agreement grants download and copying "for
+  Users' personal, non-commercial use without any right to resell, redistribute
+  or create derivative works therefrom", and REIM redistributes those figures
+  through its own API. That conflict is stated rather than hidden — REIM is a
+  non-commercial research project and ships CEPAL's required citation with every
+  observation — but a reader who needs certainty about reuse rights should ask
+  CEPAL directly. All three are quoted in full in
   [`docs/sources.md`](./docs/sources.md).
 - **Publishers' edge rules, stated in two parts rather than as one absolute.**
 
@@ -485,7 +502,9 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   JavaScript challenge; REIM does not execute it, and that has not changed. The
   consequence is real: the BCN's monthly bulletins stay out of reach, so
   monetary aggregates and remittances are absent — Nicaragua reports neither to
-  the IMF, and the regional alternative requires a credentialed account.
+  the IMF. For the aggregates there is now a route that needs no account:
+  CEPALSTAT publishes M1, M2 and M3 for Nicaragua from 2001, not yet ingested
+  and recorded in [`docs/sources.md`](./docs/sources.md).
 
   **REIM does satisfy a static header check.** SIECA's edge allows or denies on
   the `User-Agent` string alone: REIM's own identifier receives `202` with an
@@ -496,13 +515,14 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   These are different things, and the project's rule is stated in both parts
   rather than as one absolute that its own catalog would contradict. See
   [`docs/sources.md`](./docs/sources.md).
-- **One source is converted, and says so.** SIECA publishes services trade in
-  **millions of USD**; REIM stores whole USD, multiplying by 10⁶ in `Decimal`.
-  It is the project's first declared transformation and the only one: every
-  observation keeps `sieca_published_value`, `sieca_published_unit` and
-  `sieca_scale_applied` in `raw_metadata`, so the published figure is
-  recoverable exactly. Nothing else in REIM rescales, converts a currency or
-  restates a unit.
+- **Two sources are converted, and both say so.** SIECA publishes services
+  trade in **millions of USD** and CEPAL publishes its GDP totals the same way;
+  REIM stores whole USD, multiplying by 10⁶ in `Decimal`. CEPAL's two
+  per-inhabitant series are stored exactly as published. Every converted
+  observation keeps the published value, the published unit and the scale
+  applied in `raw_metadata`, so the original figure is recoverable exactly.
+  These two rescalings are the whole of it: nothing in REIM converts a currency
+  or restates a unit.
 - **The BCN endpoint requires a TLS 1.0 handshake.** REIM relaxes the protocol
   version and cipher security level for that one host, declared and justified in
   `sources/catalog.yml`. Certificate and hostname verification stay enforced.
@@ -510,12 +530,13 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   itself; REIM reports it rather than filling it.
 - **World Bank data lags.** Annual figures for year *Y* land during *Y+1*, so
   freshness thresholds are measured in hundreds of days, not days.
-- **Six countries, but only two of them beyond trade.** Nicaragua has the
-  BCN's daily exchange rate and INIDE's monthly CPI; Guatemala has Banguat's
-  daily rate pair. El Salvador, Honduras, Costa Rica and Panama have **trade
-  only** — monthly merchandise from the IMF and quarterly services from SIECA.
-  Belize has neither: it reports nothing to the IMF dataflow at any frequency
-  and is not one of SIECA's six, so it stays inactive in the registry.
+- **Seven countries, but only two of them beyond trade and GDP.** Nicaragua has
+  the BCN's daily exchange rate and INIDE's monthly CPI; Guatemala has Banguat's
+  daily rate pair. El Salvador, Honduras, Costa Rica and Panama have **trade and
+  GDP only** — monthly merchandise from the IMF, quarterly services from SIECA,
+  annual GDP from CEPAL. **Belize has GDP only**: it reports nothing to the IMF
+  dataflow at any frequency and is not one of SIECA's six, so 144 annual
+  observations are everything REIM holds for it.
 - **No authentication or rate limiting.** Do not expose this publicly without
   putting a gateway in front and narrowing `REIM_CORS_ALLOW_ORIGINS`.
 - **Revisions are recorded, not reconciled.** REIM keeps the history but does
@@ -540,10 +561,20 @@ Security issues: see [SECURITY.md](./SECURITY.md).
 ## Data licensing
 
 REIM's **code** is Apache 2.0. The **data** it ingests remains subject to each
-publisher's terms — the World Bank Indicators API is CC-BY-4.0; BCN material is
-public official data. Each source's licence is recorded in
-`sources/catalog.yml` and exposed through `/api/v1/sources`. Check it before
-redistributing.
+publisher's terms — the World Bank Indicators API is CC-BY-4.0; BCN and INIDE
+material is public official data. Three sources are **not** openly licensed and
+carry attribution requirements you inherit if you redistribute:
+
+| Source | Terms | Attribution REIM ships |
+|---|---|---|
+| **IMF** | © IMF, all rights reserved; redistribution permitted with attribution, commercial reuse needs `copyright@imf.org` | the Fund's suggested citation, in `raw_metadata.imf_citation` |
+| **SIECA** | All rights reserved; no licence grant and no terms page found | SIECA publishes no citation string; the catalog entry and `/api/v1/sources` name it as publisher |
+| **CEPAL** | Personal, non-commercial use only, expressly **without** the right to resell, redistribute or create derivative works | CEPALSTAT's own `credits` block, in `raw_metadata.cepalstat_credits` |
+
+Each source's licence is recorded in `sources/catalog.yml` and exposed through
+`/api/v1/sources`; [`docs/sources.md`](./docs/sources.md) quotes the terms
+verbatim and states plainly where REIM's use conflicts with them. Check them
+before redistributing.
 
 ## License
 

@@ -257,3 +257,42 @@ indicators:
     # Same floor and the same reason as the two flows above: 414 is the real
     # per-indicator count, and a run returning far less should not pass.
     min_observations: 400
+
+  # Gross domestic product ------------------------------------------------
+  # CEPALSTAT returns each indicator's whole matrix on every run: 7 countries
+  # x 36 years = 252 cells per indicator. 240 leaves room for a year of
+  # genuine gap while still catching a run truncated to a handful of rows,
+  # which would otherwise pass every other check here.
+  #
+  # The change ceiling is the tripwire for a scale mistake. The worst real
+  # year-on-year move in these four series is 23.0% (Guatemala, 1991); a
+  # forgotten or doubled 10^6 would show up as a jump of eight figures.
+  gdp_current_usd_annual: &gdp_total
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: false
+    max_period_change_pct: 40
+    monotonic_increasing: false
+    # The newest period ends 2025-12-31, 230 days before this was written.
+    # 600 tolerates CEPAL's annual publication cycle and still reports a
+    # source that has frozen.
+    freshness_max_age_days: 600
+    min_observations: 240
+
+  gdp_constant_usd_annual: *gdp_total
+
+  # Same shape and same thresholds; the smallest real per-capita figure is
+  # 704.39 USD, so the floor of zero is as far from the data as it is for the
+  # totals.
+  gdp_per_capita_current_usd_annual: &gdp_per_capita
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: false
+    max_period_change_pct: 40
+    monotonic_increasing: false
+    freshness_max_age_days: 600
+    min_observations: 240
+
+  gdp_per_capita_constant_usd_annual: *gdp_per_capita

@@ -130,6 +130,30 @@ def sieca_balance_json() -> str:
     return (FIXTURES / "sieca_flow_balance.json").read_text(encoding="utf-8")
 
 
+@pytest.fixture(scope="session")
+def cepalstat_gdp_2203_json() -> str:
+    """CEPALSTAT indicator 2203, total GDP at current prices (stored gzipped)."""
+    return gzip.decompress((FIXTURES / "cepalstat_gdp_2203.json.gz").read_bytes()).decode("utf-8")
+
+
+@pytest.fixture(scope="session")
+def cepalstat_gdp_2204_json() -> str:
+    """CEPALSTAT indicator 2204, total GDP at constant 2018 prices (gzipped)."""
+    return gzip.decompress((FIXTURES / "cepalstat_gdp_2204.json.gz").read_bytes()).decode("utf-8")
+
+
+@pytest.fixture(scope="session")
+def cepalstat_gdp_2205_json() -> str:
+    """CEPALSTAT indicator 2205, GDP per inhabitant at current prices (gzipped)."""
+    return gzip.decompress((FIXTURES / "cepalstat_gdp_2205.json.gz").read_bytes()).decode("utf-8")
+
+
+@pytest.fixture(scope="session")
+def cepalstat_gdp_2206_json() -> str:
+    """CEPALSTAT indicator 2206, GDP per inhabitant at 2018 prices (gzipped)."""
+    return gzip.decompress((FIXTURES / "cepalstat_gdp_2206.json.gz").read_bytes()).decode("utf-8")
+
+
 @pytest.fixture
 def inide_source(catalog: SourceCatalog) -> SourceEntry:
     """Catalog entry for the INIDE monthly CPI source."""

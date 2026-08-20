@@ -182,10 +182,11 @@ _CEPALSTAT_DASHBOARD = "https://statistics.cepal.org/portal/cepalstat/dashboard.
 ```
 
 Then append four definitions to the `INDICATORS` tuple, before its closing
-parenthesis:
+parenthesis. These are tuple **elements**, not standalone statements — that is
+why the block is fenced as `text`, since `ruff format` reads this file's Python
+blocks as whole modules and closes the tuple after each element:
 
-```python
-(
+```text
     IndicatorDefinition(
         code="gdp_current_usd_annual",
         name="Gross domestic product (annual, current USD)",
@@ -203,8 +204,6 @@ parenthesis:
         value_type=ValueType.LEVEL,
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=2203&lang=en",
     ),
-)
-(
     IndicatorDefinition(
         code="gdp_constant_usd_annual",
         name="Gross domestic product (annual, constant 2018 USD)",
@@ -220,8 +219,6 @@ parenthesis:
         value_type=ValueType.LEVEL,
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=2204&lang=en",
     ),
-)
-(
     IndicatorDefinition(
         code="gdp_per_capita_current_usd_annual",
         name="GDP per inhabitant (annual, current USD)",
@@ -238,8 +235,6 @@ parenthesis:
         value_type=ValueType.LEVEL,
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=2205&lang=en",
     ),
-)
-(
     IndicatorDefinition(
         code="gdp_per_capita_constant_usd_annual",
         name="GDP per inhabitant (annual, constant 2018 USD)",
@@ -253,7 +248,6 @@ parenthesis:
         value_type=ValueType.LEVEL,
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=2206&lang=en",
     ),
-)
 ```
 
 - [ ] **Step 4: Activate Belize**

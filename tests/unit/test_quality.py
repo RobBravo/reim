@@ -255,6 +255,89 @@ def test_period_change_ignores_a_zero_baseline(make_observation) -> None:  # typ
 
 
 # --------------------------------------------------------------------------
+# One batch, many countries
+# --------------------------------------------------------------------------
+# A multi-country batch holds one series per country, not one long series.
+# Ordering such a batch by period alone interleaves them, and the pair that
+# straddles a period boundary then compares two different countries. CEPALSTAT
+# is where this first showed: 138 warnings on every run, every one of them the
+# last country of one year against the first country of the next, while the
+# worst real year-on-year move in the data was 22.95%.
+def test_period_change_never_compares_two_countries(make_observation) -> None:
+    """Each country is flat; only a cross-country pair could look like a jump."""
+    rule = IndicatorRule(max_period_change_pct=Decimal("10"))
+    batch = [
+        make_observation("2023", "100", country_iso3="NIC"),
+        make_observation("2023", "1000", country_iso3="PAN"),
+        make_observation("2024", "100", country_iso3="NIC"),
+        make_observation("2024", "1000", country_iso3="PAN"),
+    ]
+
+    assert not _failed(check_period_change(batch, rule), "period_change")
+
+
+def test_period_change_still_flags_a_jump_inside_one_country(make_observation) -> None:
+    """Grouping by country must not blunt the check it exists to run."""
+    rule = IndicatorRule(max_period_change_pct=Decimal("10"))
+    batch = [
+        make_observation("2023", "100", country_iso3="NIC"),
+        make_observation("2023", "1000", country_iso3="PAN"),
+        make_observation("2024", "150", country_iso3="NIC"),
+        make_observation("2024", "1000", country_iso3="PAN"),
+    ]
+
+    failures = _failed(check_period_change(batch, rule), "period_change")
+
+    assert len(failures) == 1
+    assert failures[0].actual_value == "50.00%"
+    assert batch[failures[0].observation_index].country_iso3 == "NIC"
+
+
+def test_period_change_counts_gaps_per_country(make_observation) -> None:
+    """Two countries each missing 2021-2023 is two skipped comparisons, not one."""
+    rule = IndicatorRule(max_period_change_pct=Decimal("10"))
+    batch = [
+        make_observation("2020", "100", country_iso3="NIC"),
+        make_observation("2020", "100", country_iso3="PAN"),
+        make_observation("2024", "101", country_iso3="NIC"),
+        make_observation("2024", "101", country_iso3="PAN"),
+    ]
+
+    result = check_period_change(batch, rule)[0]
+
+    assert result.details["comparisons_skipped_across_gaps"] == 2
+
+
+def test_monotonicity_never_compares_two_countries(make_observation) -> None:
+    """Both countries rise; only a cross-country pair could look like a fall."""
+    rule = IndicatorRule(monotonic_increasing=True)
+    batch = [
+        make_observation("2023", "100", country_iso3="NIC"),
+        make_observation("2023", "1000", country_iso3="PAN"),
+        make_observation("2024", "110", country_iso3="NIC"),
+        make_observation("2024", "1100", country_iso3="PAN"),
+    ]
+
+    assert not _failed(check_temporal_monotonicity(batch, rule), "temporal_monotonicity")
+
+
+def test_monotonicity_still_flags_a_fall_inside_one_country(make_observation) -> None:
+    rule = IndicatorRule(monotonic_increasing=True)
+    batch = [
+        make_observation("2023", "100", country_iso3="NIC"),
+        make_observation("2023", "1000", country_iso3="PAN"),
+        make_observation("2024", "90", country_iso3="NIC"),
+        make_observation("2024", "1100", country_iso3="PAN"),
+    ]
+
+    failures = _failed(check_temporal_monotonicity(batch, rule), "temporal_monotonicity")
+
+    assert len(failures) == 1
+    assert failures[0].expected_value == ">= 100"
+    assert failures[0].actual_value == "90"
+
+
+# --------------------------------------------------------------------------
 # Integrity
 # --------------------------------------------------------------------------
 def test_mixed_sources_in_one_batch_fail_critically(make_observation, permissive_rule) -> None:  # type: ignore[no-untyped-def]

@@ -9,9 +9,11 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from reim.core.constants import TlsProfile
+from reim.core.constants import Frequency, IndicatorCategory, TlsProfile, ValueType
 from reim.core.exceptions import CatalogError, CatalogValidationError
-from reim.domain.countries.registry import COUNTRIES, COUNTRIES_BY_ISO2
+from reim.domain.countries.registry import COUNTRIES, COUNTRIES_BY_ISO2, COUNTRIES_BY_ISO3
+from reim.domain.indicators.registry import INDICATORS_BY_CODE
+from reim.domain.quality.rules import QualityRuleSet
 from reim.domain.sources.catalog import SourceCatalog, SourceEntry, load_catalog
 
 VALID_ENTRY: dict[str, Any] = {
@@ -256,12 +258,13 @@ def test_every_imts_entry_declares_the_imf_licence(catalog: SourceCatalog) -> No
             assert entry.license == "imf_terms_of_use"
 
 
-def test_six_countries_are_active_and_belize_is_not() -> None:
-    """REIM holds data for six; Belize reports nothing to IMTS."""
+def test_seven_countries_are_active() -> None:
+    """All seven are active: Belize joined on the strength of CEPALSTAT's
+    national accounts, even though it still reports nothing to IMTS."""
     active = {c.iso2 for c in COUNTRIES if c.is_active}
 
-    assert active == {"NI", "GT", "SV", "HN", "CR", "PA"}
-    assert COUNTRIES_BY_ISO2["BZ"].is_active is False
+    assert active == {"NI", "GT", "SV", "HN", "CR", "PA", "BZ"}
+    assert COUNTRIES_BY_ISO2["BZ"].is_active is True
 
 
 def test_a_source_may_declare_its_own_user_agent() -> None:
@@ -287,3 +290,50 @@ def test_a_custom_user_agent_must_document_itself() -> None:
     """Same rule as tls_profile: an exception that cannot explain itself is a bug."""
     with pytest.raises(ValidationError, match="user_agent_note"):
         SourceEntry.model_validate({**VALID_ENTRY, "user_agent": "Mozilla/5.0"})
+
+
+def test_the_four_gdp_indicators_are_registered() -> None:
+    codes = {
+        "gdp_current_usd_annual",
+        "gdp_constant_usd_annual",
+        "gdp_per_capita_current_usd_annual",
+        "gdp_per_capita_constant_usd_annual",
+    }
+    assert codes <= set(INDICATORS_BY_CODE)
+    for code in codes:
+        definition = INDICATORS_BY_CODE[code]
+        assert definition.category is IndicatorCategory.REAL_SECTOR
+        assert definition.frequency is Frequency.ANNUAL
+        assert definition.value_type is ValueType.LEVEL
+
+
+def test_the_constant_price_indicators_name_their_base_year() -> None:
+    """The base year lives in a CEPAL footnote, so REIM puts it in the unit."""
+    assert INDICATORS_BY_CODE["gdp_constant_usd_annual"].unit == "constant 2018 USD"
+    assert (
+        INDICATORS_BY_CODE["gdp_per_capita_constant_usd_annual"].unit
+        == "constant 2018 USD per person"
+    )
+    assert INDICATORS_BY_CODE["gdp_current_usd_annual"].unit == "current USD"
+    assert INDICATORS_BY_CODE["gdp_per_capita_current_usd_annual"].unit == "current USD per person"
+
+
+def test_belize_is_active() -> None:
+    """CEPALSTAT gives Belize its first data; the IMF dataflow held none."""
+    assert COUNTRIES_BY_ISO3["BLZ"].is_active is True
+    assert all(country.is_active for country in COUNTRIES)
+
+
+def test_every_gdp_indicator_has_a_quality_rule(quality_rules: QualityRuleSet) -> None:
+    for code in (
+        "gdp_current_usd_annual",
+        "gdp_constant_usd_annual",
+        "gdp_per_capita_current_usd_annual",
+        "gdp_per_capita_constant_usd_annual",
+    ):
+        rule = quality_rules.for_indicator(code)
+        assert rule is not quality_rules.defaults, f"{code} fell through to the defaults"
+        assert rule.min_observations == 240
+        assert rule.max_period_change_pct == 40
+        assert rule.allow_negative is False
+        assert rule.allow_zero is False
