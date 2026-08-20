@@ -154,6 +154,54 @@ def cepalstat_gdp_2206_json() -> str:
     return gzip.decompress((FIXTURES / "cepalstat_gdp_2206.json.gz").read_bytes()).decode("utf-8")
 
 
+@pytest.fixture(scope="session")
+def cepalstat_monetary_862_json() -> str:
+    """CEPALSTAT indicator 862, money M1, monthly (stored gzipped)."""
+    return gzip.decompress((FIXTURES / "cepalstat_monetary_862.json.gz").read_bytes()).decode(
+        "utf-8"
+    )
+
+
+@pytest.fixture(scope="session")
+def cepalstat_monetary_868_json() -> str:
+    """CEPALSTAT indicator 868, liquidity M2, monthly (stored gzipped)."""
+    return gzip.decompress((FIXTURES / "cepalstat_monetary_868.json.gz").read_bytes()).decode(
+        "utf-8"
+    )
+
+
+@pytest.fixture(scope="session")
+def cepalstat_monetary_869_json() -> str:
+    """CEPALSTAT indicator 869, broad liquidity M3, monthly (stored gzipped)."""
+    return gzip.decompress((FIXTURES / "cepalstat_monetary_869.json.gz").read_bytes()).decode(
+        "utf-8"
+    )
+
+
+@pytest.fixture(scope="session")
+def cepalstat_dimensions_862_json() -> str:
+    """Indicator 862's dimensions in Spanish; the only place months are named."""
+    return gzip.decompress((FIXTURES / "cepalstat_dimensions_862.json.gz").read_bytes()).decode(
+        "utf-8"
+    )
+
+
+@pytest.fixture(scope="session")
+def cepalstat_dimensions_868_json() -> str:
+    """Indicator 868's dimensions in Spanish."""
+    return gzip.decompress((FIXTURES / "cepalstat_dimensions_868.json.gz").read_bytes()).decode(
+        "utf-8"
+    )
+
+
+@pytest.fixture(scope="session")
+def cepalstat_dimensions_869_json() -> str:
+    """Indicator 869's dimensions in Spanish."""
+    return gzip.decompress((FIXTURES / "cepalstat_dimensions_869.json.gz").read_bytes()).decode(
+        "utf-8"
+    )
+
+
 @pytest.fixture
 def inide_source(catalog: SourceCatalog) -> SourceEntry:
     """Catalog entry for the INIDE monthly CPI source."""
