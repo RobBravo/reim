@@ -350,6 +350,26 @@ def test_a_missing_year_is_reported_as_a_warning(raw: RawDataset) -> None:
     assert "2008" in result.message
 
 
+def test_a_hole_in_one_country_is_not_hidden_by_the_others(raw: RawDataset) -> None:
+    """Belize missing 2008 while six countries publish it is still a hole.
+
+    Pooling the years of all seven leaves the 1990-2025 span looking continuous,
+    because somebody published every year in it.
+    """
+    observations = [
+        obs
+        for obs in build_connector().transform(raw)
+        if not (obs.country_iso3 == "BLZ" and obs.period.label == "2008")
+    ]
+
+    result = results_of(observations)["cepalstat_annual_continuity"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.WARNING
+    assert "BLZ" in result.message
+    assert "2008" in result.message
+
+
 def test_every_check_is_dataset_level(raw: RawDataset) -> None:
     """No check names a row: a broken identity has no single guilty cell."""
     results = build_connector().validate(build_connector().transform(raw))
