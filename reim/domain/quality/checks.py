@@ -201,7 +201,13 @@ def check_freshness(
     *,
     today: date | None = None,
 ) -> CheckList:
-    """Report how old the newest period in the batch is."""
+    """Report how old the newest period is, measured for each country.
+
+    Never measured over the whole batch. A batch holds one series per country,
+    so the newest period in it belongs to whichever country is furthest ahead —
+    and a country that stopped publishing years ago stays invisible for as long
+    as any other country is current. The age reported is the stalest country's.
+    """
     if not observations:
         return [
             QualityResult.skipped("freshness", CheckType.TIMELINESS, "No observations to assess")
@@ -214,27 +220,49 @@ def check_freshness(
         ]
 
     reference = today or datetime.now(UTC).date()
-    newest = max(obs.period.end for obs in observations)
-    age_days = (reference - newest).days
+    ages: list[tuple[int, str, date]] = []
+    for series in _series_by_country(observations):
+        newest = max(obs.period.end for obs in series)
+        ages.append(((reference - newest).days, series[0].country_iso3, newest))
+    ages.sort()
+    worst_age, _, worst_newest = ages[-1]
+    stale = [entry for entry in ages if entry[0] > rule.freshness_max_age_days]
 
-    if age_days <= rule.freshness_max_age_days:
+    if not stale:
+        if len(ages) == 1:
+            message = f"Newest period ends {worst_newest.isoformat()} ({worst_age} day(s) old)"
+        else:
+            message = (
+                f"All {len(ages)} countries current; the stalest ends "
+                f"{worst_newest.isoformat()} ({worst_age} day(s) old)"
+            )
         return [
             QualityResult.passed(
                 "freshness",
                 CheckType.TIMELINESS,
-                f"Newest period ends {newest.isoformat()} ({age_days} day(s) old)",
+                message,
                 expected_value=f"<= {rule.freshness_max_age_days} days",
-                actual_value=str(age_days),
+                actual_value=str(worst_age),
             )
         ]
+
+    if len(ages) == 1:
+        message = f"Newest period ends {worst_newest.isoformat()}, {worst_age} day(s) old"
+    else:
+        shown = ", ".join(
+            f"{iso3} ends {end.isoformat()} ({age} day(s) old)"
+            for age, iso3, end in reversed(stale[-5:])
+        )
+        suffix = f" (+{len(stale) - 5} more)" if len(stale) > 5 else ""
+        message = f"{len(stale)} of {len(ages)} countries behind: {shown}{suffix}"
     return [
         QualityResult.failure(
             "freshness",
             CheckType.TIMELINESS,
             rule.freshness_severity,
-            f"Newest period ends {newest.isoformat()}, {age_days} day(s) old",
+            message,
             expected_value=f"<= {rule.freshness_max_age_days} days",
-            actual_value=str(age_days),
+            actual_value=str(worst_age),
         )
     ]
 

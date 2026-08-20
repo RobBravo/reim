@@ -175,6 +175,64 @@ def test_freshness_is_skipped_without_a_threshold(make_observation, permissive_r
     assert results[0].status is CheckStatus.SKIPPED
 
 
+def test_one_stale_country_does_not_hide_behind_the_others(make_observation) -> None:
+    """The failure this check exists to catch, and could not see before.
+
+    Measuring the newest period of the whole batch means a country that stopped
+    publishing years ago stays invisible for as long as any other country is
+    current. Belize could have frozen in 2018 and every check would pass.
+    """
+    rule = IndicatorRule(freshness_max_age_days=600)
+    batch = [
+        make_observation("2025", country_iso3="NIC"),
+        make_observation("2018", country_iso3="BLZ"),
+    ]
+
+    results = check_freshness(batch, rule, today=date(2026, 8, 19))
+
+    assert results[0].failed
+    assert "BLZ" in results[0].message
+    assert "NIC" not in results[0].message
+
+
+def test_freshness_passes_when_every_country_is_current(make_observation) -> None:
+    rule = IndicatorRule(freshness_max_age_days=600)
+    batch = [
+        make_observation("2025", country_iso3="NIC"),
+        make_observation("2025", country_iso3="BLZ"),
+    ]
+
+    result = check_freshness(batch, rule, today=date(2026, 8, 19))[0]
+
+    assert result.status is CheckStatus.PASSED
+    assert "2" in result.message
+
+
+def test_freshness_reports_the_stalest_country_not_the_newest(make_observation) -> None:
+    """`actual_value` drives the dashboards: it must be the worst age, not the best."""
+    rule = IndicatorRule(freshness_max_age_days=100)
+    batch = [
+        make_observation("2026-06", country_iso3="NIC", frequency=Frequency.MONTHLY),
+        make_observation("2026-01", country_iso3="BLZ", frequency=Frequency.MONTHLY),
+    ]
+
+    result = check_freshness(batch, rule, today=date(2026, 8, 19))[0]
+
+    assert result.actual_value == "200"
+
+
+def test_single_country_freshness_is_unchanged(make_observation) -> None:
+    """Twelve of REIM's seventeen pipelines run one country; they must not move."""
+    rule = IndicatorRule(freshness_max_age_days=30)
+    stale = check_freshness([make_observation("2020")], rule, today=date(2026, 8, 4))[0]
+    fresh = check_freshness([make_observation("2025")], rule, today=date(2026, 1, 4))[0]
+
+    assert stale.failed
+    assert stale.actual_value == "2042"
+    assert fresh.status is CheckStatus.PASSED
+    assert fresh.actual_value == "4"
+
+
 def test_monotonic_series_breach_warns(make_observation) -> None:  # type: ignore[no-untyped-def]
     rule = IndicatorRule(monotonic_increasing=True)
     batch = [make_observation("2023", "100"), make_observation("2024", "90")]

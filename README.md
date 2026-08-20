@@ -424,6 +424,12 @@ future periods, configurable value ranges, anomalous period-over-period changes,
 expected frequency, freshness, temporal monotonicity, and referential integrity
 between indicator, source and country.
 
+**Every check that walks a series walks one country at a time.** A regional
+batch holds seven series, not one long one, so period-over-period change,
+monotonicity and freshness are each measured per country: a jump is never
+measured between two countries, and a country that stops publishing is reported
+even while the other six stay current.
+
 Severity determines what happens:
 
 | Severity | Effect |

@@ -33,6 +33,7 @@ it does not read as a transcription error.
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -437,27 +438,47 @@ class CepalstatGdpConnector(BaseConnector):
         )
 
     def _check_annual_continuity(self, observations: list[NormalizedObservation]) -> QualityResult:
-        """CEPAL publishes every year; a hole is worth a human look."""
-        years = {int(obs.period.label) for obs in observations}
-        if len(years) < 2:
+        """CEPAL publishes every year; a hole is worth a human look.
+
+        Each country's span is walked on its own. Pooling the years of all seven
+        would leave a hole invisible whenever some other country published that
+        year — and six of the seven usually did.
+        """
+        years_by_country: dict[str, set[int]] = defaultdict(set)
+        for obs in observations:
+            years_by_country[obs.country_iso3].add(int(obs.period.label))
+
+        spans = {
+            iso3: (min(years), max(years))
+            for iso3, years in years_by_country.items()
+            if len(years) > 1
+        }
+        if not spans:
             return QualityResult.passed(
                 "cepalstat_annual_continuity",
                 CheckType.COMPLETENESS,
                 "Too few years ingested to assess continuity",
-                actual_value=str(len(years)),
+                actual_value=str(sum(len(y) for y in years_by_country.values())),
             )
 
-        first, last = min(years), max(years)
-        expected = last - first + 1
-        missing = [str(year) for year in range(first, last + 1) if year not in years]
+        expected = sum(last - first + 1 for first, last in spans.values())
+        present = sum(len(years_by_country[iso3]) for iso3 in spans)
+        missing = [
+            f"{iso3} {year}"
+            for iso3, (first, last) in sorted(spans.items())
+            for year in range(first, last + 1)
+            if year not in years_by_country[iso3]
+        ]
 
         if not missing:
+            earliest = min(first for first, _ in spans.values())
+            latest = max(last for _, last in spans.values())
             return QualityResult.passed(
                 "cepalstat_annual_continuity",
                 CheckType.COMPLETENESS,
-                f"{expected} consecutive years from {first} to {last}",
+                f"No gaps in any of the {len(spans)} countries, {earliest} to {latest}",
                 expected_value=str(expected),
-                actual_value=str(len(years)),
+                actual_value=str(present),
             )
 
         shown = ", ".join(missing[:5])
@@ -466,7 +487,7 @@ class CepalstatGdpConnector(BaseConnector):
             "cepalstat_annual_continuity",
             CheckType.COMPLETENESS,
             CheckSeverity.WARNING,
-            f"{len(missing)} year(s) missing: {shown}{suffix}",
+            f"{len(missing)} country-year(s) missing: {shown}{suffix}",
             expected_value=str(expected),
-            actual_value=str(len(years)),
+            actual_value=str(present),
         )
