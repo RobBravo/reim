@@ -953,8 +953,8 @@ EXPECTED_COUNTRIES: dict[str, frozenset[str]] = {
 NESTING_TOLERANCE = Decimal("0.001")
 ```
 
-Then the class. **Fence this as ```text if you copy it into a plan** — see the
-global constraints.
+Then the class. If you copy this block into a plan or doc, fence it as text
+rather than as python — see the global constraints.
 
 ```text
 class CepalstatMonetaryConnector(BaseConnector):
@@ -1384,8 +1384,9 @@ Expected: FAIL — `validate` returns `[]`, so `set(results)` is empty and the
 - [ ] **Step 3: Implement the three checks**
 
 Replace the placeholder `validate` in
-`reim/ingestion/connectors/regional/cepalstat_monetary.py`. **Fence this as
-```text if you copy it into a plan** — see the global constraints.
+`reim/ingestion/connectors/regional/cepalstat_monetary.py`. If you copy this
+block into a plan or doc, fence it as text rather than as python — see the
+global constraints.
 
 ```text
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
