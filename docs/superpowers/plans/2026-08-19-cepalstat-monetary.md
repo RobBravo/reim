@@ -1206,6 +1206,15 @@ class CepalstatMonetaryConnector(BaseConnector):
         return []
 ```
 
+> **Amended during execution (commit 28401d7).** The `_months_of` shown above
+> maps any unrecognized label to `None` through `MONTHS_BY_SPANISH_NAME.get`,
+> which makes a *renamed* month indistinguishable from the legitimate `Anual`
+> and `Trimestre N` members — a rename silently dropped 171 observations
+> instead of raising. That contradicts spec decision M8. The shipped code adds
+> an explicit `NON_MONTH_MEMBERS` frozenset and makes the classification total:
+> a label in neither table raises. Read the connector, not this block, if you
+> need the current shape.
+
 - [ ] **Step 4: Run the tests**
 
 Run: `.venv/bin/python -m pytest tests/unit/test_cepalstat_monetary_connector.py -v`
