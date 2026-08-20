@@ -101,11 +101,15 @@ def test_list_countries(client: TestClient) -> None:
 
 
 def test_active_only_filter(client: TestClient) -> None:
-    body = client.get("/api/v1/countries", params={"active_only": True}).json()
-    returned = {c["iso2"] for c in body["data"]}
+    """Belize was the one inactive country; CEPALSTAT's GDP activated it.
 
-    assert returned == {"NI", "GT", "SV", "HN", "CR", "PA"}
-    assert "BZ" not in returned
+    All seven are active now, so the filter no longer removes anyone. What it
+    must still do is return only rows that say they are active.
+    """
+    body = client.get("/api/v1/countries", params={"active_only": True}).json()
+
+    assert {c["iso2"] for c in body["data"]} == {"NI", "GT", "SV", "HN", "CR", "PA", "BZ"}
+    assert all(country["is_active"] for country in body["data"])
 
 
 def test_get_country(client: TestClient) -> None:

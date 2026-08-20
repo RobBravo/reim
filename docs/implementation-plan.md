@@ -385,7 +385,7 @@ independent subsystems, one of which is really six separate investigations:
 | **B. Cross-country comparison endpoints** | ✅ §16 |
 | **C. National central banks** (six countries) | ✅ Guatemala (§17); the other five recorded, not acted on |
 | **D. SIECA** | ✅ §18 — services, not merchandise |
-| **E. CEPALSTAT** | open; a probe of its API returned 404 |
+| **E. CEPALSTAT** | ✅ annual GDP, 1,008 observations. The 404 recorded here was wrong: every route is scoped to an indicator id, and the probe used collection paths that do not exist. See `docs/sources.md` |
 | **F. Currency handling** | open, and not needed yet — everything multi-country is USD |
 
 A was chosen because it was measured rather than hoped: the connector shipped

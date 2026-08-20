@@ -7,7 +7,7 @@ This file is the honest record behind `sources/catalog.yml`. A source is only
 enabled once its endpoint has been reached and its response shape observed. No
 connector is ever "confirmed working" against invented data.
 
-Last verified: **2026-08-09**.
+Last verified: **2026-08-19**.
 
 ---
 
@@ -622,6 +622,183 @@ stores); and reviving `estadisticas.sieca.int`.
 
 ---
 
+### CEPAL — annual gross domestic product
+
+| | |
+|---|---|
+| **Organization** | Comisión Económica para América Latina y el Caribe (`CEPAL`) — regional UN commission |
+| **Host** | `https://api-cepalstat.cepal.org` |
+| **Endpoint** | `GET /cepalstat/api/v1/indicator/{id}/data?lang=en` |
+| **Protocol** | Undocumented REST JSON; envelope of `header` / `body` / `footer` |
+| **Auth** | None. No `User-Agent` filter, no TLS quirk |
+| **Frequency** | Annual |
+| **Coverage** | **1990 … 2025**, verified — 36 years, no gaps, for all seven countries |
+| **Countries** | All seven, from four requests; 33 Latin American and Caribbean countries and 3 regional aggregates are returned and filtered out |
+| **Volume** | 167–177 KB per indicator, ~0.7 s |
+| **Licence** | ⚠️ **Not open.** See below. |
+| **Status** | ✅ **Enabled** — 1,008 observations, measured 2026-08-19 |
+
+**The four indicators:**
+
+| CEPAL id | Published name (`lang=en`) | Published unit | REIM indicator |
+|---|---|---|---|
+| 2203 | Total Annual Gross Domestic Product (GDP) at current prices in dollars | Millions of dollars | `gdp_current_usd_annual` |
+| 2204 | Total Annual Gross Domestic Product (GDP) at constant prices in dolllars | Millions of dollars | `gdp_constant_usd_annual` |
+| 2205 | Total Annual GDP per inhabitant at current prices in dollars | Dollars per inhabitant at current prices | `gdp_per_capita_current_usd_annual` |
+| 2206 | Total Annual GDP per inhabitant at constant prices in dollars | Dollars per inhabitant | `gdp_per_capita_constant_usd_annual` |
+
+The tripled `l` in 2204's English name is CEPAL's own typo. REIM stores its own
+indicator names, so it does not propagate; it is recorded here so it does not
+read as a transcription error.
+
+The totals are published in millions and stored in whole USD (`× 10^6`, exact in
+`Decimal` and declared in `raw_metadata`) so they line up with the IMF and SIECA
+figures. The per-capita series are stored unscaled. The growth-rate series
+(indicator 2207) is deliberately not ingested: computed from 2204 it reproduces
+CEPAL's published figure to the last digit across all 36 Nicaraguan years, and
+REIM stores levels rather than what derives from them — the same rule SIECA's
+`VP`, `PT` and `PC` units met above.
+
+#### The 404 this repository recorded twice was wrong
+
+`docs/implementation-plan.md` and
+`docs/superpowers/specs/2026-08-08-regional-imf-trade-design.md:20` both stated
+that a probe of CEPALSTAT's API returned `404`. **The API is live and healthy.**
+The earlier probe used collection paths that do not exist: every CEPALSTAT route
+is scoped to an indicator id, and a bare collection path returns `404` by
+design. Measured on 2026-08-18:
+
+| Path | Result |
+|---|---|
+| `GET /` | `200` — `{"name":"uneclac cepalstat api","version":"1.9.13"}` |
+| `GET /cepalstat/api/v1/indicator` | `404` — no collection endpoint exists |
+| `GET /cepalstat/api/v1/indicator/2206/data?lang=es` | **`200`, 177 KB, 1,296 rows, 0.66 s** |
+| `GET /cepalstat/api/v1/indicator/{id}/metadata`, `/dimensions`, `/sources`, `/footnotes` | `200` |
+| `GET /cepalstat/api/v1/themes`, `/areas`, `/thematic-tree` | `200` |
+
+The spec is left as written — a spec records what was believed when it was
+written — but both live documents are corrected.
+
+**There is no published API documentation, and no interactive schema.** The base
+URL and the route names were recovered from the portal's own JavaScript:
+`https://statistics.cepal.org/portal/databank/config.js` declares
+`API_BASE_URL` and `ENDPOINT_THEMATIC_TREE`, and
+`https://statistics.cepal.org/portal/cepalstat/dash/scripts/config.js` declares
+the per-indicator data, dimensions, sources and notes routes. The connector's
+module docstring repeats this so nobody runs the search again.
+
+**Indicator ids cannot be listed from an area.** `/themes` and `/areas` return
+the full tree of 1,785 areas, 33 of them economic, but no route maps an area to
+its indicators. `/thematic-tree?lang=es&theme_id=6` comes closest: it returns
+330 leaves, each carrying an `indicator_id`. That tree is **not clean** — 45 of
+the 330 are working artefacts named `dummy`, `CLONE` or `TEST`. Ids are
+therefore pinned in the catalog rather than discovered at runtime, exactly as
+SIECA's filter ids are.
+
+**Dimensions are addressed by numeric id, never by name.** Row keys embed the id
+(`dim_208`, `dim_29117`) and the names are language-dependent: `Years__ESTANDAR`
+in English is `Años__ESTANDAR` in Spanish. The year label likewise comes from
+the response's own member table and is never computed from the member id —
+`year = id - 27170` holds inside the 1990–2025 window but breaks for 130 of the
+years dimension's 201 members, with six distinct offsets overall.
+
+**The envelope carries its own status, and it can disagree with the HTTP code.**
+An unknown indicator id answers `500` with `success: false`, not `404`, so
+`extract` reads `header.success` rather than trusting the status line.
+
+#### These are CEPAL's estimates, not each country's official figures
+
+The API's own `sources[]` says "Own estimates based on national sources". CEPAL
+harmonises national accounts so that countries can be compared with each other;
+the price of that comparability is that a figure here need not match the GDP its
+own statistics office publishes. REIM stores and serves them as CEPAL
+estimates. Anyone quoting a single country's GDP for that country's own purposes
+should take the national source.
+
+**The constant-price base year is 2018, and it lives in a footnote.** Indicators
+2204 and 2206 declare their unit as `Millions of dollars` and `Dollars per
+inhabitant`; only `footnotes` names the base year. A rebasing would therefore
+change every constant-price value while the unit string stood still, so it is a
+quality check rather than a comment.
+
+**Four quality checks**, all passing against the live service on 2026-08-19:
+`cepalstat_seven_countries_present` (completeness, `critical`),
+`cepalstat_population_identity` (consistency, `error`),
+`cepalstat_constant_price_base_year` (validity, `error`) and
+`cepalstat_annual_continuity` (completeness, `warning`). The second is the
+strongest cross-series check in REIM: `total ÷ per capita` recovers the implied
+population, and the current-price and constant-price pairs must agree. They do,
+to 8.1 × 10⁻¹⁶ across all 252 cells. It is expressible only because one
+connector holds all four series.
+
+#### Belize
+
+Belize was registered but inactive since v0.1.0 — it reports nothing to the IMF
+IMTS dataflow REIM's monthly trade data comes from. CEPALSTAT publishes its
+national accounts complete: 36 years of all four series, 144 observations, its
+first data of any kind in REIM. **It still has no trade data**, monthly or
+quarterly; SIECA covers six countries and does not include it.
+
+#### Licence: not open, and the terms conflict with what REIM does
+
+The [website usage agreement](https://www.cepal.org/en/terminos-y-condiciones-sobre-el-uso-del-sitio-web-entre-la-cepal-y-el-usuario)
+grants users the right to
+
+> download and copy information, documents and material … for Users' personal,
+> non-commercial use without any right to resell, redistribute or create
+> derivative works therefrom
+
+The [repository terms](https://repositorio.cepal.org/page/termsofuse?locale-attribute=en)
+repeat the non-commercial restriction. The CEPALSTAT portal, the data bank and
+the technical-sheet pages publish no separate, more permissive licence — checked
+on 2026-08-18.
+
+**This is stricter than either precedent in this file.** The IMF is not open but
+redistributable with attribution; SIECA is an *absence* of any grant, with no
+terms to read. CEPAL is an *explicit prohibition*, and REIM redistributes these
+figures through its own API. That conflict is stated here rather than hidden:
+REIM is a non-commercial research project, it ships CEPAL's required citation
+with every observation, and a reader who needs certainty about reuse rights
+should ask CEPAL directly rather than rely on this paragraph.
+
+The API returns a `credits` block on every response — `["<date>", "CEPALSTAT",
+"Comisión Económica para América Latina y el Caribe – CEPAL", "Naciones
+Unidas"]` — which functions as the required citation. Its elements travel into
+every observation's `raw_metadata`. `credits[0]` is excluded: it is CEPAL's own
+fetch date, it moves between runs (two downloads twelve hours apart returned
+`2026-08-18` and `2026-08-19`), and REIM already records when it fetched, in
+`retrieved_at`.
+
+#### Reachable, not ingested — for whoever takes them next
+
+Both families below were probed on 2026-08-19 and are live. Neither is ingested:
+each carries dimensions this connector's country × year shape does not absorb,
+and each needs its own design.
+
+| Ids | Series | Dimensions | Central America | Nicaragua |
+|---|---|---|---|---|
+| 862, 868, 869 | Money (M1), Liquidity (M2), Broad liquidity (M3), end of period | 3 — country, period-within-year (17 members), year | 862 all seven; 868 omits Belize; 869 omits El Salvador | **2001–2024** |
+| 1239, 1240 | Public debt stock, in millions of USD and as a share of GDP | 4 — country, institutional coverage (4), year, debt classification (6) | All seven | 1990–2025 |
+
+Two traps worth knowing before starting:
+
+* **The monetary indicators must be read with `lang=es`.** Their second
+  dimension is a period-within-year selector — twelve months, four quarters and
+  `Anual` — and in `lang=en` all 17 of its members come back as the literal
+  untranslated string `descripcion_ingles`. The English response cannot tell a
+  month from a quarter from the annual figure. This is the one place where
+  decision C7 (`lang=en` throughout) would have to be excepted.
+* **Their unit is millions of units in *local currency*,** not dollars, so they
+  are not comparable across countries without a conversion REIM would be the
+  author of.
+
+The monetary family matters beyond its own merits: `ROADMAP.md` gives up on
+Nicaraguan monetary aggregates on the grounds that they are only available from
+SECMCA behind a credentialed account. Indicator 862 covers Nicaragua from 2001
+to 2024 with no authentication at all.
+
+---
+
 ## Registered but not yet implemented
 
 These organizations exist in `reim/domain/sources/organizations.py` so that
@@ -634,7 +811,6 @@ catalog entries can reference them as soon as an endpoint is identified.
 | **MHCP** (ministry of finance) | Fiscal execution, public debt | Not yet researched |
 | **SIBOIF** (banking supervisor) | Banking system aggregates | Not yet researched |
 | **BCIE** (regional development bank) | Regional financing flows | Not yet researched |
-| **CEPAL** | CEPALSTAT regional series | Has an API; useful for cross-country comparison in a later phase |
 | **IMF** | IFS monetary and external series | `dataservices.imf.org` was not reachable from the development environment; worth retrying |
 
 Adding any of these is a catalog entry plus a connector module — no change to

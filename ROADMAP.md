@@ -54,8 +54,13 @@ aggregator rather than the Nicaraguan publisher itself.
     from the IMF's IMTS instead, 1,308 observations from 1990-01. Note this is
     REIM's only source whose data is **not openly licensed**.
   - **monetary aggregates and remittances** — Nicaragua reports neither to the
-    IMF (0 observations, against 183 for Costa Rica). Available from SECMCA,
-    which requires a credentialed account.
+    IMF (0 observations, against 183 for Costa Rica). This line named SECMCA,
+    which requires a credentialed account, as the only route. That is no longer
+    true for the aggregates: **CEPALSTAT indicator 862 (M1) covers Nicaragua
+    from 2001 to 2024 with no authentication at all**, and 868 (M2) and 869 (M3)
+    alongside it. Not yet ingested — they carry a period-within-year dimension
+    and are published in local currency; `docs/sources.md` records their shape
+    and the two traps in reading them.
   - **reserves** — the IMF has 1,740 monthly observations, but its indicator
     codes cannot be named from anything its API exposes. See `docs/sources.md`
     for the unblocking step.
@@ -101,7 +106,15 @@ and a fourth has its first country.
   observations, six countries, 2009-Q1 onward, from four requests. REIM's first
   quarterly series and its first source with no country of its own. See
   `docs/sources.md`.
-- **CEPALSTAT** for cross-country comparable series.
+- ~~**CEPALSTAT** for cross-country comparable series~~ ✅ **done** — annual
+  GDP: totals and per-inhabitant figures, each at current and at constant 2018
+  prices, **1,008 observations** for all seven countries from 1990 to 2025, from
+  four requests. REIM's first GDP data and **Belize's first data of any kind**;
+  Belize reports nothing to the IMF dataflow REIM's trade series come from, and
+  CEPALSTAT publishes its national accounts complete. The API is **not** the
+  `404` this repository recorded twice — every route is scoped to an indicator
+  id. CEPAL's terms are **not open** and expressly forbid redistribution; see
+  `docs/sources.md`, which quotes them and states the conflict.
 - ~~**Cross-country comparison endpoints**~~ ✅ **done** — `GET /api/v1/compare`
   takes one indicator and two to twenty countries and returns a **rectangular**
   matrix: every row carries an entry for every country asked for, `null` where
@@ -169,8 +182,17 @@ Deliberately last, and deliberately constrained.
 
 Saying no keeps the project coherent.
 
-- **Scraping paywalled or licence-restricted data.** Official and openly
-  licensed only.
+- **Defeating an active access control.** A JavaScript bot-manager challenge,
+  a login, a paywall: REIM does not pass any of them. `www.bcn.gob.ni` sits
+  behind a Radware bot manager and stays unread. Satisfying a static header
+  check is a different thing, and `docs/sources.md` states which sources need
+  one and why.
+- **Hiding a licence.** REIM prefers openly licensed sources and says so, but
+  three of its sources are not openly licensed — the IMF, SIECA and CEPAL.
+  Each carries its real terms in the catalog, each has a section in
+  `docs/sources.md` quoting them, and each ships the attribution its publisher
+  asks for. The rule is that the terms are recorded, not that they are always
+  permissive.
 - **Unofficial or crowd-sourced figures**, including parallel exchange rates,
   presented as if official. If ever added, they would be a clearly separated
   category.
