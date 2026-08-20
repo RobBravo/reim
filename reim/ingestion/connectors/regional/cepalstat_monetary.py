@@ -74,6 +74,12 @@ MONTHS_BY_SPANISH_NAME = {
     "Diciembre": 12,
 }
 
+#: The only period members that are legitimately not months. Together with
+#: ``MONTHS_BY_SPANISH_NAME`` this makes the label classification total: any
+#: label in neither set is a contract break (a rename or an unannounced new
+#: member) and must raise rather than silently fall out as "not a month".
+NON_MONTH_MEMBERS = frozenset({"Anual", "Trimestre 1", "Trimestre 2", "Trimestre 3", "Trimestre 4"})
+
 
 @dataclass(frozen=True, slots=True)
 class SeriesSpec:
@@ -290,24 +296,40 @@ class CepalstatMonetaryConnector(BaseConnector):
         """Map each period member id to a month number, or ``None`` to skip.
 
         ``None`` marks the annual and quarterly members, which restate a month
-        exactly and are not stored.
+        exactly and are not stored. The classification is total: a label that
+        is neither a known month nor a known non-month member means CEPAL
+        renamed or added one, which is a contract break, not a row to drop.
 
         Raises:
-            TransformationError: The period dimension is absent.
+            TransformationError: The period dimension is absent, or one of its
+                members carries a label that is neither in
+                ``MONTHS_BY_SPANISH_NAME`` nor in ``NON_MONTH_MEMBERS``.
         """
         members = self._members_of(
             dimensions_document["body"], PERIOD_DIMENSION, "period", cepal_id
         )
-        return {
-            member_id: MONTHS_BY_SPANISH_NAME.get(label) for member_id, label in members.items()
-        }
+        months: dict[int, int | None] = {}
+        for member_id, label in members.items():
+            if label in MONTHS_BY_SPANISH_NAME:
+                months[member_id] = MONTHS_BY_SPANISH_NAME[label]
+            elif label in NON_MONTH_MEMBERS:
+                months[member_id] = None
+            else:
+                msg = (
+                    f"CEPALSTAT period dimension for indicator {cepal_id} names an "
+                    f"unrecognized member {label!r}: neither a known month nor a known "
+                    f"non-month member. CEPAL renamed or added a period member."
+                )
+                raise TransformationError(msg, source_key=self.source.key)
+        return months
 
     def _month_of(self, row: Any, months: dict[int, int | None], cepal_id: int) -> int | None:
         """Resolve a row's month, or ``None`` when it is a restatement.
 
         Raises:
-            TransformationError: The row names a period member that does not
-                exist, which means CEPAL renamed or added one.
+            TransformationError: The row names a period member id that is not
+                in ``months`` at all, which means the id itself does not
+                exist in the dimension's member table.
         """
         member = row.get(f"dim_{PERIOD_DIMENSION}")
         if member not in months:

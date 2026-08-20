@@ -325,3 +325,50 @@ def test_a_missing_period_dimension_raises(raw: RawDataset) -> None:
 
     with pytest.raises(TransformationError, match="no period dimension"):
         build_connector().transform(broken)
+
+
+def test_a_renamed_period_member_raises(raw: RawDataset) -> None:
+    """The bug this covers: a rename used to fall through as 'not a month'.
+
+    Only a *removed* member id reached `_month_of`'s raise; a member whose
+    label changed kept its id, so `MONTHS_BY_SPANISH_NAME.get(label)` just
+    returned `None` and the row was dropped in silence, indistinguishable
+    from a legitimate non-month member such as "Anual".
+    """
+    dimensions = json.loads(raw.payload["dimensions"][862])
+    for dimension in dimensions["body"]["dimensions"]:
+        if dimension["id"] == PERIOD_DIMENSION:
+            for member in dimension["members"]:
+                if member["name"] == "Enero":
+                    member["name"] = "Jan"
+
+    broken = build_raw(
+        dict(raw.payload["data"]),
+        {**raw.payload["dimensions"], 862: json.dumps(dimensions)},
+    )
+
+    with pytest.raises(TransformationError, match="'Jan'"):
+        build_connector().transform(broken)
+
+
+def test_an_added_unknown_period_member_raises(raw: RawDataset) -> None:
+    """A member CEPAL adds is neither a known month nor a known non-month one."""
+    dimensions = json.loads(raw.payload["dimensions"][862])
+    for dimension in dimensions["body"]["dimensions"]:
+        if dimension["id"] == PERIOD_DIMENSION:
+            dimension["members"].append({"id": 4000, "name": "Semestre 1"})
+
+    broken = build_raw(
+        dict(raw.payload["data"]),
+        {**raw.payload["dimensions"], 862: json.dumps(dimensions)},
+    )
+
+    with pytest.raises(TransformationError, match="'Semestre 1'"):
+        build_connector().transform(broken)
+
+
+# The legitimate non-month members ("Anual" and the four "Trimestre N"
+# members) still skip silently on the unmodified fixtures: that is exactly
+# what `test_transform_produces_every_monthly_cell` already asserts (5,383
+# observations, none of them an annual or quarterly restatement), so it is
+# not duplicated here.
