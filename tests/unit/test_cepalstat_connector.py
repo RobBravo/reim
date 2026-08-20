@@ -11,10 +11,12 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+import httpx
 import pytest
+import respx
 
 from reim.core.constants import CheckSeverity, CheckStatus, Frequency
-from reim.core.exceptions import TransformationError
+from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.connectors.regional.cepalstat_gdp import (
@@ -353,3 +355,97 @@ def test_every_check_is_dataset_level(raw: RawDataset) -> None:
     results = build_connector().validate(build_connector().transform(raw))
 
     assert all(result.observation_index is None for result in results)
+
+
+BASE_URL = "https://api-cepalstat.cepal.org/cepalstat/api/v1"
+
+
+def data_url(cepal_id: int) -> str:
+    return f"{BASE_URL}/indicator/{cepal_id}/data"
+
+
+def json_response(text: str) -> httpx.Response:
+    return httpx.Response(200, text=text, headers={"content-type": "application/json"})
+
+
+@respx.mock
+async def test_a_run_makes_one_request_per_indicator(
+    cepalstat_gdp_2203_json: str,
+    cepalstat_gdp_2204_json: str,
+    cepalstat_gdp_2205_json: str,
+    cepalstat_gdp_2206_json: str,
+) -> None:
+    routes = {
+        2203: respx.get(data_url(2203)).mock(return_value=json_response(cepalstat_gdp_2203_json)),
+        2204: respx.get(data_url(2204)).mock(return_value=json_response(cepalstat_gdp_2204_json)),
+        2205: respx.get(data_url(2205)).mock(return_value=json_response(cepalstat_gdp_2205_json)),
+        2206: respx.get(data_url(2206)).mock(return_value=json_response(cepalstat_gdp_2206_json)),
+    }
+
+    raw = await build_connector().extract()
+
+    assert all(route.call_count == 1 for route in routes.values())
+    assert set(raw.payload) == {2203, 2204, 2205, 2206}
+    assert raw.payload[2203] == cepalstat_gdp_2203_json
+    assert raw.metadata["lang"] == "en"
+
+
+@respx.mock
+async def test_the_language_is_requested_explicitly(cepalstat_gdp_2203_json: str) -> None:
+    for cepal_id in (2203, 2204, 2205, 2206):
+        respx.get(data_url(cepal_id)).mock(return_value=json_response(cepalstat_gdp_2203_json))
+
+    await build_connector().extract()
+
+    assert respx.calls[0].request.url.params["lang"] == "en"
+
+
+@respx.mock
+async def test_a_failing_envelope_raises_even_on_http_200(
+    cepalstat_gdp_2203_json: str,
+) -> None:
+    """CEPAL answers an unknown id with 500 and success:false, never 404."""
+    envelope = json.dumps(
+        {
+            "header": {"success": False, "code": 404, "message": "Not found"},
+            "body": {"data": []},
+        }
+    )
+    respx.get(data_url(2203)).mock(return_value=json_response(envelope))
+
+    with pytest.raises(ExtractionError, match="reported failure 404"):
+        await build_connector().extract()
+
+
+@respx.mock
+async def test_an_empty_data_array_raises(cepalstat_gdp_2203_json: str) -> None:
+    """A run that returns nothing is a failure, not a quiet success."""
+    body = json.loads(cepalstat_gdp_2203_json)
+    body["body"]["data"] = []
+    respx.get(data_url(2203)).mock(return_value=json_response(json.dumps(body)))
+
+    with pytest.raises(ExtractionError, match="no rows"):
+        await build_connector().extract()
+
+
+@respx.mock
+async def test_a_non_json_response_raises(cepalstat_gdp_2203_json: str) -> None:
+    respx.get(data_url(2203)).mock(
+        return_value=httpx.Response(200, text="<html>", headers={"content-type": "text/html"})
+    )
+
+    with pytest.raises(ExtractionError):
+        await build_connector().extract()
+
+
+@pytest.mark.live
+async def test_the_real_api_still_answers_as_recorded() -> None:
+    """Opt-in. Proves the contract, not the data: shape, not values."""
+    raw = await build_connector().extract()
+    observations = build_connector().transform(raw)
+
+    assert len(observations) >= 1000
+    assert {obs.country_iso3 for obs in observations} == CENTRAL_AMERICA
+    assert all(
+        result.status is CheckStatus.PASSED for result in build_connector().validate(observations)
+    )
