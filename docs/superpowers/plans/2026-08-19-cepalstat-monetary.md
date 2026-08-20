@@ -28,7 +28,7 @@ All measured 2026-08-19 against complete responses. These are the numbers the te
 | Fact | Value |
 |---|---|
 | Monthly observations | **5,383** = 2,026 (M1) + 1,611 (M2) + 1,746 (M3) |
-| Gaps inside any country's span | **0**, in all 21 country-indicator series |
+| Gaps inside any country's span | **0**, in all 19 country-indicator series |
 | `Anual` == `Diciembre` | 453 cells, **0** exceptions |
 | `Trimestre N` == its closing month | 1,800 cells, **0** exceptions |
 | M1 ≤ M2 | 1,611 shared cells, 116 rounding violations, worst 0.014040 % |
@@ -543,7 +543,7 @@ def test_each_recording_holds_its_measured_monthly_count(
 def test_no_country_has_a_gap_inside_its_own_span(
     cepal_id: int, request: pytest.FixtureRequest
 ) -> None:
-    """Zero gaps in all 21 country-indicator series, measured 2026-08-19."""
+    """Zero gaps in all 19 country-indicator series, measured 2026-08-19."""
     data = request.getfixturevalue(f"cepalstat_monetary_{cepal_id}_json")
     members = period_members(request.getfixturevalue(f"cepalstat_dimensions_{cepal_id}_json"))
     cells = monthly_cells(data, members)

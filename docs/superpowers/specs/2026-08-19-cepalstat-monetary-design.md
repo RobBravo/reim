@@ -119,7 +119,7 @@ the comparison. M1 ≤ M3 never fails because the gap between the narrowest and
 widest aggregate is far wider than a rounding step.
 
 **Coverage is complete but uneven, and the unevenness is the source's.** No gaps
-in any of the 21 country-indicator series:
+in any of the 19 country-indicator series:
 
 | | M1 (862) | M2 (868) | M3 (869) |
 |---|---|---|---|
