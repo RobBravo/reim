@@ -38,7 +38,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, ClassVar
 
-from reim.core.constants import Frequency
+from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
@@ -186,9 +186,12 @@ class CepalstatGdpConnector(BaseConnector):
         Pure function of ``raw``.
 
         Raises:
-            TransformationError: A payload is not the expected shape, its years
-                dimension is missing, or a row names a year member that does
-                not exist.
+            TransformationError: The payload is not a mapping of indicator id
+                to response text, its years dimension is missing, or a row
+                names a year member that does not exist. A payload missing an
+                indicator key, a missing ``body``, or a missing
+                ``metadata.unit`` is not caught here and surfaces as a bare
+                ``KeyError`` instead.
         """
         payload = raw.payload
         if not isinstance(payload, dict):
@@ -262,8 +265,12 @@ class CepalstatGdpConnector(BaseConnector):
     def _years_of(self, body: Any, cepal_id: int) -> dict[int, str]:
         """Build the ``member id -> year label`` map from the response itself.
 
-        Never computed from the id arithmetically: today ``year = id - 27170``
-        holds for every member, but CEPAL documents no such contract.
+        Never computed from the id arithmetically: ``year = id - 27170`` holds
+        only inside the 1990-2025 window this connector uses. Across the full
+        years dimension it breaks for 130 of 201 members — id 68109 maps to
+        "1900", 29118 to "1951", 29119 to "1950" — and six distinct offsets
+        appear overall, so nothing about the id is a documented or reliable
+        contract.
 
         Raises:
             TransformationError: The years dimension is absent.
@@ -300,5 +307,166 @@ class CepalstatGdpConnector(BaseConnector):
             raise TransformationError(msg, source_key=self.source.key) from exc
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
-        """Assert CEPALSTAT-specific expectations. Filled in by Task 4."""
-        return []
+        """Assert CEPALSTAT-specific expectations beyond the standard battery."""
+        by_key: dict[str, dict[tuple[str, str], Decimal]] = {
+            spec.indicator_code: {
+                (obs.country_iso3, obs.period.label): obs.value_numeric
+                for obs in observations
+                if obs.indicator_code == spec.indicator_code and obs.value_numeric is not None
+            }
+            for spec in SERIES
+        }
+
+        return [
+            self._check_seven_countries(observations),
+            self._check_population_identity(by_key),
+            self._check_base_year(observations),
+            self._check_annual_continuity(observations),
+        ]
+
+    def _check_seven_countries(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """All seven must appear. Belize's absence is the failure that matters."""
+        seen = {obs.country_iso3 for obs in observations}
+        missing = sorted(CENTRAL_AMERICA - seen)
+
+        if not missing:
+            return QualityResult.passed(
+                "cepalstat_seven_countries_present",
+                CheckType.COMPLETENESS,
+                f"All {len(CENTRAL_AMERICA)} countries returned figures",
+                expected_value=str(len(CENTRAL_AMERICA)),
+                actual_value=str(len(seen & CENTRAL_AMERICA)),
+            )
+        return QualityResult.failure(
+            "cepalstat_seven_countries_present",
+            CheckType.COMPLETENESS,
+            CheckSeverity.CRITICAL,
+            f"{len(missing)} country/countries returned nothing: {', '.join(missing)}",
+            expected_value=str(len(CENTRAL_AMERICA)),
+            actual_value=str(len(seen & CENTRAL_AMERICA)),
+        )
+
+    def _check_population_identity(
+        self, by_key: dict[str, dict[tuple[str, str], Decimal]]
+    ) -> QualityResult:
+        """Total over per capita must recover the same population both ways.
+
+        The current-price pair and the constant-price pair each imply a
+        population. CEPAL divides by one CELADE series, so the two must agree;
+        a disagreement means two of the four series stopped describing the
+        same country-year.
+        """
+        current_total = by_key["gdp_current_usd_annual"]
+        constant_total = by_key["gdp_constant_usd_annual"]
+        current_pc = by_key["gdp_per_capita_current_usd_annual"]
+        constant_pc = by_key["gdp_per_capita_constant_usd_annual"]
+
+        shared = sorted(
+            set(current_total) & set(constant_total) & set(current_pc) & set(constant_pc)
+        )
+        broken = []
+        for key in shared:
+            if not current_pc[key] or not constant_pc[key]:
+                broken.append(key)
+                continue
+            from_current = current_total[key] / current_pc[key]
+            from_constant = constant_total[key] / constant_pc[key]
+            if abs(from_current - from_constant) / from_current > POPULATION_TOLERANCE:
+                broken.append(key)
+
+        if not broken:
+            return QualityResult.passed(
+                "cepalstat_population_identity",
+                CheckType.CONSISTENCY,
+                f"The implied population agrees between the current and constant "
+                f"pairs on all {len(shared)} cell(s), within {POPULATION_TOLERANCE}",
+                expected_value="0 beyond tolerance",
+                actual_value="0",
+            )
+
+        shown = ", ".join(f"{country} {year}" for country, year in broken[:5])
+        suffix = f" (+{len(broken) - 5} more)" if len(broken) > 5 else ""
+        return QualityResult.failure(
+            "cepalstat_population_identity",
+            CheckType.CONSISTENCY,
+            CheckSeverity.ERROR,
+            f"{len(broken)} cell(s) imply two different populations: {shown}{suffix}",
+            expected_value="0 beyond tolerance",
+            actual_value=str(len(broken)),
+        )
+
+    def _check_base_year(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """The constant-price series must still be expressed at 2018 prices.
+
+        CEPAL states the base year only in a footnote; the published unit is
+        just "Millions of dollars". A rebasing would therefore change every
+        constant value while REIM went on storing it as constant 2018 USD.
+        """
+        constant_codes = {
+            "gdp_constant_usd_annual",
+            "gdp_per_capita_constant_usd_annual",
+        }
+        footnotes = {
+            note
+            for obs in observations
+            if obs.indicator_code in constant_codes
+            for note in obs.raw_metadata.get("cepalstat_footnotes", [])
+        }
+        wrong = sorted(note for note in footnotes if CONSTANT_PRICE_BASE_YEAR not in note)
+
+        if footnotes and not wrong:
+            return QualityResult.passed(
+                "cepalstat_constant_price_base_year",
+                CheckType.VALIDITY,
+                f"The constant-price series still state base year "
+                f"{CONSTANT_PRICE_BASE_YEAR}: {', '.join(sorted(footnotes))}",
+                expected_value=CONSTANT_PRICE_BASE_YEAR,
+                actual_value=CONSTANT_PRICE_BASE_YEAR,
+            )
+
+        detail = ", ".join(wrong) if wrong else "no base-year footnote at all"
+        return QualityResult.failure(
+            "cepalstat_constant_price_base_year",
+            CheckType.VALIDITY,
+            CheckSeverity.ERROR,
+            f"The constant-price series no longer state base year "
+            f"{CONSTANT_PRICE_BASE_YEAR}: {detail}. A rebasing changes every "
+            f"constant value and leaves the published unit untouched.",
+            expected_value=CONSTANT_PRICE_BASE_YEAR,
+            actual_value=detail,
+        )
+
+    def _check_annual_continuity(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """CEPAL publishes every year; a hole is worth a human look."""
+        years = {int(obs.period.label) for obs in observations}
+        if len(years) < 2:
+            return QualityResult.passed(
+                "cepalstat_annual_continuity",
+                CheckType.COMPLETENESS,
+                "Too few years ingested to assess continuity",
+                actual_value=str(len(years)),
+            )
+
+        first, last = min(years), max(years)
+        expected = last - first + 1
+        missing = [str(year) for year in range(first, last + 1) if year not in years]
+
+        if not missing:
+            return QualityResult.passed(
+                "cepalstat_annual_continuity",
+                CheckType.COMPLETENESS,
+                f"{expected} consecutive years from {first} to {last}",
+                expected_value=str(expected),
+                actual_value=str(len(years)),
+            )
+
+        shown = ", ".join(missing[:5])
+        suffix = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
+        return QualityResult.failure(
+            "cepalstat_annual_continuity",
+            CheckType.COMPLETENESS,
+            CheckSeverity.WARNING,
+            f"{len(missing)} year(s) missing: {shown}{suffix}",
+            expected_value=str(expected),
+            actual_value=str(len(years)),
+        )

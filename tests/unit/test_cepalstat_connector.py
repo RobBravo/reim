@@ -7,14 +7,15 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
 
-from reim.core.constants import Frequency
+from reim.core.constants import CheckSeverity, CheckStatus, Frequency
 from reim.core.exceptions import TransformationError
-from reim.domain.pipelines.models import RawDataset
+from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.connectors.regional.cepalstat_gdp import (
     CENTRAL_AMERICA,
@@ -266,3 +267,89 @@ def test_an_unmapped_year_member_raises(raw: RawDataset) -> None:
 
     with pytest.raises(TransformationError, match="unknown year member"):
         build_connector().transform(build_raw(payloads))
+
+
+def results_of(observations: list[NormalizedObservation]) -> dict[str, QualityResult]:
+    return {result.check_name: result for result in build_connector().validate(observations)}
+
+
+def test_all_four_checks_pass_on_the_real_recordings(raw: RawDataset) -> None:
+    results = results_of(build_connector().transform(raw))
+
+    assert set(results) == {
+        "cepalstat_seven_countries_present",
+        "cepalstat_population_identity",
+        "cepalstat_constant_price_base_year",
+        "cepalstat_annual_continuity",
+    }
+    assert all(result.status is CheckStatus.PASSED for result in results.values())
+
+
+def test_a_missing_country_fails_critically(raw: RawDataset) -> None:
+    """Belize vanishing is the failure this connector exists not to commit."""
+    observations = [obs for obs in build_connector().transform(raw) if obs.country_iso3 != "BLZ"]
+
+    result = results_of(observations)["cepalstat_seven_countries_present"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.CRITICAL
+    assert "BLZ" in result.message
+
+
+def test_the_population_identity_holds_on_the_real_data(raw: RawDataset) -> None:
+    result = results_of(build_connector().transform(raw))["cepalstat_population_identity"]
+
+    assert result.status is CheckStatus.PASSED
+    assert "252" in result.message
+
+
+def test_a_broken_population_identity_fails(raw: RawDataset) -> None:
+    """Move one per-capita figure by 1%: far above noise, far below a typo."""
+    observations = build_connector().transform(raw)
+    for index, obs in enumerate(observations):
+        if (
+            obs.indicator_code == "gdp_per_capita_constant_usd_annual"
+            and obs.country_iso3 == "NIC"
+            and obs.period.label == "2024"
+        ):
+            assert obs.value_numeric is not None
+            observations[index] = replace(obs, value_numeric=obs.value_numeric * Decimal("1.01"))
+
+    result = results_of(observations)["cepalstat_population_identity"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.ERROR
+    assert "NIC 2024" in result.message
+
+
+def test_a_rebasing_fails_the_base_year_check(raw: RawDataset) -> None:
+    """A CEPAL rebasing changes every constant value and no unit string."""
+    observations = build_connector().transform(raw)
+    for index, obs in enumerate(observations):
+        if obs.indicator_code == "gdp_constant_usd_annual":
+            observations[index] = replace(
+                obs, raw_metadata={**obs.raw_metadata, "cepalstat_footnotes": ["At prices 2020"]}
+            )
+
+    result = results_of(observations)["cepalstat_constant_price_base_year"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.ERROR
+    assert "2018" in result.message
+
+
+def test_a_missing_year_is_reported_as_a_warning(raw: RawDataset) -> None:
+    observations = [obs for obs in build_connector().transform(raw) if obs.period.label != "2008"]
+
+    result = results_of(observations)["cepalstat_annual_continuity"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.WARNING
+    assert "2008" in result.message
+
+
+def test_every_check_is_dataset_level(raw: RawDataset) -> None:
+    """No check names a row: a broken identity has no single guilty cell."""
+    results = build_connector().validate(build_connector().transform(raw))
+
+    assert all(result.observation_index is None for result in results)
