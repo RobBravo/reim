@@ -296,3 +296,39 @@ indicators:
     min_observations: 240
 
   gdp_per_capita_constant_usd_annual: *gdp_per_capita
+
+  # Monetary aggregates -----------------------------------------------------
+  # CEPALSTAT returns each indicator's whole matrix on every run. The real
+  # monthly counts on 2026-08-19 are 2,026 / 1,611 / 1,746; the floors below
+  # sit just under them, leaving room for a month of genuine gap while still
+  # catching a run truncated to a handful of rows.
+  #
+  # The 60% ceiling is the tripwire for a scale mistake. The worst real
+  # month-on-month move across the three series is 45.93% (Panama, November
+  # 2006, M1 moving 1,984.6 -> 2,896.2 -> 2,610.3), which the source
+  # publishes. A forgotten or doubled 10^6 would show up as eight figures.
+  #
+  # freshness_max_age_days is deliberately a threshold Honduras fails. On
+  # 2026-08-19 the freshest country was 718 days behind and Honduras was
+  # 1,023 (M1, M2) and 1,237 (M3). At 900 Honduras warns on all three from
+  # the first run and the other six pass. Setting it at 1,300 would turn
+  # every light green, which is tuning a threshold until it stops speaking:
+  # Honduras really is three and a half years behind. This is `warning`
+  # severity, so nothing is blocked.
+  money_m1_monthly: &monetary_aggregate
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: false
+    max_period_change_pct: 60
+    monotonic_increasing: false
+    freshness_max_age_days: 900
+    min_observations: 1950
+
+  money_m2_monthly:
+    <<: *monetary_aggregate
+    min_observations: 1550
+
+  money_m3_monthly:
+    <<: *monetary_aggregate
+    min_observations: 1680

@@ -12,9 +12,10 @@ from pydantic import ValidationError
 from reim.core.constants import Frequency, IndicatorCategory, TlsProfile, ValueType
 from reim.core.exceptions import CatalogError, CatalogValidationError
 from reim.domain.countries.registry import COUNTRIES, COUNTRIES_BY_ISO2, COUNTRIES_BY_ISO3
-from reim.domain.indicators.registry import INDICATORS_BY_CODE
+from reim.domain.indicators.registry import INDICATORS, INDICATORS_BY_CODE
 from reim.domain.quality.rules import QualityRuleSet
 from reim.domain.sources.catalog import SourceCatalog, SourceEntry, load_catalog
+from tests.conftest import REPO_ROOT
 
 VALID_ENTRY: dict[str, Any] = {
     "key": "worldbank_ni_cpi_inflation",
@@ -337,3 +338,44 @@ def test_every_gdp_indicator_has_a_quality_rule(quality_rules: QualityRuleSet) -
         assert rule.max_period_change_pct == 40
         assert rule.allow_negative is False
         assert rule.allow_zero is False
+
+
+def test_the_three_monetary_indicators_are_registered() -> None:
+    """The first use of the monetary category, declared since v0.1.0."""
+    codes = {i.code: i for i in INDICATORS}
+
+    for code in ("money_m1_monthly", "money_m2_monthly", "money_m3_monthly"):
+        assert codes[code].category is IndicatorCategory.MONETARY
+        assert codes[code].frequency is Frequency.MONTHLY
+        assert codes[code].value_type is ValueType.LEVEL
+
+
+def test_the_monetary_indicators_carry_no_country_prefix() -> None:
+    """Decision C8: regional sources drop the prefix, as SIECA and GDP did."""
+    codes = {i.code for i in INDICATORS}
+
+    assert {"money_m1_monthly", "money_m2_monthly", "money_m3_monthly"} <= codes
+    assert not any(code.startswith(("ni_money", "gt_money")) for code in codes)
+
+
+def test_the_monetary_indicator_unit_names_no_single_currency() -> None:
+    """Seven countries, six currencies: the code cannot claim one of them."""
+    codes = {i.code: i for i in INDICATORS}
+
+    for code in ("money_m1_monthly", "money_m2_monthly", "money_m3_monthly"):
+        assert codes[code].unit == "units of local currency"
+
+
+def test_the_monetary_source_is_registered_and_disabled() -> None:
+    catalog = load_catalog(REPO_ROOT / "sources" / "catalog.yml")
+    entry = catalog.get("cepalstat_monetary_monthly")
+
+    assert entry.organization == "CEPAL"
+    assert entry.frequency is Frequency.MONTHLY
+    assert entry.license == "cepal_terms_of_use"
+    assert not entry.enabled
+    assert set(entry.indicators) == {
+        "money_m1_monthly",
+        "money_m2_monthly",
+        "money_m3_monthly",
+    }
