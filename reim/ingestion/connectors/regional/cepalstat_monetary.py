@@ -34,7 +34,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from reim.core.constants import Frequency
+from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.countries.registry import COUNTRIES_BY_ISO3
 from reim.domain.observations.periods import parse_period
@@ -369,5 +369,149 @@ class CepalstatMonetaryConnector(BaseConnector):
             raise TransformationError(msg, source_key=self.source.key) from exc
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
-        """Assert CEPALSTAT-specific expectations. Filled in by Task 4."""
-        return []
+        """Assert CEPALSTAT-specific expectations beyond the standard battery."""
+        by_key: dict[str, dict[tuple[str, str], Decimal]] = {
+            spec.indicator_code: {
+                (obs.country_iso3, obs.period.label): obs.value_numeric
+                for obs in observations
+                if obs.indicator_code == spec.indicator_code and obs.value_numeric is not None
+            }
+            for spec in SERIES
+        }
+
+        return [
+            self._check_nesting(by_key),
+            self._check_expected_countries(observations),
+            self._check_monthly_continuity(observations),
+        ]
+
+    def _check_nesting(self, by_key: dict[str, dict[tuple[str, str], Decimal]]) -> QualityResult:
+        """M1 <= M2 <= M3, which is how CEPAL defines the family.
+
+        ``calculation_methodology`` states M2 = M1 + savings deposits and
+        M3 = M2 + foreign currency deposits, so the ordering is definitional.
+        The tolerance exists because CEPAL declares zero decimals and publishes
+        some series rounded to whole millions and others to one decimal, which
+        inverts 229 of 2,942 shared cells by at most 0.014%.
+        """
+        pairs = (
+            ("money_m1_monthly", "money_m2_monthly"),
+            ("money_m2_monthly", "money_m3_monthly"),
+        )
+        broken: list[tuple[str, str]] = []
+        compared = 0
+        for narrow_code, wide_code in pairs:
+            narrow, wide = by_key[narrow_code], by_key[wide_code]
+            for key in sorted(set(narrow) & set(wide)):
+                compared += 1
+                if not wide[key]:
+                    continue
+                excess = (narrow[key] - wide[key]) / wide[key]
+                if excess > NESTING_TOLERANCE:
+                    broken.append(key)
+
+        if not broken:
+            return QualityResult.passed(
+                "cepalstat_monetary_nesting",
+                CheckType.CONSISTENCY,
+                f"M1 <= M2 <= M3 holds on all {compared} shared cell(s), "
+                f"within {NESTING_TOLERANCE}",
+                expected_value="0 beyond tolerance",
+                actual_value="0",
+            )
+
+        shown = ", ".join(f"{country} {period}" for country, period in broken[:5])
+        suffix = f" (+{len(broken) - 5} more)" if len(broken) > 5 else ""
+        return QualityResult.failure(
+            "cepalstat_monetary_nesting",
+            CheckType.CONSISTENCY,
+            CheckSeverity.ERROR,
+            f"{len(broken)} cell(s) break the M1 <= M2 <= M3 ordering: {shown}{suffix}",
+            expected_value="0 beyond tolerance",
+            actual_value=str(len(broken)),
+        )
+
+    def _check_expected_countries(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """Each series has its own country set; Belize and El Salvador differ.
+
+        An expectation rather than a floor, so that a country arriving is
+        reported as loudly as one disappearing.
+        """
+        seen: dict[str, set[str]] = {spec.indicator_code: set() for spec in SERIES}
+        for obs in observations:
+            if obs.indicator_code in seen:
+                seen[obs.indicator_code].add(obs.country_iso3)
+
+        problems: list[str] = []
+        for code, expected in EXPECTED_COUNTRIES.items():
+            for iso3 in sorted(expected - seen[code]):
+                problems.append(f"{code} lost {iso3}")
+            for iso3 in sorted(seen[code] - expected):
+                problems.append(f"{code} gained {iso3}")
+
+        if not problems:
+            return QualityResult.passed(
+                "cepalstat_monetary_expected_countries",
+                CheckType.COMPLETENESS,
+                "Every series carries exactly the countries it is expected to",
+                expected_value=str(sum(len(v) for v in EXPECTED_COUNTRIES.values())),
+                actual_value=str(sum(len(v) for v in seen.values())),
+            )
+
+        return QualityResult.failure(
+            "cepalstat_monetary_expected_countries",
+            CheckType.COMPLETENESS,
+            CheckSeverity.CRITICAL,
+            f"{len(problems)} change(s) in country coverage: {', '.join(problems[:5])}",
+            expected_value=str(sum(len(v) for v in EXPECTED_COUNTRIES.values())),
+            actual_value=str(sum(len(v) for v in seen.values())),
+        )
+
+    def _check_monthly_continuity(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """Holes inside each country's own span, per indicator.
+
+        Walked per country and per series: pooling them would hide a hole
+        whenever another country published that month, and six of the seven
+        usually did.
+        """
+        spans: dict[tuple[str, str], set[tuple[int, int]]] = {}
+        for obs in observations:
+            year, month = obs.period.label.split("-")
+            spans.setdefault((obs.indicator_code, obs.country_iso3), set()).add(
+                (int(year), int(month))
+            )
+
+        missing: list[str] = []
+        expected = present = 0
+        for (code, iso3), months in sorted(spans.items()):
+            if len(months) < 2:
+                continue
+            first, last = min(months), max(months)
+            width = (last[0] - first[0]) * 12 + (last[1] - first[1]) + 1
+            expected += width
+            present += len(months)
+            cursor = first
+            for _ in range(width):
+                if cursor not in months:
+                    missing.append(f"{iso3} {cursor[0]}-{cursor[1]:02d} ({code})")
+                cursor = (cursor[0] + 1, 1) if cursor[1] == 12 else (cursor[0], cursor[1] + 1)
+
+        if not missing:
+            return QualityResult.passed(
+                "cepalstat_monthly_continuity",
+                CheckType.COMPLETENESS,
+                f"No gaps in any of the {len(spans)} country-series",
+                expected_value=str(expected),
+                actual_value=str(present),
+            )
+
+        shown = ", ".join(missing[:5])
+        suffix = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
+        return QualityResult.failure(
+            "cepalstat_monthly_continuity",
+            CheckType.COMPLETENESS,
+            CheckSeverity.WARNING,
+            f"{len(missing)} month(s) missing: {shown}{suffix}",
+            expected_value=str(expected),
+            actual_value=str(present),
+        )

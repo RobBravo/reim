@@ -7,14 +7,15 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
 
-from reim.core.constants import Frequency
+from reim.core.constants import CheckSeverity, CheckStatus, Frequency
 from reim.core.exceptions import TransformationError
-from reim.domain.pipelines.models import RawDataset
+from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.connectors.regional.cepalstat_monetary import (
     CENTRAL_AMERICA,
@@ -372,3 +373,106 @@ def test_an_added_unknown_period_member_raises(raw: RawDataset) -> None:
 # what `test_transform_produces_every_monthly_cell` already asserts (5,383
 # observations, none of them an annual or quarterly restatement), so it is
 # not duplicated here.
+
+
+def results_of(observations: list[NormalizedObservation]) -> dict[str, QualityResult]:
+    return {result.check_name: result for result in build_connector().validate(observations)}
+
+
+def test_all_three_checks_pass_on_the_real_recordings(raw: RawDataset) -> None:
+    results = results_of(build_connector().transform(raw))
+
+    assert set(results) == {
+        "cepalstat_monetary_nesting",
+        "cepalstat_monetary_expected_countries",
+        "cepalstat_monthly_continuity",
+    }
+    assert all(result.status is CheckStatus.PASSED for result in results.values())
+
+
+def test_the_nesting_holds_on_the_real_data_despite_rounding(raw: RawDataset) -> None:
+    """229 cells invert by up to 0.014% because CEPAL rounds some series."""
+    result = results_of(build_connector().transform(raw))["cepalstat_monetary_nesting"]
+
+    assert result.status is CheckStatus.PASSED
+
+
+def test_a_real_inversion_fails_the_nesting_check(raw: RawDataset) -> None:
+    """Move one M1 cell above its M2: a percent-scale break, not rounding."""
+    observations = build_connector().transform(raw)
+    for index, obs in enumerate(observations):
+        if (
+            obs.indicator_code == "money_m1_monthly"
+            and obs.country_iso3 == "NIC"
+            and obs.period.label == "2023-12"
+        ):
+            assert obs.value_numeric is not None
+            observations[index] = replace(obs, value_numeric=obs.value_numeric * Decimal("10"))
+
+    result = results_of(observations)["cepalstat_monetary_nesting"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.ERROR
+    assert "NIC 2023-12" in result.message
+
+
+def test_rounding_alone_never_fails_the_nesting_check(raw: RawDataset) -> None:
+    """The tolerance must admit the source's own rounding, and no more."""
+    observations = build_connector().transform(raw)
+    for index, obs in enumerate(observations):
+        if obs.indicator_code == "money_m2_monthly":
+            assert obs.value_numeric is not None
+            observations[index] = replace(obs, value_numeric=obs.value_numeric * Decimal("0.9999"))
+
+    assert results_of(observations)["cepalstat_monetary_nesting"].status is CheckStatus.PASSED
+
+
+def test_a_missing_country_fails_critically(raw: RawDataset) -> None:
+    observations = [
+        obs
+        for obs in build_connector().transform(raw)
+        if not (obs.indicator_code == "money_m1_monthly" and obs.country_iso3 == "NIC")
+    ]
+
+    result = results_of(observations)["cepalstat_monetary_expected_countries"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.CRITICAL
+    assert "NIC" in result.message
+
+
+def test_belize_appearing_in_m2_is_reported_too(raw: RawDataset) -> None:
+    """The expectation is a set, not a floor: an arrival is news as well."""
+    observations = build_connector().transform(raw)
+    extra = next(obs for obs in observations if obs.indicator_code == "money_m1_monthly")
+    observations.append(replace(extra, indicator_code="money_m2_monthly", country_iso3="BLZ"))
+
+    result = results_of(observations)["cepalstat_monetary_expected_countries"]
+
+    assert result.status is CheckStatus.FAILED
+    assert "BLZ" in result.message
+
+
+def test_a_hole_in_one_country_is_reported_as_a_warning(raw: RawDataset) -> None:
+    """Pooling the seven would hide it: the others published that month."""
+    observations = [
+        obs
+        for obs in build_connector().transform(raw)
+        if not (
+            obs.indicator_code == "money_m1_monthly"
+            and obs.country_iso3 == "NIC"
+            and obs.period.label == "2015-06"
+        )
+    ]
+
+    result = results_of(observations)["cepalstat_monthly_continuity"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.WARNING
+    assert "NIC 2015-06" in result.message
+
+
+def test_every_check_is_dataset_level(raw: RawDataset) -> None:
+    results = build_connector().validate(build_connector().transform(raw))
+
+    assert all(result.observation_index is None for result in results)
