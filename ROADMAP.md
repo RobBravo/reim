@@ -53,14 +53,18 @@ aggregator rather than the Nicaraguan publisher itself.
   - ~~**merchandise trade**~~ ✅ **done** — monthly exports, imports and balance
     from the IMF's IMTS instead, 1,308 observations from 1990-01. Note this is
     REIM's only source whose data is **not openly licensed**.
-  - **monetary aggregates and remittances** — Nicaragua reports neither to the
-    IMF (0 observations, against 183 for Costa Rica). This line named SECMCA,
-    which requires a credentialed account, as the only route. That is no longer
-    true for the aggregates: **CEPALSTAT indicator 862 (M1) covers Nicaragua
-    from 2001 to 2024 with no authentication at all**, and 868 (M2) and 869 (M3)
-    alongside it. Not yet ingested — they carry a period-within-year dimension
-    and are published in local currency; `docs/sources.md` records their shape
-    and the two traps in reading them.
+  - ~~**monetary aggregates**~~ ✅ **done** — M1, M2 and M3, monthly, for all
+    seven countries: **5,383 observations**, with Nicaragua from 2001-12. This
+    line named SECMCA and a credentialed account as the only route; CEPALSTAT
+    publishes indicators 862, 868 and 869 unauthenticated. They are REIM's first
+    figures in a currency other than the dollar, the córdoba and the quetzal,
+    and its first that are **not comparable across countries** — each is in its
+    own local currency and REIM does not convert. Honduras warns on freshness
+    from the first run, deliberately. See `docs/sources.md`.
+  - **remittances** — still absent, and this increment did not touch them.
+    Nicaragua reports none to the IMF (0 observations, against 183 for Costa
+    Rica), and CEPALSTAT's monetary family does not carry them. SECMCA, behind
+    a credentialed account, remains the only route named so far.
   - **reserves** — the IMF has 1,740 monthly observations, but its indicator
     codes cannot be named from anything its API exposes. See `docs/sources.md`
     for the unblocking step.

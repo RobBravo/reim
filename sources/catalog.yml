@@ -477,3 +477,27 @@ sources:
     license: cepal_terms_of_use
     official: true
     enabled: true
+
+  - key: cepalstat_monetary_monthly
+    name: Central American monetary aggregates (monthly)
+    description: >-
+      Monthly M1, M2 and M3 at the close of each month for the seven Central
+      American countries, from CEPALSTAT. Published in millions of each
+      country's own currency and stored in whole units of it, so the series
+      are not comparable across countries without a conversion REIM does not
+      perform. CEPAL's compilation from central bank figures.
+    organization: CEPAL
+    category: monetary
+    access_type: http_api
+    frequency: monthly
+    format: json
+    base_url: https://api-cepalstat.cepal.org/cepalstat/api/v1
+    documentation_url: https://statistics.cepal.org/portal/cepalstat/
+    connector: reim.ingestion.connectors.regional.cepalstat_monetary
+    indicators:
+      - money_m1_monthly
+      - money_m2_monthly
+      - money_m3_monthly
+    license: cepal_terms_of_use
+    official: true
+    enabled: true

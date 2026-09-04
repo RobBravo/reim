@@ -771,31 +771,144 @@ fetch date, it moves between runs (two downloads twelve hours apart returned
 
 #### Reachable, not ingested — for whoever takes them next
 
-Both families below were probed on 2026-08-19 and are live. Neither is ingested:
-each carries dimensions this connector's country × year shape does not absorb,
-and each needs its own design.
+One family below was probed on 2026-08-19 and is live. It is not ingested: it
+carries dimensions this connector's country × year shape does not absorb, and it
+needs its own design. The monetary family that stood beside it here has since
+been taken — see the section below.
 
 | Ids | Series | Dimensions | Central America | Nicaragua |
 |---|---|---|---|---|
-| 862, 868, 869 | Money (M1), Liquidity (M2), Broad liquidity (M3), end of period | 3 — country, period-within-year (17 members), year | 862 all seven; 868 omits Belize; 869 omits El Salvador | **2001–2024** |
 | 1239, 1240 | Public debt stock, in millions of USD and as a share of GDP | 4 — country, institutional coverage (4), year, debt classification (6) | All seven | 1990–2025 |
 
-Two traps worth knowing before starting:
+One trap worth knowing before starting: the debt figures carry an institutional
+coverage dimension with four members and a debt classification with six, so a
+country × year cell is not identified until both are pinned. Deciding which
+member of each is *the* public debt figure is a design decision, not a parsing
+one.
 
-* **The monetary indicators must be read with `lang=es`.** Their second
-  dimension is a period-within-year selector — twelve months, four quarters and
-  `Anual` — and in `lang=en` all 17 of its members come back as the literal
-  untranslated string `descripcion_ingles`. The English response cannot tell a
-  month from a quarter from the annual figure. This is the one place where
-  decision C7 (`lang=en` throughout) would have to be excepted.
-* **Their unit is millions of units in *local currency*,** not dollars, so they
-  are not comparable across countries without a conversion REIM would be the
-  author of.
+---
 
-The monetary family matters beyond its own merits: `ROADMAP.md` gives up on
-Nicaraguan monetary aggregates on the grounds that they are only available from
-SECMCA behind a credentialed account. Indicator 862 covers Nicaragua from 2001
-to 2024 with no authentication at all.
+### CEPAL — monthly monetary aggregates
+
+| | |
+|---|---|
+| **Organization** | Comisión Económica para América Latina y el Caribe (`CEPAL`) |
+| **Host** | `https://api-cepalstat.cepal.org` |
+| **Endpoint** | `GET /cepalstat/api/v1/indicator/{id}/data?lang=en` and `GET /cepalstat/api/v1/indicator/{id}/dimensions?lang=es` |
+| **Protocol** | Same undocumented REST JSON as the GDP section above |
+| **Auth** | None |
+| **Frequency** | Monthly, end-of-period stocks |
+| **Coverage** | **1990-01 … 2024-08**, verified — no gap inside any country's own span |
+| **Countries** | All seven, from six requests |
+| **Volume** | 1.4–1.6 MB per data response, 29 KB per dimensions response; ~21 s for a full run |
+| **Licence** | ⚠️ **Not open** — CEPAL's terms, quoted in [the GDP section](#licence-not-open-and-the-terms-conflict-with-what-reim-does) above |
+| **Status** | ✅ **Enabled** — 5,383 observations, measured 2026-09-04 |
+
+**The three indicators:**
+
+| CEPAL id | Published name | Published unit | REIM indicator | Observations |
+|---|---|---|---|---|
+| 862 | Money (M1), end of period | Millions of local currency | `money_m1_monthly` | 2,026 |
+| 868 | Liquidity (M2), end of period | Millions of local currency | `money_m2_monthly` | 1,611 |
+| 869 | Broad liquidity (M3), end of period | Millions of local currency | `money_m3_monthly` | 1,746 |
+
+**Coverage per country**, measured 2026-09-04. Two series are short a country at
+the source, and the absences are declared in the connector rather than
+discovered at runtime: Belize publishes no M2, El Salvador no M3.
+
+| Country | M1 | M2 | M3 |
+|---|---|---|---|
+| Belize | 1990-01 … 2024-07 (415) | — | 1990-01 … 2024-07 (415) |
+| Costa Rica | 2001-12 … 2024-06 (271) | 2001-12 … 2024-06 (271) | 2001-12 … 2024-06 (271) |
+| El Salvador | 2001-12 … 2024-08 (273) | 2001-12 … 2024-08 (273) | — |
+| Guatemala | 2001-12 … 2024-08 (273) | 2001-12 … 2024-08 (273) | 2001-12 … 2024-08 (273) |
+| Honduras | 2001-12 … 2023-10 (263) | 2001-12 … 2023-10 (263) | 2001-12 … 2023-03 (256) |
+| Nicaragua | 2001-12 … 2024-06 (271) | 2001-12 … 2024-06 (271) | 2001-12 … 2024-06 (271) |
+| Panama | 2002-12 … 2024-07 (260) | 2002-12 … 2024-07 (260) | 2002-12 … 2024-07 (260) |
+
+Belize's 415 months back to 1990 are why M1 and M3 start thirty-five years
+before the others. Every other country begins at 2001-12, and Panama a year
+later still.
+
+#### Only the monthly member is stored
+
+Dimension 3981 selects a period *inside* the year: twelve months, four quarters
+and an annual figure — seventeen members. Only the twelve months become
+observations. The other five are restatements, and that is measured rather than
+assumed: across the seven countries the annual figure equals December in all
+**453** cells where both exist, and each quarter equals its closing month in all
+**1,800**. There are no exceptions in the 2,253. These are end-of-period stocks,
+so the restatement is definitional — a year's closing stock *is* December's —
+but storing both would double-count every December in any aggregate a consumer
+computed.
+
+#### The language split, and why it is not tidiable
+
+The data is fetched in English and the member table in Spanish. This is the one
+place where the `lang=en`-throughout rule is excepted, and it is not
+cosmetic:
+
+* **In `lang=en` all seventeen period members come back as the literal string
+  `descripcion_ingles`** — the untranslated column name of CEPAL's own database,
+  surfacing through the API. The English response cannot tell January from
+  September from the annual figure.
+* **The member ids cannot substitute.** They run 3982–3998 but not in calendar
+  order: September is 3993 and July is 3994. Nothing in the payload orders them.
+
+So the connector makes a second request per indicator, `dimensions?lang=es`, 29
+KB, and reads the month names from it. **Nothing from that response is stored.**
+The Spanish strings are used to identify which member is which month and are
+then discarded; every string REIM stores still comes from the English data
+response. Collapsing the two requests to one language breaks either the month
+names or every stored string, so the split is pinned by a test rather than left
+to a comment.
+
+#### The figures are in local currency, and are not comparable across countries
+
+CEPAL publishes millions of each country's own currency; REIM stores whole units
+of it (`× 10^6`, exact in `Decimal` and declared in `raw_metadata`). The
+currency comes from REIM's country registry, not from the payload, which says
+only "local currency" — one code per country, verified after the first run:
+`BZD`, `CRC`, `GTQ`, `HNL`, `NIO`, `PAB`, `USD`.
+
+**These are REIM's first observations that are not comparable across
+countries.** A quetzal figure and a córdoba figure cannot be added, ranked or
+charted on one axis, and REIM performs no conversion — doing so would make REIM
+the author of an exchange-rate choice it has no basis to make. El Salvador and
+Panama are dollarised, so those two alone line up with each other. Anyone
+comparing the rest must bring their own rates.
+
+#### The nesting identity, and the rounding that appears to break it
+
+M1 ⊆ M2 ⊆ M3 by construction, so every shared cell must satisfy
+M1 ≤ M2 ≤ M3. Checked directly, **229 of the 2,942 shared cells appear to
+violate it.** They do not. CEPAL declares zero decimals for these series and
+publishes some rounded to whole millions and others to one decimal; where two
+series round in opposite directions across a boundary the stored order inverts.
+The largest such inversion is **0.0140%**. The check therefore carries a
+relative tolerance of 0.001 — seven times the largest observed rounding artefact
+and far below any real inversion, which would be percent-scale — and it passes
+on the live data.
+
+**Three connector checks**, all passing on the recordings and on the live
+service: `cepalstat_monetary_nesting` (consistency, `error`),
+`cepalstat_monetary_expected_countries` (completeness, `critical`) and
+`cepalstat_monthly_continuity` (completeness, `warning`). The last one is
+per-country: a hole in one country's span is reported even when the other six
+published that month, which pooling the seven would hide.
+
+#### Honduras warns on freshness from the first run
+
+The first real run logged exactly three failed checks and nothing else: the
+freshness check firing on Honduras for all three series, at `warning`. Honduras
+stops at 2023-10 on M1 and M2 and at 2023-03 on M3, which on 2026-09-04 is
+**1,039, 1,039 and 1,253 days**. The threshold is 900 days.
+
+**It was set at 900 knowing that.** Honduras is three and a half years behind on
+M3; a threshold tuned to sit above that would silence the one thing the check
+exists to say. The warning is the correct output, it is expected on every run
+until Honduras publishes again, and it is recorded in `sources/quality_rules.yml`
+so that nobody later reads it as a regression.
 
 ---
 

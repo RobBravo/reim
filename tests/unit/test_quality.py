@@ -26,6 +26,7 @@ from reim.domain.quality.checks import (
     run_standard_checks,
 )
 from reim.domain.quality.rules import IndicatorRule, QualityRuleSet, load_quality_rules
+from tests.conftest import REPO_ROOT
 
 
 def _failed(results, name):  # type: ignore[no-untyped-def]
@@ -571,3 +572,31 @@ def test_services_indicators_have_a_real_min_observations_floor(
             f"{code} min_observations={rule.min_observations} would not catch "
             "a run truncated to far less than the real 414-cell history"
         )
+
+
+def test_monetary_indicators_have_their_own_rules() -> None:
+    rules = load_quality_rules(REPO_ROOT / "sources" / "quality_rules.yml")
+
+    for code, floor in (
+        ("money_m1_monthly", 1950),
+        ("money_m2_monthly", 1550),
+        ("money_m3_monthly", 1680),
+    ):
+        rule = rules.for_indicator(code)
+        assert rule.min_observations == floor
+        assert rule.max_period_change_pct == Decimal("60")
+        assert rule.freshness_max_age_days == 900
+
+
+def test_the_monetary_change_ceiling_clears_the_worst_real_move() -> None:
+    """Panama's M1 moved 45.93% in November 2006; the source published it."""
+    rules = load_quality_rules(REPO_ROOT / "sources" / "quality_rules.yml")
+
+    assert rules.for_indicator("money_m1_monthly").max_period_change_pct > Decimal("45.93")
+
+
+def test_monetary_aggregates_may_not_be_negative() -> None:
+    """A money stock is a stock: negative is a broken feed, not a deficit."""
+    rules = load_quality_rules(REPO_ROOT / "sources" / "quality_rules.yml")
+
+    assert not rules.for_indicator("money_m1_monthly").allow_negative

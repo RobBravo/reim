@@ -24,6 +24,12 @@ never calls an official source.
 | `cepalstat_gdp_2204.json.gz` | Same endpoint, indicator `2204` — total GDP at constant 2018 prices (171 KB → 24 KB). Recorded so the implied-population identity is checked against two published series rather than one computed one. | 2026-08-18 |
 | `cepalstat_gdp_2205.json.gz` | Same endpoint, indicator `2205` — GDP per inhabitant at current prices (164 KB → 24 KB). | 2026-08-18 |
 | `cepalstat_gdp_2206.json.gz` | Same endpoint, indicator `2206` — GDP per inhabitant at constant 2018 prices (173 KB → 25 KB). | 2026-08-18 |
+| `cepalstat_monetary_862.json.gz` | `GET https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/862/data?lang=en`, byte-for-byte, gzipped only to keep the repo small (1.60 MB → 107 KB). Tests decompress it before parsing. The **complete** response — 145 countries and every period member — because that is what proves both the filter to the seven Central American countries and the discarding of the annual and quarterly members. | 2026-08-19 |
+| `cepalstat_monetary_868.json.gz` | Same endpoint, indicator `868` — liquidity M2 (1.40 MB → 85 KB). Belize is absent from this series, which the expected-countries check encodes. | 2026-08-19 |
+| `cepalstat_monetary_869.json.gz` | Same endpoint, indicator `869` — broad liquidity M3 (1.44 MB → 105 KB). El Salvador is absent from this series. | 2026-08-19 |
+| `cepalstat_dimensions_862.json.gz` | `GET .../indicator/862/dimensions?lang=es`, byte-for-byte, gzipped (28 KB → 4 KB). Recorded in Spanish because `lang=en` returns all seventeen period members as the untranslated string `descripcion_ingles`; this is the only place a month can be told from a quarter. | 2026-08-19 |
+| `cepalstat_dimensions_868.json.gz` | Same endpoint, indicator `868`. | 2026-08-19 |
+| `cepalstat_dimensions_869.json.gz` | Same endpoint, indicator `869`. | 2026-08-19 |
 
 The CEPALSTAT API needs no User-Agent override and no TLS accommodation; these
 four were recorded with REIM's own identifier. `body.credits[0].description` is

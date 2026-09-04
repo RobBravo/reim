@@ -441,6 +441,50 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         value_type=ValueType.LEVEL,
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=2206&lang=en",
     ),
+    IndicatorDefinition(
+        code="money_m1_monthly",
+        name="Money (M1, end of period)",
+        description=(
+            "Narrow money at the close of each month: currency held by the "
+            "public plus demand deposits, as compiled by CEPAL from central "
+            "bank figures. Stored in whole units of each country's own "
+            "currency, so values are not comparable across countries without "
+            "a conversion REIM does not perform."
+        ),
+        category=IndicatorCategory.MONETARY,
+        frequency=Frequency.MONTHLY,
+        unit="units of local currency",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=862&lang=en",
+    ),
+    IndicatorDefinition(
+        code="money_m2_monthly",
+        name="Liquidity (M2, end of period)",
+        description=(
+            "M1 plus savings and time deposits in local currency, at the close "
+            "of each month. CEPAL's own definition; see money_m1_monthly for "
+            "the currency caveat. Belize is not covered by this series."
+        ),
+        category=IndicatorCategory.MONETARY,
+        frequency=Frequency.MONTHLY,
+        unit="units of local currency",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=868&lang=en",
+    ),
+    IndicatorDefinition(
+        code="money_m3_monthly",
+        name="Broad liquidity (M3, end of period)",
+        description=(
+            "M2 plus foreign-currency deposits, at the close of each month. "
+            "CEPAL's own definition; see money_m1_monthly for the currency "
+            "caveat. El Salvador is not covered by this series."
+        ),
+        category=IndicatorCategory.MONETARY,
+        frequency=Frequency.MONTHLY,
+        unit="units of local currency",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=869&lang=en",
+    ),
 )
 
 INDICATORS_BY_CODE: dict[str, IndicatorDefinition] = {i.code: i for i in INDICATORS}
