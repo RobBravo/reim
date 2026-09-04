@@ -910,7 +910,7 @@ so that nobody later reads it as a regression.
 | **Countries** | All seven, from two requests; 145 countries and regional aggregates are returned per indicator and filtered to Central America by the row's own `iso3` |
 | **Volume** | 617–635 KB per indicator (4,351 and 4,494 rows before filtering), ~7 s for both requests |
 | **Licence** | ⚠️ **Not open** — CEPAL's terms, quoted in [the GDP section](#licence-not-open-and-the-terms-conflict-with-what-reim-does) above |
-| **Status** | ✅ **Enabled** — 456 observations, measured 2026-09-04 |
+| **Status** | ✅ **Enabled** — 456 observations, measured 2026-09-03 |
 
 **The two indicators:**
 
@@ -919,7 +919,7 @@ so that nobody later reads it as a regression.
 | 1239 | Millions of dollars | `public_debt_usd_annual` | 226 |
 | 1240 | Percent of GDP | `public_debt_pct_gdp_annual` | 230 |
 
-**Coverage per country**, measured 2026-09-04:
+**Coverage per country**, measured 2026-09-03:
 
 | Country | USD (`public_debt_usd_annual`) | % of GDP (`public_debt_pct_gdp_annual`) |
 |---|---|---|
@@ -1013,10 +1013,12 @@ CEPAL relabel raises rather than quietly changing what a stored series means.
 
 The first real run logged exactly one failed check and nothing else: the
 freshness check firing on Belize, for `public_debt_usd_annual` only, at
-`warning`. Belize's dollar series stops at 2020-01-01 while its own ratio
-series, and every other country's dollar series, runs to 2025-01-01 — which on
+`warning`. The freshness check measures period *end*, not period start.
+Belize's dollar series stops at 2020-12-31 while its own ratio series, and
+every other country's dollar series, runs to 2025-12-31 — which on
 2026-09-04, the UTC date the check ran, is **2,073 days** old. The threshold is
-600 days.
+600 days; the six current countries' 2025-12-31 periods are only 247 days old
+against it.
 
 This is the same asymmetry as the six-cell coverage difference above, seen from
 the freshness check's side rather than the coverage table's: five of those six
