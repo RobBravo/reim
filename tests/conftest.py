@@ -179,6 +179,18 @@ def cepalstat_monetary_869_json() -> str:
 
 
 @pytest.fixture(scope="session")
+def cepalstat_debt_1239_json() -> str:
+    """CEPALSTAT indicator 1239, public debt in millions of USD (gzipped)."""
+    return gzip.decompress((FIXTURES / "cepalstat_debt_1239.json.gz").read_bytes()).decode("utf-8")
+
+
+@pytest.fixture(scope="session")
+def cepalstat_debt_1240_json() -> str:
+    """CEPALSTAT indicator 1240, public debt as a percent of GDP (gzipped)."""
+    return gzip.decompress((FIXTURES / "cepalstat_debt_1240.json.gz").read_bytes()).decode("utf-8")
+
+
+@pytest.fixture(scope="session")
 def cepalstat_dimensions_862_json() -> str:
     """Indicator 862's dimensions in Spanish; the only place months are named."""
     return gzip.decompress((FIXTURES / "cepalstat_dimensions_862.json.gz").read_bytes()).decode(
