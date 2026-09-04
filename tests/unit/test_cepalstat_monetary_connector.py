@@ -11,10 +11,12 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+import httpx
 import pytest
+import respx
 
 from reim.core.constants import CheckSeverity, CheckStatus, Frequency
-from reim.core.exceptions import TransformationError
+from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.connectors.regional.cepalstat_monetary import (
@@ -476,3 +478,107 @@ def test_every_check_is_dataset_level(raw: RawDataset) -> None:
     results = build_connector().validate(build_connector().transform(raw))
 
     assert all(result.observation_index is None for result in results)
+
+
+BASE_URL = "https://api-cepalstat.cepal.org/cepalstat/api/v1"
+
+
+def data_url(cepal_id: int) -> str:
+    return f"{BASE_URL}/indicator/{cepal_id}/data"
+
+
+def dimensions_url(cepal_id: int) -> str:
+    return f"{BASE_URL}/indicator/{cepal_id}/dimensions"
+
+
+def json_response(text: str) -> httpx.Response:
+    return httpx.Response(200, text=text, headers={"content-type": "application/json"})
+
+
+@respx.mock
+async def test_a_run_makes_two_requests_per_indicator(
+    cepalstat_monetary_862_json: str,
+    cepalstat_monetary_868_json: str,
+    cepalstat_monetary_869_json: str,
+    cepalstat_dimensions_862_json: str,
+    cepalstat_dimensions_868_json: str,
+    cepalstat_dimensions_869_json: str,
+) -> None:
+    data = {
+        862: cepalstat_monetary_862_json,
+        868: cepalstat_monetary_868_json,
+        869: cepalstat_monetary_869_json,
+    }
+    dims = {
+        862: cepalstat_dimensions_862_json,
+        868: cepalstat_dimensions_868_json,
+        869: cepalstat_dimensions_869_json,
+    }
+    routes = []
+    for cepal_id in (862, 868, 869):
+        routes.append(
+            respx.get(data_url(cepal_id)).mock(return_value=json_response(data[cepal_id]))
+        )
+        routes.append(
+            respx.get(dimensions_url(cepal_id)).mock(return_value=json_response(dims[cepal_id]))
+        )
+
+    raw = await build_connector().extract()
+
+    assert all(route.call_count == 1 for route in routes)
+    assert set(raw.payload["data"]) == {862, 868, 869}
+    assert set(raw.payload["dimensions"]) == {862, 868, 869}
+
+
+@respx.mock
+async def test_the_data_is_english_and_the_dimensions_are_spanish(
+    cepalstat_monetary_862_json: str, cepalstat_dimensions_862_json: str
+) -> None:
+    """The whole point of the split: nothing stored comes back translated."""
+    for cepal_id in (862, 868, 869):
+        respx.get(data_url(cepal_id)).mock(return_value=json_response(cepalstat_monetary_862_json))
+        respx.get(dimensions_url(cepal_id)).mock(
+            return_value=json_response(cepalstat_dimensions_862_json)
+        )
+
+    await build_connector().extract()
+
+    by_path = {call.request.url.path: call.request.url for call in respx.calls}
+    assert by_path["/cepalstat/api/v1/indicator/862/data"].params["lang"] == "en"
+    assert by_path["/cepalstat/api/v1/indicator/862/dimensions"].params["lang"] == "es"
+
+
+@respx.mock
+async def test_a_failing_envelope_raises_even_on_http_200() -> None:
+    """CEPAL answers an unknown id with 500 and success:false, never 404."""
+    envelope = json.dumps(
+        {
+            "header": {"success": False, "code": 404, "message": "Not found"},
+            "body": {"data": []},
+        }
+    )
+    respx.get(data_url(862)).mock(return_value=json_response(envelope))
+
+    with pytest.raises(ExtractionError, match="reported failure 404"):
+        await build_connector().extract()
+
+
+@respx.mock
+async def test_an_empty_data_array_raises(cepalstat_monetary_862_json: str) -> None:
+    body = json.loads(cepalstat_monetary_862_json)
+    body["body"]["data"] = []
+    respx.get(data_url(862)).mock(return_value=json_response(json.dumps(body)))
+
+    with pytest.raises(ExtractionError, match="no rows"):
+        await build_connector().extract()
+
+
+@pytest.mark.live
+async def test_the_real_api_still_answers_as_recorded() -> None:
+    """Opt-in. Proves the contract, not the data: shape, not values."""
+    connector = build_connector()
+    observations = connector.transform(await connector.extract())
+
+    assert len(observations) >= 5000
+    assert {obs.country_iso3 for obs in observations} == CENTRAL_AMERICA
+    assert all(result.status is CheckStatus.PASSED for result in connector.validate(observations))
