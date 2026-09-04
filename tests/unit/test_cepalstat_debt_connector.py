@@ -6,9 +6,17 @@ Every payload replayed here is a real recording; see `tests/fixtures/README.md`.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+
+from reim.core.constants import Frequency
+from reim.core.exceptions import TransformationError
+from reim.domain.pipelines.models import NormalizedObservation, RawDataset
+from reim.domain.sources.catalog import load_catalog
+from reim.ingestion.connectors.regional.cepalstat_debt import CepalstatDebtConnector
+from tests.conftest import REPO_ROOT
 
 COUNTRY_DIMENSION = 208
 YEARS_DIMENSION = 29117
@@ -180,3 +188,162 @@ def test_the_ratio_exceeds_one_hundred_percent(cepalstat_debt_1240_json: str) ->
 
     assert max(values) == Decimal("222.1")
     assert min(values) == Decimal("14")
+
+
+MILLIONS = Decimal("1000000")
+
+
+def build_connector() -> CepalstatDebtConnector:
+    catalog = load_catalog(REPO_ROOT / "sources" / "catalog.yml")
+    return CepalstatDebtConnector(catalog.get("cepalstat_debt_annual"))
+
+
+def build_raw(payload: dict[int, str]) -> RawDataset:
+    return RawDataset(
+        source_key="cepalstat_debt_annual",
+        retrieved_at=datetime(2026, 9, 3, 12, 0, tzinfo=UTC),
+        source_url="https://api-cepalstat.cepal.org/cepalstat/api/v1",
+        payload=payload,
+        content_type="application/json",
+        http_status=200,
+    )
+
+
+@pytest.fixture
+def raw(cepalstat_debt_1239_json: str, cepalstat_debt_1240_json: str) -> RawDataset:
+    return build_raw({1239: cepalstat_debt_1239_json, 1240: cepalstat_debt_1240_json})
+
+
+def by_code(observations: list[NormalizedObservation]) -> dict[str, list[NormalizedObservation]]:
+    out: dict[str, list[NormalizedObservation]] = {}
+    for obs in observations:
+        out.setdefault(obs.indicator_code, []).append(obs)
+    return out
+
+
+def test_transform_produces_every_stored_cell(raw: RawDataset) -> None:
+    grouped = by_code(build_connector().transform(raw))
+
+    assert len(grouped["public_debt_usd_annual"]) == 226
+    assert len(grouped["public_debt_pct_gdp_annual"]) == 230
+
+
+def test_only_central_government_totals_survive(raw: RawDataset) -> None:
+    """The other eleven non-empty combinations are discarded."""
+    observations = build_connector().transform(raw)
+    usd = {
+        (obs.country_iso3, obs.period.label)
+        for obs in observations
+        if obs.indicator_code == "public_debt_usd_annual"
+    }
+
+    assert ("NIC", "1990") in usd
+    assert ("BLZ", "2020") in usd
+    assert ("BLZ", "2021") not in usd
+    assert len(usd) == 226
+
+
+def test_only_the_seven_countries_survive(raw: RawDataset) -> None:
+    """Mexico and the regional aggregates with iso3 null both fall out."""
+    observations = build_connector().transform(raw)
+
+    assert {obs.country_iso3 for obs in observations} == CENTRAL_AMERICA
+
+
+def test_the_published_millions_are_scaled_to_whole_usd(raw: RawDataset) -> None:
+    observations = build_connector().transform(raw)
+    costa_rica = next(
+        obs
+        for obs in observations
+        if obs.indicator_code == "public_debt_usd_annual"
+        and obs.country_iso3 == "CRI"
+        and obs.period.label == "2025"
+    )
+
+    assert costa_rica.value_numeric == Decimal("62777") * MILLIONS
+    assert costa_rica.unit == "current USD"
+    assert costa_rica.currency_code == "USD"
+    assert costa_rica.raw_metadata["cepalstat_scale_applied"] == "1e6"
+
+
+def test_the_ratio_is_stored_exactly_as_published(raw: RawDataset) -> None:
+    observations = build_connector().transform(raw)
+    costa_rica = next(
+        obs
+        for obs in observations
+        if obs.indicator_code == "public_debt_pct_gdp_annual"
+        and obs.country_iso3 == "CRI"
+        and obs.period.label == "2025"
+    )
+
+    assert costa_rica.value_numeric == Decimal("60.4")
+    assert costa_rica.unit == "percent of GDP"
+    assert costa_rica.currency_code is None
+    assert costa_rica.raw_metadata["cepalstat_scale_applied"] == "1"
+
+
+def test_periods_are_calendar_years(raw: RawDataset) -> None:
+    observations = build_connector().transform(raw)
+    sample = next(obs for obs in observations if obs.period.label == "2024")
+
+    assert sample.period.frequency is Frequency.ANNUAL
+    assert sample.period.start.isoformat() == "2024-01-01"
+    assert sample.period.end.isoformat() == "2024-12-31"
+
+
+def test_source_record_ids_are_unique_and_readable(raw: RawDataset) -> None:
+    observations = build_connector().transform(raw)
+    ids = [obs.source_record_id for obs in observations]
+
+    assert len(set(ids)) == len(ids) == 456
+    assert "cepalstat:1239:CRI:2025" in ids
+
+
+def test_the_fetch_date_never_reaches_stored_metadata(raw: RawDataset) -> None:
+    """credits[0] moves between runs; only the citation is kept."""
+    observations = build_connector().transform(raw)
+    credits = observations[0].raw_metadata["cepalstat_credits"]
+
+    assert "CEPALSTAT" in credits
+    assert not any(credit.startswith("202") for credit in credits)
+
+
+def test_a_renamed_coverage_member_raises(raw: RawDataset) -> None:
+    """Selecting by id is silent on a relabel; the assertion is not."""
+    document = json.loads(raw.payload[1239])
+    for dimension in document["body"]["dimensions"]:
+        if dimension["id"] == INSTITUTIONAL_COVERAGE:
+            for member in dimension["members"]:
+                if member["id"] == CENTRAL_GOVERNMENT:
+                    member["name"] = "General government"
+
+    doctored = build_raw({1239: json.dumps(document), 1240: raw.payload[1240]})
+
+    with pytest.raises(TransformationError, match="General government"):
+        build_connector().transform(doctored)
+
+
+def test_a_renamed_classification_member_raises(raw: RawDataset) -> None:
+    document = json.loads(raw.payload[1239])
+    for dimension in document["body"]["dimensions"]:
+        if dimension["id"] == DEBT_CLASSIFICATION:
+            for member in dimension["members"]:
+                if member["id"] == TOTAL_BY_RESIDENCE:
+                    member["name"] = "Total public debt"
+
+    doctored = build_raw({1239: json.dumps(document), 1240: raw.payload[1240]})
+
+    with pytest.raises(TransformationError, match="Total public debt"):
+        build_connector().transform(doctored)
+
+
+def test_a_missing_coverage_dimension_raises(raw: RawDataset) -> None:
+    document = json.loads(raw.payload[1239])
+    document["body"]["dimensions"] = [
+        d for d in document["body"]["dimensions"] if d["id"] != INSTITUTIONAL_COVERAGE
+    ]
+
+    doctored = build_raw({1239: json.dumps(document), 1240: raw.payload[1240]})
+
+    with pytest.raises(TransformationError, match="institutional coverage dimension"):
+        build_connector().transform(doctored)
