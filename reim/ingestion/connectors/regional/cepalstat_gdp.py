@@ -1,29 +1,17 @@
 """Central America — annual GDP published by CEPAL through CEPALSTAT.
 
-``api-cepalstat.cepal.org`` serves an undocumented REST API. There is no
-published documentation and no interactive schema: the base URL and the route
-names were recovered from the portal's own JavaScript —
-``statistics.cepal.org/portal/databank/config.js`` declares ``API_BASE_URL``
-and ``ENDPOINT_THEMATIC_TREE``, and ``.../cepalstat/dash/scripts/config.js``
-declares the per-indicator data, dimensions, sources and notes routes. That
-search is recorded here so nobody repeats it.
+The API itself — its lack of documentation, how its routes were recovered, its
+envelope and its numeric dimension ids — is documented in ``cepalstat.py``,
+which this connector's base class comes from. Only what is GDP's own is
+recorded here.
 
-Four properties of the source shape this connector:
+**The constant-price base year lives in a footnote, not the unit.** 2204 and
+2206 declare ``Millions of dollars`` and ``Dollars per inhabitant``; only
+``footnotes`` names 2018. A rebasing would change every value while the unit
+stood still, which is why ``validate`` checks the footnote.
 
-1. **One request returns an indicator's whole matrix** — 33 countries and 3
-   regional aggregates by 36 years, no pagination and no window to compute. A
-   rebuild is therefore complete by default, as with Banguat and SIECA.
-2. **Dimensions are addressed by numeric id, never by name.** Row keys embed
-   the id (``dim_208``, ``dim_29117``) and the names are language-dependent:
-   ``Years__ESTANDAR`` in English is ``Años__ESTANDAR`` in Spanish.
-3. **The envelope carries its own status, and it can disagree with the HTTP
-   code.** An unknown indicator id answers ``500`` with ``success: false``, not
-   ``404``, so ``extract`` reads ``header.success`` rather than trusting the
-   status line alone.
-4. **The constant-price base year lives in a footnote, not the unit.** 2204 and
-   2206 declare ``Millions of dollars`` and ``Dollars per inhabitant``; only
-   ``footnotes`` names 2018. A rebasing would change every value while the unit
-   stood still, which is why ``validate`` checks the footnote.
+One request returns the whole matrix — 33 countries and 3 regional aggregates
+by 36 years — so a rebuild is complete by default, as with Banguat and SIECA.
 
 CEPAL's English translation of indicator 2204 spells "dolllars" with three
 l's. REIM stores its own names, so it does not propagate; it is noted here so
@@ -32,28 +20,25 @@ it does not read as a transcription error.
 
 from __future__ import annotations
 
-import json
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from reim.core.constants import CheckSeverity, CheckType, Frequency
-from reim.core.exceptions import ExtractionError, TransformationError
+from reim.core.exceptions import TransformationError
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
     NormalizedObservation,
     QualityResult,
     RawDataset,
 )
-from reim.ingestion.base import BaseConnector
+from reim.ingestion.connectors.regional.cepalstat import (
+    YEARS_DIMENSION,
+    CepalstatConnector,
+)
 from reim.ingestion.http import ensure_ok, fetch, http_client
-
-#: Dimension ids, identical across all four indicators. Addressed by id
-#: because the row keys embed it and the names change with ``lang``.
-COUNTRY_DIMENSION = 208
-YEARS_DIMENSION = 29117
 
 #: Figures for the totals are published in millions of USD and stored in whole
 #: USD, matching the IMF and SIECA series so ``/compare`` can align them.
@@ -109,7 +94,7 @@ CONSTANT_PRICE_BASE_YEAR = "2018"
 POPULATION_TOLERANCE = Decimal("1e-9")
 
 
-class CepalstatGdpConnector(BaseConnector):
+class CepalstatGdpConnector(CepalstatConnector):
     """Four annual GDP series for the seven Central American countries."""
 
     connector_key = "cepalstat_gdp_annual"
@@ -154,33 +139,6 @@ class CepalstatGdpConnector(BaseConnector):
             },
         )
 
-    def _ensure_envelope_ok(self, text: str, cepal_id: int, url: str) -> None:
-        """Read CEPAL's own status, which can disagree with the HTTP code.
-
-        An unknown indicator id answers ``500`` with ``success: false``, so the
-        envelope is the authority on whether a response is usable.
-
-        Raises:
-            ExtractionError: The envelope reports failure or carries no rows.
-        """
-        try:
-            document = json.loads(text)
-            header = document["header"]
-            rows = document["body"]["data"]
-        except (json.JSONDecodeError, KeyError, TypeError) as exc:
-            msg = f"CEPALSTAT returned an unreadable envelope for indicator {cepal_id}: {exc}"
-            raise ExtractionError(msg, source_key=self.source.key, url=url) from exc
-
-        if not header.get("success", False):
-            detail = str(header.get("message") or "no message").strip()
-            code = header.get("code", "?")
-            msg = f"CEPALSTAT reported failure {code} for indicator {cepal_id}: {detail}"
-            raise ExtractionError(msg, source_key=self.source.key, url=url)
-
-        if not rows:
-            msg = f"CEPALSTAT returned no rows for indicator {cepal_id}"
-            raise ExtractionError(msg, source_key=self.source.key, url=url)
-
     def transform(self, raw: RawDataset) -> list[NormalizedObservation]:
         """Normalize the four payloads into one observation per country-year.
 
@@ -210,7 +168,7 @@ class CepalstatGdpConnector(BaseConnector):
     ) -> list[NormalizedObservation]:
         """Turn one indicator's payload into its Central American observations."""
         body = self._decode(text, spec.cepal_id)["body"]
-        years = self._years_of(body, spec.cepal_id)
+        years = self._members_of(body, YEARS_DIMENSION, "years", spec.cepal_id)
         published_unit = str(body["metadata"]["unit"])
         sources = {source["id"]: source["description"] for source in body["sources"]}
         footnotes = {str(note["id"]): note["description"] for note in body["footnotes"]}
@@ -222,7 +180,7 @@ class CepalstatGdpConnector(BaseConnector):
             iso3 = row.get("iso3")
             if iso3 not in CENTRAL_AMERICA:
                 continue
-            year = self._year_of(row, years, spec.cepal_id)
+            year = self._label_of(row, years, YEARS_DIMENSION, "year", spec.cepal_id)
             value = self._value_of(row, spec.cepal_id)
             note_ids = [part for part in str(row.get("notes_ids") or "").split(",") if part]
             observations.append(
@@ -254,58 +212,6 @@ class CepalstatGdpConnector(BaseConnector):
                 )
             )
         return observations
-
-    def _decode(self, text: str, cepal_id: int) -> Any:
-        """Decode JSON, keeping published decimals exact."""
-        try:
-            return json.loads(text, parse_float=Decimal)
-        except json.JSONDecodeError as exc:
-            msg = f"CEPALSTAT returned malformed JSON for indicator {cepal_id}: {exc}"
-            raise TransformationError(msg, source_key=self.source.key) from exc
-
-    def _years_of(self, body: Any, cepal_id: int) -> dict[int, str]:
-        """Build the ``member id -> year label`` map from the response itself.
-
-        Never computed from the id arithmetically: ``year = id - 27170`` holds
-        only inside the 1990-2025 window this connector uses. Across the full
-        years dimension it breaks for 130 of 201 members — id 68109 maps to
-        "1900", 29118 to "1951", 29119 to "1950" — and six distinct offsets
-        appear overall, so nothing about the id is a documented or reliable
-        contract.
-
-        Raises:
-            TransformationError: The years dimension is absent.
-        """
-        for dimension in body.get("dimensions", []):
-            if dimension.get("id") == YEARS_DIMENSION:
-                return {member["id"]: str(member["name"]) for member in dimension["members"]}
-        msg = f"CEPALSTAT returned no years dimension for indicator {cepal_id}"
-        raise TransformationError(msg, source_key=self.source.key)
-
-    def _year_of(self, row: Any, years: dict[int, str], cepal_id: int) -> str:
-        """Resolve a row's year label.
-
-        Raises:
-            TransformationError: The row names a year member that does not exist.
-        """
-        member = row.get(f"dim_{YEARS_DIMENSION}")
-        label = years.get(member)
-        if label is None:
-            msg = f"CEPALSTAT row for indicator {cepal_id} names an unknown year member {member!r}"
-            raise TransformationError(msg, source_key=self.source.key)
-        return label
-
-    def _value_of(self, row: Any, cepal_id: int) -> Decimal:
-        """Read a published figure exactly.
-
-        Raises:
-            TransformationError: The value is absent or not a number.
-        """
-        try:
-            return Decimal(str(row["value"]))
-        except (KeyError, TypeError, ValueError, ArithmeticError) as exc:
-            msg = f"CEPALSTAT returned an unreadable value for indicator {cepal_id}: {exc}"
-            raise TransformationError(msg, source_key=self.source.key) from exc
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
         """Assert CEPALSTAT-specific expectations beyond the standard battery."""

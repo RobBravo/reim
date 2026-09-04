@@ -1,7 +1,8 @@
 """Central America — monthly monetary aggregates published through CEPALSTAT.
 
 The API, its lack of documentation and the way its routes were recovered are
-documented in ``cepalstat_gdp.py``; only what differs is recorded here.
+documented in ``cepalstat.py``, which this connector's base class comes from;
+only what differs is recorded here.
 
 Two things differ, and both come from one dimension:
 
@@ -28,14 +29,13 @@ REIM does not perform.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
 from reim.core.constants import CheckSeverity, CheckType, Frequency
-from reim.core.exceptions import ExtractionError, TransformationError
+from reim.core.exceptions import TransformationError
 from reim.domain.countries.registry import COUNTRIES_BY_ISO3
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
@@ -43,12 +43,14 @@ from reim.domain.pipelines.models import (
     QualityResult,
     RawDataset,
 )
-from reim.ingestion.base import BaseConnector
+from reim.ingestion.connectors.regional.cepalstat import (
+    YEARS_DIMENSION,
+    CepalstatConnector,
+)
 from reim.ingestion.http import ensure_ok, fetch, http_client
 
-#: Shared with the GDP connector; the period dimension is this family's own.
-COUNTRY_DIMENSION = 208
-YEARS_DIMENSION = 29117
+#: ``COUNTRY_DIMENSION`` and ``YEARS_DIMENSION`` come from the base module;
+#: the period dimension is this family's own.
 PERIOD_DIMENSION = 3981
 
 #: Published in millions of local currency, stored in whole units.
@@ -112,7 +114,7 @@ EXPECTED_COUNTRIES: dict[str, frozenset[str]] = {
 NESTING_TOLERANCE = Decimal("0.001")
 
 
-class CepalstatMonetaryConnector(BaseConnector):
+class CepalstatMonetaryConnector(CepalstatConnector):
     """Monthly M1, M2 and M3 for the seven Central American countries."""
 
     connector_key = "cepalstat_monetary_monthly"
@@ -166,33 +168,6 @@ class CepalstatMonetaryConnector(BaseConnector):
                 "dimensions_lang": "es",
             },
         )
-
-    def _ensure_envelope_ok(self, text: str, cepal_id: int, url: str) -> None:
-        """Read CEPAL's own status, which can disagree with the HTTP code.
-
-        An unknown indicator id answers ``500`` with ``success: false``, so the
-        envelope is the authority on whether a response is usable.
-
-        Raises:
-            ExtractionError: The envelope reports failure or carries no rows.
-        """
-        try:
-            document = json.loads(text)
-            header = document["header"]
-            rows = document["body"]["data"]
-        except (json.JSONDecodeError, KeyError, TypeError) as exc:
-            msg = f"CEPALSTAT returned an unreadable envelope for indicator {cepal_id}: {exc}"
-            raise ExtractionError(msg, source_key=self.source.key, url=url) from exc
-
-        if not header.get("success", False):
-            detail = str(header.get("message") or "no message").strip()
-            code = header.get("code", "?")
-            msg = f"CEPALSTAT reported failure {code} for indicator {cepal_id}: {detail}"
-            raise ExtractionError(msg, source_key=self.source.key, url=url)
-
-        if not rows:
-            msg = f"CEPALSTAT returned no rows for indicator {cepal_id}"
-            raise ExtractionError(msg, source_key=self.source.key, url=url)
 
     def transform(self, raw: RawDataset) -> list[NormalizedObservation]:
         """Normalize the three payloads into one observation per country-month.
@@ -272,26 +247,6 @@ class CepalstatMonetaryConnector(BaseConnector):
             )
         return observations
 
-    def _decode(self, text: str, cepal_id: int) -> Any:
-        """Decode JSON, keeping published decimals exact."""
-        try:
-            return json.loads(text, parse_float=Decimal)
-        except json.JSONDecodeError as exc:
-            msg = f"CEPALSTAT returned malformed JSON for indicator {cepal_id}: {exc}"
-            raise TransformationError(msg, source_key=self.source.key) from exc
-
-    def _members_of(self, body: Any, dimension_id: int, name: str, cepal_id: int) -> dict[int, str]:
-        """Build the ``member id -> label`` map from the response itself.
-
-        Raises:
-            TransformationError: The dimension is absent.
-        """
-        for dimension in body.get("dimensions", []):
-            if dimension.get("id") == dimension_id:
-                return {member["id"]: str(member["name"]) for member in dimension["members"]}
-        msg = f"CEPALSTAT returned no {name} dimension for indicator {cepal_id}"
-        raise TransformationError(msg, source_key=self.source.key)
-
     def _months_of(self, dimensions_document: Any, cepal_id: int) -> dict[int, int | None]:
         """Map each period member id to a month number, or ``None`` to skip.
 
@@ -338,35 +293,6 @@ class CepalstatMonetaryConnector(BaseConnector):
             )
             raise TransformationError(msg, source_key=self.source.key)
         return months[member]
-
-    def _label_of(
-        self, row: Any, labels: dict[int, str], dimension_id: int, name: str, cepal_id: int
-    ) -> str:
-        """Resolve a row's label for one dimension.
-
-        Raises:
-            TransformationError: The row names a member that does not exist.
-        """
-        member = row.get(f"dim_{dimension_id}")
-        label = labels.get(member)
-        if label is None:
-            msg = (
-                f"CEPALSTAT row for indicator {cepal_id} names an unknown {name} member {member!r}"
-            )
-            raise TransformationError(msg, source_key=self.source.key)
-        return label
-
-    def _value_of(self, row: Any, cepal_id: int) -> Decimal:
-        """Read a published figure exactly.
-
-        Raises:
-            TransformationError: The value is absent or not a number.
-        """
-        try:
-            return Decimal(str(row["value"]))
-        except (KeyError, TypeError, ValueError, ArithmeticError) as exc:
-            msg = f"CEPALSTAT returned an unreadable value for indicator {cepal_id}: {exc}"
-            raise TransformationError(msg, source_key=self.source.key) from exc
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
         """Assert CEPALSTAT-specific expectations beyond the standard battery."""
