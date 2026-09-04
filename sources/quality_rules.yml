@@ -335,6 +335,8 @@ indicators:
 
   public_debt_usd_annual: &public_debt
     min_value: 0
+    # The ratio reaches 222.1% of GDP in Nicaragua's early 1990s, so max_value
+    # stays null here and below: a 100 cap would reject published figures.
     max_value: null
     allow_negative: false
     allow_zero: false
@@ -349,6 +351,4 @@ indicators:
 
   public_debt_pct_gdp_annual:
     <<: *public_debt
-    # The ratio reaches 222.1% of GDP in Nicaragua's early 1990s, so max_value
-    # stays null: a 100 cap would reject published figures.
     min_observations: 224

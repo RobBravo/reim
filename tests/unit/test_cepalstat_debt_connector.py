@@ -310,6 +310,21 @@ def test_the_fetch_date_never_reaches_stored_metadata(raw: RawDataset) -> None:
     assert not any(credit.startswith("202") for credit in credits)
 
 
+def test_footnote_ids_reach_raw_metadata(raw: RawDataset) -> None:
+    """Every stored row carries note 12095; the provenance is kept even though
+    nothing currently disagrees with the central-government coverage it names.
+    """
+    costa_rica = next(
+        obs
+        for obs in build_connector().transform(raw)
+        if obs.indicator_code == "public_debt_usd_annual"
+        and obs.country_iso3 == "CRI"
+        and obs.period.label == "2025"
+    )
+
+    assert costa_rica.raw_metadata["cepalstat_notes_ids"] == ["12095"]
+
+
 def test_a_renamed_coverage_member_raises(raw: RawDataset) -> None:
     """Selecting by id is silent on a relabel; the assertion is not."""
     document = json.loads(raw.payload[1239])
@@ -370,6 +385,28 @@ def test_a_missing_country_fails_critically(raw: RawDataset) -> None:
     assert result.status is CheckStatus.FAILED
     assert result.severity is CheckSeverity.CRITICAL
     assert "BLZ" in result.message
+
+
+def test_a_country_missing_from_one_series_only_fails_critically(raw: RawDataset) -> None:
+    """Present in the other series must not satisfy the check.
+
+    Pooling both series into one ``seen`` set would let this pass: GTM still
+    appears via ``public_debt_pct_gdp_annual``. The fix keys the seen set by
+    ``(indicator_code, country_iso3)`` so a country missing from either series
+    fails, and the message must name both the country and the series.
+    """
+    observations = [
+        obs
+        for obs in build_connector().transform(raw)
+        if not (obs.country_iso3 == "GTM" and obs.indicator_code == "public_debt_usd_annual")
+    ]
+
+    result = results_of(observations)["cepalstat_debt_seven_countries"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.CRITICAL
+    assert "GTM" in result.message
+    assert "public_debt_usd_annual" in result.message
 
 
 def test_a_hole_in_one_country_is_reported_as_a_warning(raw: RawDataset) -> None:

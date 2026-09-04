@@ -73,11 +73,12 @@ class SeriesSpec:
     indicator_code: str
     unit: str
     scale: Decimal
+    currency: str | None
 
 
 SERIES: tuple[SeriesSpec, ...] = (
-    SeriesSpec(1239, "public_debt_usd_annual", "current USD", MILLIONS),
-    SeriesSpec(1240, "public_debt_pct_gdp_annual", "percent of GDP", Decimal(1)),
+    SeriesSpec(1239, "public_debt_usd_annual", "current USD", MILLIONS, "USD"),
+    SeriesSpec(1240, "public_debt_pct_gdp_annual", "percent of GDP", Decimal(1), None),
 )
 
 
@@ -179,6 +180,7 @@ class CepalstatDebtConnector(CepalstatConnector):
                 continue
             year = self._label_of(row, years, YEARS_DIMENSION, "year", spec.cepal_id)
             value = self._value_of(row, spec.cepal_id)
+            notes_ids = [part for part in str(row.get("notes_ids") or "").split(",") if part]
             observations.append(
                 NormalizedObservation(
                     country_iso3=str(iso3),
@@ -186,7 +188,7 @@ class CepalstatDebtConnector(CepalstatConnector):
                     source_key=self.source.key,
                     period=parse_period(year, Frequency.ANNUAL),
                     unit=spec.unit,
-                    currency_code="USD" if spec.scale == MILLIONS else None,
+                    currency_code=spec.currency,
                     value_numeric=value * spec.scale,
                     retrieved_at=raw.retrieved_at,
                     source_url=f"{raw.source_url}/indicator/{spec.cepal_id}/data",
@@ -199,6 +201,7 @@ class CepalstatDebtConnector(CepalstatConnector):
                         "cepalstat_institutional_coverage": CENTRAL_GOVERNMENT_NAME,
                         "cepalstat_debt_classification": TOTAL_BY_RESIDENCE_NAME,
                         "cepalstat_source": sources.get(row.get("source_id"), ""),
+                        "cepalstat_notes_ids": notes_ids,
                         # credits[0] is CEPAL's own fetch date and changes
                         # between runs; only the citation is kept.
                         "cepalstat_credits": credits,
@@ -223,25 +226,41 @@ class CepalstatDebtConnector(CepalstatConnector):
         ]
 
     def _check_seven_countries(self, observations: list[NormalizedObservation]) -> QualityResult:
-        """All seven must appear in both series."""
-        seen = {obs.country_iso3 for obs in observations}
-        missing = sorted(CENTRAL_AMERICA - seen)
+        """All seven must appear in EACH series, not merely somewhere across both.
+
+        A country present in one series and absent from the other must fail
+        this check by name: pooling both series' countries into one ``seen``
+        set would let CEPAL drop a country from one indicator entirely
+        without this check ever noticing, so long as the other still carries
+        it.
+        """
+        seen_by_series: dict[str, set[str]] = {spec.indicator_code: set() for spec in SERIES}
+        for obs in observations:
+            seen_by_series.setdefault(obs.indicator_code, set()).add(obs.country_iso3)
+
+        missing = sorted(
+            f"{iso3} ({code})"
+            for code, seen in seen_by_series.items()
+            for iso3 in sorted(CENTRAL_AMERICA - seen)
+        )
+        expected = len(CENTRAL_AMERICA) * len(SERIES)
+        present = sum(len(CENTRAL_AMERICA & seen) for seen in seen_by_series.values())
 
         if not missing:
             return QualityResult.passed(
                 "cepalstat_debt_seven_countries",
                 CheckType.COMPLETENESS,
-                f"All {len(CENTRAL_AMERICA)} countries returned figures",
-                expected_value=str(len(CENTRAL_AMERICA)),
-                actual_value=str(len(seen & CENTRAL_AMERICA)),
+                f"All {len(CENTRAL_AMERICA)} countries returned figures in both series",
+                expected_value=str(expected),
+                actual_value=str(present),
             )
         return QualityResult.failure(
             "cepalstat_debt_seven_countries",
             CheckType.COMPLETENESS,
             CheckSeverity.CRITICAL,
-            f"{len(missing)} country/countries returned nothing: {', '.join(missing)}",
-            expected_value=str(len(CENTRAL_AMERICA)),
-            actual_value=str(len(seen & CENTRAL_AMERICA)),
+            f"{len(missing)} country/series combination(s) missing: {', '.join(missing)}",
+            expected_value=str(expected),
+            actual_value=str(present),
         )
 
     def _check_annual_continuity(self, observations: list[NormalizedObservation]) -> QualityResult:
@@ -259,10 +278,11 @@ class CepalstatDebtConnector(CepalstatConnector):
             )
 
         missing: list[str] = []
-        expected = present = 0
+        expected = present = walked = 0
         for (code, iso3), years in sorted(spans.items()):
             if len(years) < 2:
                 continue
+            walked += 1
             first, last = min(years), max(years)
             expected += last - first + 1
             present += len(years)
@@ -274,7 +294,7 @@ class CepalstatDebtConnector(CepalstatConnector):
             return QualityResult.passed(
                 "cepalstat_debt_annual_continuity",
                 CheckType.COMPLETENESS,
-                f"No gaps in any of the {len(spans)} country-series",
+                f"No gaps in any of the {walked} country-series",
                 expected_value=str(expected),
                 actual_value=str(present),
             )
