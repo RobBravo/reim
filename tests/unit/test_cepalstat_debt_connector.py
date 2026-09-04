@@ -9,10 +9,12 @@ import json
 from datetime import UTC, datetime
 from decimal import Decimal
 
+import httpx
 import pytest
+import respx
 
 from reim.core.constants import CheckSeverity, CheckStatus, Frequency
-from reim.core.exceptions import TransformationError
+from reim.core.exceptions import ExtractionError, TransformationError
 from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.connectors.regional.cepalstat_debt import CepalstatDebtConnector
@@ -400,3 +402,95 @@ def test_every_check_is_dataset_level(raw: RawDataset) -> None:
     results = build_connector().validate(build_connector().transform(raw))
 
     assert all(result.observation_index is None for result in results)
+
+
+BASE_URL = "https://api-cepalstat.cepal.org/cepalstat/api/v1"
+
+
+def data_url(cepal_id: int) -> str:
+    return f"{BASE_URL}/indicator/{cepal_id}/data"
+
+
+def json_response(text: str) -> httpx.Response:
+    return httpx.Response(200, text=text, headers={"content-type": "application/json"})
+
+
+@respx.mock
+async def test_a_run_makes_one_request_per_indicator(
+    cepalstat_debt_1239_json: str, cepalstat_debt_1240_json: str
+) -> None:
+    routes = [
+        respx.get(data_url(1239)).mock(return_value=json_response(cepalstat_debt_1239_json)),
+        respx.get(data_url(1240)).mock(return_value=json_response(cepalstat_debt_1240_json)),
+    ]
+
+    raw = await build_connector().extract()
+
+    assert all(route.call_count == 1 for route in routes)
+    assert set(raw.payload) == {1239, 1240}
+
+
+@respx.mock
+async def test_both_requests_are_english(
+    cepalstat_debt_1239_json: str, cepalstat_debt_1240_json: str
+) -> None:
+    """No Spanish request exists in this family, and none should appear."""
+    respx.get(data_url(1239)).mock(return_value=json_response(cepalstat_debt_1239_json))
+    respx.get(data_url(1240)).mock(return_value=json_response(cepalstat_debt_1240_json))
+
+    await build_connector().extract()
+
+    assert len(respx.calls) == 2
+    assert all(call.request.url.params["lang"] == "en" for call in respx.calls)
+
+
+@respx.mock
+async def test_the_selected_slice_is_recorded_in_metadata(
+    cepalstat_debt_1239_json: str, cepalstat_debt_1240_json: str
+) -> None:
+    """A reader of raw_metadata should not have to guess which cube slice this is."""
+    respx.get(data_url(1239)).mock(return_value=json_response(cepalstat_debt_1239_json))
+    respx.get(data_url(1240)).mock(return_value=json_response(cepalstat_debt_1240_json))
+
+    raw = await build_connector().extract()
+
+    assert raw.metadata["institutional_coverage"] == "Central government"
+    assert raw.metadata["debt_classification"] == (
+        "Total public debt (classification by residence)"
+    )
+
+
+@respx.mock
+async def test_a_failing_envelope_raises_even_on_http_200() -> None:
+    """CEPAL answers an unknown id with 500 and success:false, never 404."""
+    envelope = json.dumps(
+        {
+            "header": {"success": False, "code": 404, "message": "Not found"},
+            "body": {"data": []},
+        }
+    )
+    respx.get(data_url(1239)).mock(return_value=json_response(envelope))
+
+    with pytest.raises(ExtractionError, match="reported failure 404"):
+        await build_connector().extract()
+
+
+@respx.mock
+async def test_an_empty_data_array_raises(cepalstat_debt_1239_json: str) -> None:
+    body = json.loads(cepalstat_debt_1239_json)
+    body["body"]["data"] = []
+    respx.get(data_url(1239)).mock(return_value=json_response(json.dumps(body)))
+
+    with pytest.raises(ExtractionError, match="no rows"):
+        await build_connector().extract()
+
+
+@pytest.mark.live
+async def test_the_real_api_still_answers_as_recorded() -> None:
+    """Opt-in. Proves the contract, not the data: shape, not values."""
+    connector = build_connector()
+    observations = connector.transform(await connector.extract())
+
+    assert len(observations) >= 400
+    assert {obs.country_iso3 for obs in observations} == CENTRAL_AMERICA
+    assert all(result.status is CheckStatus.PASSED for result in connector.validate(observations))
