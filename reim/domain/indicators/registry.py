@@ -485,6 +485,38 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         value_type=ValueType.LEVEL,
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=869&lang=en",
     ),
+    IndicatorDefinition(
+        code="public_debt_usd_annual",
+        name="Central government public debt stock (annual, current USD)",
+        description=(
+            "Gross public debt stock of the central government at the close of "
+            "each year, as compiled by CEPAL. Published in millions of current "
+            "dollars and stored in whole dollars. This is the central "
+            "government only: CEPAL also publishes wider institutional "
+            "coverages, but only this one covers all seven countries."
+        ),
+        category=IndicatorCategory.FISCAL,
+        frequency=Frequency.ANNUAL,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=1239&lang=en",
+    ),
+    IndicatorDefinition(
+        code="public_debt_pct_gdp_annual",
+        name="Central government public debt stock (annual, percent of GDP)",
+        description=(
+            "The same debt stock expressed as a share of GDP, stored exactly "
+            "as published. CEPAL's denominator is each country's GDP in local "
+            "currency converted at the IMF's 31 December rate, which is not "
+            "REIM's gdp_current_usd_annual: dividing this series into that one "
+            "does not reconcile and is not intended to."
+        ),
+        category=IndicatorCategory.FISCAL,
+        frequency=Frequency.ANNUAL,
+        unit="percent of GDP",
+        value_type=ValueType.PERCENT,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=1240&lang=en",
+    ),
 )
 
 INDICATORS_BY_CODE: dict[str, IndicatorDefinition] = {i.code: i for i in INDICATORS}

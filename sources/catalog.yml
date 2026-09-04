@@ -501,3 +501,25 @@ sources:
     license: cepal_terms_of_use
     official: true
     enabled: true
+
+  - key: cepalstat_debt_annual
+    name: Central American central government public debt (annual)
+    description: >-
+      Gross public debt stock of the central government for the seven Central
+      American countries, from CEPALSTAT, in millions of current dollars and
+      as a share of GDP. Central government only: CEPAL publishes three wider
+      institutional coverages, none of which covers all seven countries.
+    organization: CEPAL
+    category: fiscal
+    access_type: http_api
+    frequency: annual
+    format: json
+    base_url: https://api-cepalstat.cepal.org/cepalstat/api/v1
+    documentation_url: https://statistics.cepal.org/portal/cepalstat/
+    connector: reim.ingestion.connectors.regional.cepalstat_debt
+    indicators:
+      - public_debt_usd_annual
+      - public_debt_pct_gdp_annual
+    license: cepal_terms_of_use
+    official: true
+    enabled: true

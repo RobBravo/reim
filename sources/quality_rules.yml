@@ -332,3 +332,23 @@ indicators:
   money_m3_monthly:
     <<: *monetary_aggregate
     min_observations: 1680
+
+  public_debt_usd_annual: &public_debt
+    min_value: 0
+    # The ratio reaches 222.1% of GDP in Nicaragua's early 1990s, so max_value
+    # stays null here and below: a 100 cap would reject published figures.
+    max_value: null
+    allow_negative: false
+    allow_zero: false
+    # Nicaragua 1996 fell 47.8% on HIPC and Paris Club relief. 60 clears that
+    # real event with headroom and still reports a discontinuity.
+    max_period_change_pct: 60
+    monotonic_increasing: false
+    # The newest period ends 2025-12-31. 600 matches the GDP rules and CEPAL's
+    # annual publication cycle.
+    freshness_max_age_days: 600
+    min_observations: 220
+
+  public_debt_pct_gdp_annual:
+    <<: *public_debt
+    min_observations: 224
