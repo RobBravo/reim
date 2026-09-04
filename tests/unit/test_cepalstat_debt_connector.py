@@ -11,9 +11,9 @@ from decimal import Decimal
 
 import pytest
 
-from reim.core.constants import Frequency
+from reim.core.constants import CheckSeverity, CheckStatus, Frequency
 from reim.core.exceptions import TransformationError
-from reim.domain.pipelines.models import NormalizedObservation, RawDataset
+from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.connectors.regional.cepalstat_debt import CepalstatDebtConnector
 from tests.conftest import REPO_ROOT
@@ -347,3 +347,56 @@ def test_a_missing_coverage_dimension_raises(raw: RawDataset) -> None:
 
     with pytest.raises(TransformationError, match="institutional coverage dimension"):
         build_connector().transform(doctored)
+
+
+def results_of(observations: list[NormalizedObservation]) -> dict[str, QualityResult]:
+    return {r.check_name: r for r in build_connector().validate(observations)}
+
+
+def test_both_checks_pass_on_the_real_recordings(raw: RawDataset) -> None:
+    results = build_connector().validate(build_connector().transform(raw))
+
+    assert len(results) == 2
+    assert all(result.status is CheckStatus.PASSED for result in results)
+
+
+def test_a_missing_country_fails_critically(raw: RawDataset) -> None:
+    observations = [obs for obs in build_connector().transform(raw) if obs.country_iso3 != "BLZ"]
+
+    result = results_of(observations)["cepalstat_debt_seven_countries"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.CRITICAL
+    assert "BLZ" in result.message
+
+
+def test_a_hole_in_one_country_is_reported_as_a_warning(raw: RawDataset) -> None:
+    """Pooling the seven would hide it: the others published that year."""
+    observations = [
+        obs
+        for obs in build_connector().transform(raw)
+        if not (
+            obs.indicator_code == "public_debt_usd_annual"
+            and obs.country_iso3 == "GTM"
+            and obs.period.label == "2010"
+        )
+    ]
+
+    result = results_of(observations)["cepalstat_debt_annual_continuity"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.WARNING
+    assert "GTM 2010" in result.message
+
+
+def test_a_shorter_span_is_not_itself_a_gap(raw: RawDataset) -> None:
+    """Belize starts in 2011 and ends in 2020; neither is a hole."""
+    result = results_of(build_connector().transform(raw))["cepalstat_debt_annual_continuity"]
+
+    assert result.status is CheckStatus.PASSED
+
+
+def test_every_check_is_dataset_level(raw: RawDataset) -> None:
+    results = build_connector().validate(build_connector().transform(raw))
+
+    assert all(result.observation_index is None for result in results)

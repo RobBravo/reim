@@ -38,7 +38,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from reim.core.constants import Frequency
+from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import TransformationError
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
@@ -209,14 +209,86 @@ class CepalstatDebtConnector(CepalstatConnector):
         return observations
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
-        """Run source-specific quality checks.
+        """Assert CEPALSTAT-specific expectations beyond the standard battery.
 
-        ``BaseConnector.validate`` is abstract, with no base implementation to
-        fall back on, so a concrete override is required for this class to be
-        instantiable at all. The checks themselves are written in Task 4; this
-        one returns none yet.
+        Deliberately absent: any reconciliation of the ratio against REIM's
+        own GDP series. CEPAL's denominator is a local-currency GDP converted
+        at the IMF's 31 December rate, and across the 225 shared country-years
+        the two disagree by 5% or more in 52 of them. A check would fail
+        permanently by design, so the mismatch is documented instead.
         """
-        return []
+        return [
+            self._check_seven_countries(observations),
+            self._check_annual_continuity(observations),
+        ]
+
+    def _check_seven_countries(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """All seven must appear in both series."""
+        seen = {obs.country_iso3 for obs in observations}
+        missing = sorted(CENTRAL_AMERICA - seen)
+
+        if not missing:
+            return QualityResult.passed(
+                "cepalstat_debt_seven_countries",
+                CheckType.COMPLETENESS,
+                f"All {len(CENTRAL_AMERICA)} countries returned figures",
+                expected_value=str(len(CENTRAL_AMERICA)),
+                actual_value=str(len(seen & CENTRAL_AMERICA)),
+            )
+        return QualityResult.failure(
+            "cepalstat_debt_seven_countries",
+            CheckType.COMPLETENESS,
+            CheckSeverity.CRITICAL,
+            f"{len(missing)} country/countries returned nothing: {', '.join(missing)}",
+            expected_value=str(len(CENTRAL_AMERICA)),
+            actual_value=str(len(seen & CENTRAL_AMERICA)),
+        )
+
+    def _check_annual_continuity(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """Holes inside each country's own span, per indicator.
+
+        Walked per country and per series: pooling them would hide a hole
+        whenever another country published that year, and six of the seven
+        usually did. Belize's shorter span is not a hole — the walk starts at
+        each country's own first year.
+        """
+        spans: dict[tuple[str, str], set[int]] = {}
+        for obs in observations:
+            spans.setdefault((obs.indicator_code, obs.country_iso3), set()).add(
+                int(obs.period.label)
+            )
+
+        missing: list[str] = []
+        expected = present = 0
+        for (code, iso3), years in sorted(spans.items()):
+            if len(years) < 2:
+                continue
+            first, last = min(years), max(years)
+            expected += last - first + 1
+            present += len(years)
+            missing.extend(
+                f"{iso3} {year} ({code})" for year in range(first, last + 1) if year not in years
+            )
+
+        if not missing:
+            return QualityResult.passed(
+                "cepalstat_debt_annual_continuity",
+                CheckType.COMPLETENESS,
+                f"No gaps in any of the {len(spans)} country-series",
+                expected_value=str(expected),
+                actual_value=str(present),
+            )
+
+        shown = ", ".join(missing[:5])
+        suffix = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
+        return QualityResult.failure(
+            "cepalstat_debt_annual_continuity",
+            CheckType.COMPLETENESS,
+            CheckSeverity.WARNING,
+            f"{len(missing)} missing year(s) inside a country's own span: {shown}{suffix}",
+            expected_value=str(expected),
+            actual_value=str(present),
+        )
 
     def _assert_selected_members(self, body: Any, cepal_id: int) -> None:
         """Confirm the two ids REIM selects still mean what they meant.
