@@ -400,14 +400,14 @@ def test_the_debt_indicators_declare_their_own_value_types() -> None:
     assert codes["public_debt_pct_gdp_annual"].unit == "percent of GDP"
 
 
-def test_the_debt_source_is_registered_and_disabled() -> None:
+def test_the_debt_source_is_registered_and_enabled() -> None:
     catalog = load_catalog(REPO_ROOT / "sources" / "catalog.yml")
     entry = catalog.get("cepalstat_debt_annual")
 
     assert entry.organization == "CEPAL"
     assert entry.frequency is Frequency.ANNUAL
     assert entry.license == "cepal_terms_of_use"
-    assert not entry.enabled
+    assert entry.enabled
     assert set(entry.indicators) == {
         "public_debt_usd_annual",
         "public_debt_pct_gdp_annual",

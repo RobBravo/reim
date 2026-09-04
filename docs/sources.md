@@ -769,23 +769,6 @@ fetch date, it moves between runs (two downloads twelve hours apart returned
 `2026-08-18` and `2026-08-19`), and REIM already records when it fetched, in
 `retrieved_at`.
 
-#### Reachable, not ingested — for whoever takes them next
-
-One family below was probed on 2026-08-19 and is live. It is not ingested: it
-carries dimensions this connector's country × year shape does not absorb, and it
-needs its own design. The monetary family that stood beside it here has since
-been taken — see the section below.
-
-| Ids | Series | Dimensions | Central America | Nicaragua |
-|---|---|---|---|---|
-| 1239, 1240 | Public debt stock, in millions of USD and as a share of GDP | 4 — country, institutional coverage (4), year, debt classification (6) | All seven | 1990–2025 |
-
-One trap worth knowing before starting: the debt figures carry an institutional
-coverage dimension with four members and a debt classification with six, so a
-country × year cell is not identified until both are pinned. Deciding which
-member of each is *the* public debt figure is a design decision, not a parsing
-one.
-
 ---
 
 ### CEPAL — monthly monetary aggregates
@@ -910,6 +893,145 @@ M3; a threshold tuned to sit above that would silence the one thing the check
 exists to say. The warning is the correct output, it is expected on every run
 until Honduras publishes again, and it is recorded in `sources/quality_rules.yml`
 so that nobody later reads it as a regression.
+
+---
+
+### CEPAL — central government public debt
+
+| | |
+|---|---|
+| **Organization** | Comisión Económica para América Latina y el Caribe (`CEPAL`) |
+| **Host** | `https://api-cepalstat.cepal.org` |
+| **Endpoint** | `GET /cepalstat/api/v1/indicator/{id}/data?lang=en` |
+| **Protocol** | Same undocumented REST JSON as the two CEPAL sections above |
+| **Auth** | None |
+| **Frequency** | Annual |
+| **Coverage** | 1990 … 2025 for six countries in both series; a two-way, six-cell exception in the seventh (below) |
+| **Countries** | All seven, from two requests; 145 countries and regional aggregates are returned per indicator and filtered to Central America by the row's own `iso3` |
+| **Volume** | 617–635 KB per indicator (4,351 and 4,494 rows before filtering), ~7 s for both requests |
+| **Licence** | ⚠️ **Not open** — CEPAL's terms, quoted in [the GDP section](#licence-not-open-and-the-terms-conflict-with-what-reim-does) above |
+| **Status** | ✅ **Enabled** — 456 observations, measured 2026-09-04 |
+
+**The two indicators:**
+
+| CEPAL id | Published unit | REIM indicator | Cells |
+|---|---|---|---|
+| 1239 | Millions of dollars | `public_debt_usd_annual` | 226 |
+| 1240 | Percent of GDP | `public_debt_pct_gdp_annual` | 230 |
+
+**Coverage per country**, measured 2026-09-04:
+
+| Country | USD (`public_debt_usd_annual`) | % of GDP (`public_debt_pct_gdp_annual`) |
+|---|---|---|
+| Belize | 2011 … 2020 (10) | 2011 … 2025 (15) |
+| Costa Rica | 1990 … 2025 (36) | 1990 … 2025 (36) |
+| El Salvador | 1990 … 2025 (36) | 1990 … 2025 (36) |
+| Guatemala | 1990 … 2025 (36) | 1990 … 2025 (36) |
+| Honduras | 1990 … 2025 (36) | 1990 … 2025 (36) |
+| Nicaragua | 1990 … 2025 (36) | 1991 … 2025 (35) |
+| Panama | 1990 … 2025 (36) | 1990 … 2025 (36) |
+
+REIM's first fiscal series, and REIM's first use of `IndicatorCategory.FISCAL`.
+
+#### Which slice of the cube is stored, and why
+
+Both indicators carry four dimensions, not the usual two: country and year, plus
+an institutional coverage (4 members) and a debt classification (6 members). A
+country-year cell is not identified until both are pinned, so the connector pins
+one of each and stores that slice — central government, Total public debt by
+residence — rather than the 24 combinations the cube technically offers.
+
+**Three of the six classification members carry no rows at all**, for any of
+the 145 countries the raw response covers: ids 10610, 10611 and 10614 are
+grouping nodes in CEPAL's tree — currency, rate and maturity classification —
+published as members with nothing behind them. Only Total public debt by
+residence, Internal debt and External debt hold data.
+
+**Of the four institutional coverages, only central government covers all seven
+countries across the full 1990–2025 span.** Nonfinancial public sector omits
+Guatemala and Honduras; public sector mostly stops in 2011; state and local
+governments exists for Honduras alone. This agrees with CEPAL's own methodology
+note, which says the published figure "is refered to the central government
+gross public debt stock" [sic] — CEPAL's typo, not a transcription error here.
+
+#### The internal and external series are not stored
+
+Internal debt and External debt are both present in the cube, and their sum
+should equal the total series that is stored. Measured across 1239: of 415
+country-coverage triples where all three (total, internal, external) are
+complete, only 303 sum exactly; the rest drift, mostly under 0.1%, but three
+triples are off by more than 1%. That is not rounding at the two decimals CEPAL
+declares — it is a real inconsistency in the source. Publishing the split as
+its own indicators would invite a subtraction the source does not itself
+support, so only the total is stored.
+
+#### The ratio does not reconcile with REIM's own GDP series
+
+Dividing 1239 by 1240 recovers an implied GDP in millions of dollars. Compared
+against indicator 2203 — the series REIM already stores as
+`gdp_current_usd_annual` — across the 225 country-years both cover, 52 disagree
+by 5% or more. The worst is Honduras 1990, off by 23.7%.
+
+The cause is stated in CEPAL's own methodology note: the ratio's denominator is
+"the gross domestic product in current prices and local monetary unit for each
+country" converted at "the exchange rate at December 31 for each year published
+in the International Finance Statistics by the IMF" — a different GDP, on a
+different conversion, from 2203's own harmonised-USD figure. The two are not
+reconcilable, so REIM stores both series as CEPAL published them and performs
+no check that divides one into the other; the mismatch is documented here
+instead, in the indicator description, and in the connector's `validate`
+docstring, rather than silently assumed away.
+
+#### The two units differ by six cells
+
+`public_debt_usd_annual` and `public_debt_pct_gdp_annual` are not the same 230
+country-years with two different units. Nicaragua 1990 has a dollar figure and
+no ratio; Belize 2021–2025 (five years) has a ratio and no dollar figure — six
+cells, in opposite directions, out of otherwise-identical coverage.
+
+#### The ratio exceeds 100%, so `max_value` stays null
+
+The percent-of-GDP series runs from about 14% up to **222.1%** (Nicaragua,
+early 1990s) — a real, published figure, not an outlier to clip. A
+`max_value: 100` in `sources/quality_rules.yml` would reject genuine data, so
+`max_value` is left `null` for both debt indicators by choice, the same
+decision the ratio's headroom on `max_period_change_pct` (60, clearing
+Nicaragua's 1996 HIPC relief) already makes for volatility rather than level.
+
+#### The English member names are real translations here
+
+Unlike the monetary family next door, this connector makes no Spanish request.
+CEPAL's `lang=en` response gives each institutional-coverage and
+debt-classification member its own real English name — "Central government",
+"Total public debt (classification by residence)" — rather than the literal
+`descripcion_ingles` placeholder the monetary family's period members come back
+as. `transform` reads the member names straight from the English payload and
+asserts the two selected ids still carry the names REIM expects, so a silent
+CEPAL relabel raises rather than quietly changing what a stored series means.
+
+#### Belize warns on freshness from the first run
+
+The first real run logged exactly one failed check and nothing else: the
+freshness check firing on Belize, for `public_debt_usd_annual` only, at
+`warning`. Belize's dollar series stops at 2020-01-01 while its own ratio
+series, and every other country's dollar series, runs to 2025-01-01 — which on
+2026-09-04, the UTC date the check ran, is **2,073 days** old. The threshold is
+600 days.
+
+This is the same asymmetry as the six-cell coverage difference above, seen from
+the freshness check's side rather than the coverage table's: five of those six
+cells are exactly Belize's missing 2021–2025 in the dollar series. Freshness is
+measured per country, so the other six countries being current does not hide
+Belize being five years behind.
+
+**It was set at 600 knowing that.** The newest period across the rest of the
+data is 2025, and 600 days comfortably covers CEPAL's annual publication cycle
+for the six countries that are current — but Belize's dollar series is not, and
+a threshold raised to sit above that gap would silence the one thing the check
+exists to say, the same call already made for Honduras in the monetary section
+above. The warning is the correct output, expected on every run until Belize's
+dollar figures catch up to its own ratio series, and it is recorded here so
+nobody later reads it as a regression.
 
 ---
 

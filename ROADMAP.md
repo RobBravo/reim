@@ -88,8 +88,8 @@ aggregator rather than the Nicaraguan publisher itself.
 
 ## v0.3.0 — Central America
 
-This release is five independent pieces, not one increment. Three are done,
-and a fourth has its first country.
+This release is five independent pieces, not one increment. Four are done,
+and a fifth has its first country.
 
 - ~~**Regional merchandise trade**~~ ✅ **done** — REIM's first data for more
   than one country: 7,848 monthly observations for Nicaragua, Guatemala, El
@@ -119,6 +119,13 @@ and a fourth has its first country.
   `404` this repository recorded twice — every route is scoped to an indicator
   id. CEPAL's terms are **not open** and expressly forbid redistribution; see
   `docs/sources.md`, which quotes them and states the conflict.
+- ~~**CEPALSTAT central government public debt**~~ ✅ **done** — REIM's first
+  fiscal data: **456 observations**, central government gross public debt for
+  all seven countries, 1990–2025, in dollars and as a share of GDP, from two
+  requests. The wider institutional coverages are not stored — only central
+  government covers all seven countries — and the internal/external split is
+  not stored either, because it does not sum to the total. See
+  `docs/sources.md`.
 - ~~**Cross-country comparison endpoints**~~ ✅ **done** — `GET /api/v1/compare`
   takes one indicator and two to twenty countries and returns a **rectangular**
   matrix: every row carries an entry for every country asked for, `null` where

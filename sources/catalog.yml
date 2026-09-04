@@ -522,7 +522,4 @@ sources:
       - public_debt_pct_gdp_annual
     license: cepal_terms_of_use
     official: true
-    enabled: false
-    disabled_reason: >-
-      Connector under construction; enabled once it has been run end to end
-      against a real database.
+    enabled: true
