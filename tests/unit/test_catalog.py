@@ -13,7 +13,7 @@ from reim.core.constants import Frequency, IndicatorCategory, TlsProfile, ValueT
 from reim.core.exceptions import CatalogError, CatalogValidationError
 from reim.domain.countries.registry import COUNTRIES, COUNTRIES_BY_ISO2, COUNTRIES_BY_ISO3
 from reim.domain.indicators.registry import INDICATORS, INDICATORS_BY_CODE
-from reim.domain.quality.rules import QualityRuleSet
+from reim.domain.quality.rules import QualityRuleSet, load_quality_rules
 from reim.domain.sources.catalog import SourceCatalog, SourceEntry, load_catalog
 from tests.conftest import REPO_ROOT
 
@@ -379,3 +379,54 @@ def test_the_monetary_source_is_registered_and_enabled() -> None:
         "money_m2_monthly",
         "money_m3_monthly",
     }
+
+
+def test_the_two_debt_indicators_are_registered() -> None:
+    """The first use of the fiscal category, declared since v0.1.0."""
+    codes = {i.code: i for i in INDICATORS}
+
+    for code in ("public_debt_usd_annual", "public_debt_pct_gdp_annual"):
+        assert codes[code].category is IndicatorCategory.FISCAL
+        assert codes[code].frequency is Frequency.ANNUAL
+
+
+def test_the_debt_indicators_declare_their_own_value_types() -> None:
+    """A stock in dollars is a level; a share of GDP is a percent."""
+    codes = {i.code: i for i in INDICATORS}
+
+    assert codes["public_debt_usd_annual"].value_type is ValueType.LEVEL
+    assert codes["public_debt_usd_annual"].unit == "current USD"
+    assert codes["public_debt_pct_gdp_annual"].value_type is ValueType.PERCENT
+    assert codes["public_debt_pct_gdp_annual"].unit == "percent of GDP"
+
+
+def test_the_debt_source_is_registered_and_disabled() -> None:
+    catalog = load_catalog(REPO_ROOT / "sources" / "catalog.yml")
+    entry = catalog.get("cepalstat_debt_annual")
+
+    assert entry.organization == "CEPAL"
+    assert entry.frequency is Frequency.ANNUAL
+    assert entry.license == "cepal_terms_of_use"
+    assert not entry.enabled
+    assert set(entry.indicators) == {
+        "public_debt_usd_annual",
+        "public_debt_pct_gdp_annual",
+    }
+
+
+def test_the_debt_rules_allow_a_ratio_above_one_hundred() -> None:
+    """Nicaragua reached 222.1% of GDP; a 100 cap would reject real data."""
+    rules = load_quality_rules(REPO_ROOT / "sources" / "quality_rules.yml")
+    rule = rules.for_indicator("public_debt_pct_gdp_annual")
+
+    assert rule.max_value is None
+    assert rule.min_value == 0
+    assert rule.allow_negative is False
+
+
+def test_the_debt_change_threshold_clears_the_nicaraguan_relief() -> None:
+    """1996 fell 47.8% on HIPC relief. The threshold is set above it knowingly."""
+    rules = load_quality_rules(REPO_ROOT / "sources" / "quality_rules.yml")
+
+    for code in ("public_debt_usd_annual", "public_debt_pct_gdp_annual"):
+        assert rules.for_indicator(code).max_period_change_pct == 60
