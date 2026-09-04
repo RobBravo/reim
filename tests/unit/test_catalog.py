@@ -366,14 +366,14 @@ def test_the_monetary_indicator_unit_names_no_single_currency() -> None:
         assert codes[code].unit == "units of local currency"
 
 
-def test_the_monetary_source_is_registered_and_disabled() -> None:
+def test_the_monetary_source_is_registered_and_enabled() -> None:
     catalog = load_catalog(REPO_ROOT / "sources" / "catalog.yml")
     entry = catalog.get("cepalstat_monetary_monthly")
 
     assert entry.organization == "CEPAL"
     assert entry.frequency is Frequency.MONTHLY
     assert entry.license == "cepal_terms_of_use"
-    assert not entry.enabled
+    assert entry.enabled
     assert set(entry.indicators) == {
         "money_m1_monthly",
         "money_m2_monthly",

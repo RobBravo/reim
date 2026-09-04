@@ -12,7 +12,9 @@ Costa Rica, Panama and Belize. Depth varies sharply — Nicaragua reads its
 national central bank and statistics office directly, Guatemala its central
 bank; four more have trade alongside CEPAL's annual GDP. Belize was registered
 but inactive until CEPALSTAT gave it its first data of any kind: it reports
-nothing to the dataflow the trade series come from, and it has GDP only.
+nothing to the dataflow the trade series come from, and it has only annual GDP
+and CEPAL's monthly monetary aggregates — the latter its longest series of any
+kind, 415 months of M1 and of M3 back to 1990-01.
 
 Adding a country is a catalog entry plus a connector module, not a redesign.
 
@@ -59,7 +61,7 @@ See [ROADMAP.md](./ROADMAP.md).
 
 ### Data available
 
-**17 live pipelines feeding 28 indicators**, every one verified against its
+**18 live pipelines feeding 31 indicators**, every one verified against its
 source. Nothing here is a scrape of an aggregator.
 
 | Source | Countries | Frequency | Series | Coverage |
@@ -70,6 +72,7 @@ source. Nothing here is a scrape of an aggregator.
 | **IMF** — International Merchandise Trade Statistics | all six | **monthly** | exports FOB, imports CIF, trade balance | 1990-01 onward |
 | **SIECA** — Secretaría de Integración Económica Centroamericana | six (not Belize) | **quarterly** | services exports, imports, balance | 2009-Q1 onward |
 | **CEPAL** — CEPALSTAT | **all seven** | annual | GDP and GDP per inhabitant, each at current and at constant 2018 prices | 1990 onward |
+| **CEPAL** — CEPALSTAT | **all seven** | **monthly** | monetary aggregates M1, M2 and M3, end of period, each in local currency | 1990-01 onward |
 | **World Bank** — Indicators API v2 | Nicaragua | annual | exchange rate, inflation, remittances, reserves, exports, imports | 1960 onward |
 
 The BCN, Banguat and INIDE series are **national primary sources** — the
@@ -251,7 +254,7 @@ second is easy to forget:
 ```bash
 alembic upgrade head
 python -m reim.cli db seed
-python -m reim.cli pipeline run-all          # ~38,000 observations
+python -m reim.cli pipeline run-all          # ~43,400 observations
 ```
 
 That leaves **`bcn_exchange_rate` with about 40 rows**, not the 5,334 it holds
@@ -269,9 +272,10 @@ Everything else — INIDE, Banguat, SIECA, CEPAL and the six IMF trade series �
 ships its full history in the routine run, because each of those sources
 publishes the complete series on every request. Banguat's 36 years cost one
 request of 1.3 MB; SIECA's 69 quarters for six countries cost four requests of
-16.7 KB each; CEPAL's 36 years for seven countries cost four of about 170 KB.
+16.7 KB each; CEPAL's 36 years of GDP for seven countries cost four of about
+170 KB, and its monthly monetary aggregates six requests of 1.4–1.6 MB.
 
-A complete rebuild lands on the order of **43,000 observations**. No exact
+A complete rebuild lands on the order of **48,400 observations**. No exact
 figure is given on purpose: the BCN and Banguat each publish a rate every
 calendar day, so the total grows daily and any number printed here would be
 wrong tomorrow.
@@ -521,14 +525,23 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   These are different things, and the project's rule is stated in both parts
   rather than as one absolute that its own catalog would contradict. See
   [`docs/sources.md`](./docs/sources.md).
-- **Two sources are converted, and both say so.** SIECA publishes services
-  trade in **millions of USD** and CEPAL publishes its GDP totals the same way;
-  REIM stores whole USD, multiplying by 10⁶ in `Decimal`. CEPAL's two
-  per-inhabitant series are stored exactly as published. Every converted
-  observation keeps the published value, the published unit and the scale
-  applied in `raw_metadata`, so the original figure is recoverable exactly.
-  These two rescalings are the whole of it: nothing in REIM converts a currency
-  or restates a unit.
+- **Three sources are rescaled, and all three say so.** SIECA publishes
+  services trade in **millions of USD** and CEPAL publishes its GDP totals the
+  same way; REIM stores whole USD, multiplying by 10⁶ in `Decimal`. CEPAL's
+  monetary aggregates are published in **millions of each country's own
+  currency** and are rescaled the same way, to whole units of that currency —
+  not to dollars. CEPAL's two per-inhabitant series are stored exactly as
+  published. Every rescaled observation keeps the published value, the published
+  unit and the scale applied in `raw_metadata`, so the original figure is
+  recoverable exactly. These three rescalings are the whole of it: nothing in
+  REIM converts a currency or restates a unit.
+- **The monetary aggregates are not comparable across countries.** M1, M2 and
+  M3 are each in the publishing country's own currency — córdobas, quetzales,
+  lempiras, colones, balboas, Belize dollars — and **REIM does not convert
+  them**. They cannot be summed, ranked or charted on a shared axis without
+  exchange rates the consumer brings. El Salvador and Panama are dollarised, so
+  those two alone line up with each other. Every observation carries its
+  `currency_code`, so the mismatch is visible rather than implicit.
 - **The BCN endpoint requires a TLS 1.0 handshake.** REIM relaxes the protocol
   version and cipher security level for that one host, declared and justified in
   `sources/catalog.yml`. Certificate and hostname verification stay enforced.
