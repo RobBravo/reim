@@ -802,7 +802,7 @@ one.
 | **Countries** | All seven, from six requests |
 | **Volume** | 1.4–1.6 MB per data response, 29 KB per dimensions response; ~21 s for a full run |
 | **Licence** | ⚠️ **Not open** — CEPAL's terms, quoted in [the GDP section](#licence-not-open-and-the-terms-conflict-with-what-reim-does) above |
-| **Status** | ✅ **Enabled** — 5,383 observations, measured 2026-09-04 |
+| **Status** | ✅ **Enabled** — 5,383 observations, measured 2026-09-03 |
 
 **The three indicators:**
 
@@ -812,7 +812,7 @@ one.
 | 868 | Liquidity (M2), end of period | Millions of local currency | `money_m2_monthly` | 1,611 |
 | 869 | Broad liquidity (M3), end of period | Millions of local currency | `money_m3_monthly` | 1,746 |
 
-**Coverage per country**, measured 2026-09-04. Two series are short a country at
+**Coverage per country**, measured 2026-09-03. Two series are short a country at
 the source, and the absences are declared in the connector rather than
 discovered at runtime: Belize publishes no M2, El Salvador no M3.
 
@@ -901,7 +901,8 @@ published that month, which pooling the seven would hide.
 
 The first real run logged exactly three failed checks and nothing else: the
 freshness check firing on Honduras for all three series, at `warning`. Honduras
-stops at 2023-10 on M1 and M2 and at 2023-03 on M3, which on 2026-09-04 is
+stops at 2023-10 on M1 and M2 and at 2023-03 on M3, which on 2026-09-04 —
+the UTC date the check ran — is
 **1,039, 1,039 and 1,253 days**. The threshold is 900 days.
 
 **It was set at 900 knowing that.** Honduras is three and a half years behind on
