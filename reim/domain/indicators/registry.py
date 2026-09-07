@@ -547,6 +547,27 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         value_type=ValueType.RATE,
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=2179&lang=en",
     ),
+    IndicatorDefinition(
+        code="cpi_index_monthly",
+        name="Consumer price index (monthly)",
+        description=(
+            "Monthly consumer price index for the seven Central American "
+            "countries, compiled by ECLAC from each country's own national "
+            "publisher. Every country is on its own base period and CEPAL's "
+            "declared base years do not hold for three of the five it "
+            "declares, so REIM states none: levels are not comparable across "
+            "countries, only their movements. Guatemala's series is spliced "
+            "at 2010-01 without normalisation — December 2009 reads 94.882 "
+            "and January 2010 reads 54.48 — so inflation computed across that "
+            "month is meaningless. Nicaragua also has ni_cpi_index_monthly "
+            "from INIDE, which differs from this series by about 4% in level."
+        ),
+        category=IndicatorCategory.PRICES,
+        frequency=Frequency.MONTHLY,
+        unit="index",
+        value_type=ValueType.INDEX,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=365&lang=en",
+    ),
 )
 
 INDICATORS_BY_CODE: dict[str, IndicatorDefinition] = {i.code: i for i in INDICATORS}

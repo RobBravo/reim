@@ -483,3 +483,40 @@ def test_a_rate_indicator_is_not_convertible() -> None:
 def test_dollar_indicators_are_not_convertible_either() -> None:
     """Converting USD to USD is a no-op, but declaring it convertible is a claim."""
     assert INDICATORS_BY_CODE["gdp_current_usd_annual"].currency_convertible is False
+
+
+def test_the_regional_cpi_is_registered() -> None:
+    catalog = load_catalog(REPO_ROOT / "sources" / "catalog.yml")
+    source = next(s for s in catalog.sources if s.key == "cepalstat_cpi_monthly")
+
+    assert source.enabled is True
+    assert source.frequency is Frequency.MONTHLY
+    assert source.indicators == ["cpi_index_monthly"]
+    assert source.connector == "reim.ingestion.connectors.regional.cepalstat_cpi"
+
+
+def test_the_regional_cpi_declares_no_base_year() -> None:
+    """CEPAL's declared bases are wrong for three of five; REIM asserts none.
+
+    Contrast `ni_cpi_index_monthly`, which does state one, because INIDE
+    publishes its base and it holds.
+    """
+    regional = INDICATORS_BY_CODE["cpi_index_monthly"]
+    national = INDICATORS_BY_CODE["ni_cpi_index_monthly"]
+
+    assert regional.unit == "index"
+    assert regional.value_type is ValueType.INDEX
+    assert regional.category is IndicatorCategory.PRICES
+    assert "=100" not in regional.unit
+    assert national.unit == "index (2006=100)"
+
+
+def test_the_cpi_rules_set_no_change_ceiling() -> None:
+    """No threshold separates Guatemala's 42.6% splice from Nicaragua's +261%."""
+    rules = load_quality_rules(REPO_ROOT / "sources" / "quality_rules.yml")
+    rule = rules.for_indicator("cpi_index_monthly")
+
+    assert rule.max_period_change_pct is None
+    assert rule.max_value is None
+    assert rule.min_value == 0
+    assert rule.allow_zero is False

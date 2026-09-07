@@ -368,3 +368,21 @@ indicators:
     # that has stopped being extended.
     freshness_max_age_days: 450
     min_observations: 2700
+
+  cpi_index_monthly:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: false
+    # Deliberately null. Guatemala's 2010-01 splice is -42.6% and Nicaragua's
+    # 1991-03 hyperinflation is +261%, both real and published. Any threshold
+    # that tolerates the second detects nothing; any that catches the first
+    # rejects real Nicaraguan history. `cepalstat_cpi_known_splices` does this
+    # work instead, with the measured exceptions encoded rather than guessed.
+    max_period_change_pct: null
+    monotonic_increasing: false
+    # The series ends 2026-07 and CEPAL updates it monthly; Belize, the
+    # stalest, ends 2026-06. REIM's tightest freshness threshold, and it
+    # should be — this is its freshest series.
+    freshness_max_age_days: 120
+    min_observations: 3400

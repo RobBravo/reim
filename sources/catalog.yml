@@ -546,3 +546,25 @@ sources:
     license: cepal_terms_of_use
     official: true
     enabled: true
+
+  - key: cepalstat_cpi_monthly
+    name: Central American consumer price index (monthly)
+    description: >-
+      Monthly consumer price index for the seven Central American countries,
+      from CEPALSTAT, compiled from each country's own national publisher.
+      Each country is on its own base period, so levels are not comparable
+      across countries — only their movements are. Guatemala's series carries
+      an unnormalised splice at 2010-01.
+    organization: CEPAL
+    category: prices
+    access_type: http_api
+    frequency: monthly
+    format: json
+    base_url: https://api-cepalstat.cepal.org/cepalstat/api/v1
+    documentation_url: https://statistics.cepal.org/portal/cepalstat/
+    connector: reim.ingestion.connectors.regional.cepalstat_cpi
+    indicators:
+      - cpi_index_monthly
+    license: cepal_terms_of_use
+    official: true
+    enabled: true
