@@ -6,11 +6,14 @@ only what differs is recorded here.
 
 Three things differ from the monetary family this connector otherwise mirrors:
 
-1. **Dimension 515 carries twelve members and nothing else.** The monetary
-   family's period dimension mixes months with an annual figure and four
-   quarters that restate a month; this one is months only, so no member is
-   dropped. The Spanish member table is still fetched, for the same reason: in
-   ``lang=en`` the member names are the untranslated ``descripcion_ingles``.
+1. **Dimension 515 carries twelve members, and it is translated.** The
+   monetary family's period dimension mixes months with an annual figure and
+   four quarters that restate a month, and in ``lang=en`` all seventeen of its
+   members come back as the untranslated string ``descripcion_ingles`` — which
+   is why that connector makes a second request in Spanish. Dimension 515 does
+   neither: twelve members, all months, named ``January`` through ``December``
+   in the English data response itself. **One request is enough**, and the
+   member table comes from the response already fetched.
 2. **Values are stored exactly as published.** There is no factor of a million.
 3. **The currency is the one the rate prices, not the one the country
    transacts in.** These are not the same question, and for El Salvador they
@@ -81,19 +84,21 @@ QUOTED_CURRENCY = {
     "SLV": "SVC",
 }
 
-MONTHS_BY_SPANISH_NAME = {
-    "Enero": 1,
-    "Febrero": 2,
-    "Marzo": 3,
-    "Abril": 4,
-    "Mayo": 5,
-    "Junio": 6,
-    "Julio": 7,
-    "Agosto": 8,
-    "Septiembre": 9,
-    "Octubre": 10,
-    "Noviembre": 11,
-    "Diciembre": 12,
+#: Read from the English data response. The member ids are **not** in calendar
+#: order — May is 825, after April's 519 — so the name is the only key.
+MONTHS_BY_NAME = {
+    "January": 1,
+    "February": 2,
+    "March": 3,
+    "April": 4,
+    "May": 5,
+    "June": 6,
+    "July": 7,
+    "August": 8,
+    "September": 9,
+    "October": 10,
+    "November": 11,
+    "December": 12,
 }
 
 #: The two legal parities, and the month from which the recording verifies them.
@@ -116,11 +121,11 @@ class CepalstatExchangeRateConnector(CepalstatConnector):
     expected_frequency = Frequency.MONTHLY
 
     async def extract(self) -> RawDataset:
-        """Fetch the rate matrix and its Spanish member table.
+        """Fetch the rate matrix. One request.
 
-        Two requests: one for data in English, one for dimensions in Spanish.
-        The Spanish request exists only because the English period members are
-        untranslated; nothing from it is stored.
+        The response carries its own dimension member table with the months
+        named in English, so unlike the monetary family this connector needs
+        no second request in Spanish.
 
         Raises:
             ExtractionError: The API was unreachable, answered with something
@@ -135,23 +140,15 @@ class CepalstatExchangeRateConnector(CepalstatConnector):
             response = await fetch(client, url, params={"lang": "en"})
             ensure_ok(response, expected_content_type="json")
             self._ensure_envelope_ok(response.text, CEPAL_ID, url)
-            data = response.text
-            status = response.status_code
-            content_type = response.headers.get("content-type")
-
-            url = f"{base}/indicator/{CEPAL_ID}/dimensions"
-            response = await fetch(client, url, params={"lang": "es"})
-            ensure_ok(response, expected_content_type="json")
-            dimensions = response.text
 
         return RawDataset(
             source_key=self.source.key,
             retrieved_at=retrieved_at,
             source_url=base,
-            payload={"data": data, "dimensions": dimensions},
-            content_type=content_type,
-            http_status=status,
-            metadata={"indicator_id": CEPAL_ID, "lang": "en", "dimensions_lang": "es"},
+            payload={"data": response.text},
+            content_type=response.headers.get("content-type"),
+            http_status=response.status_code,
+            metadata={"indicator_id": CEPAL_ID, "lang": "en"},
         )
 
     def transform(self, raw: RawDataset) -> list[NormalizedObservation]:
@@ -166,11 +163,11 @@ class CepalstatExchangeRateConnector(CepalstatConnector):
         """
         payload = raw.payload
         if not isinstance(payload, dict) or "data" not in payload:
-            msg = "CEPALSTAT payload must carry 'data' and 'dimensions' mappings"
+            msg = "CEPALSTAT payload must carry a 'data' mapping"
             raise TransformationError(msg, source_key=self.source.key)
 
         body = self._decode(str(payload["data"]), CEPAL_ID)["body"]
-        months = self._months_of(self._decode(str(payload["dimensions"]), CEPAL_ID))
+        months = self._months_of(body)
         years = self._members_of(body, YEARS_DIMENSION, "years", CEPAL_ID)
         metadata = body["metadata"]
         published_unit = str(metadata["unit"])
@@ -220,29 +217,28 @@ class CepalstatExchangeRateConnector(CepalstatConnector):
         observations.sort(key=lambda obs: (obs.country_iso3, obs.period.start))
         return observations
 
-    def _months_of(self, dimensions_document: Any) -> dict[int, int]:
-        """Map each period member id to a month number.
+    def _months_of(self, body: Any) -> dict[int, int]:
+        """Map each period member id to a month number, from the data response.
 
         Unlike the monetary family every member is a month, so the mapping is
         total and nothing is dropped. A label that is not a known month name
-        means CEPAL renamed or added a member, which is a contract break.
+        means CEPAL renamed a member or stopped translating this dimension —
+        either is a contract break, not a row to skip.
 
         Raises:
             TransformationError: The period dimension is absent, or a member
-                carries a label that is not a Spanish month name.
+                carries a label that is not an English month name.
         """
-        members = self._members_of(
-            dimensions_document["body"], PERIOD_DIMENSION, "period", CEPAL_ID
-        )
+        members = self._members_of(body, PERIOD_DIMENSION, "period", CEPAL_ID)
         months: dict[int, int] = {}
         for member_id, label in members.items():
-            if label not in MONTHS_BY_SPANISH_NAME:
+            if label not in MONTHS_BY_NAME:
                 msg = (
                     f"CEPALSTAT period member {member_id} for indicator {CEPAL_ID} "
                     f"carries the unrecognized label {label!r}"
                 )
                 raise TransformationError(msg, source_key=self.source.key)
-            months[member_id] = MONTHS_BY_SPANISH_NAME[label]
+            months[member_id] = MONTHS_BY_NAME[label]
         return months
 
     def _month_of(self, row: Any, months: dict[int, int]) -> int:

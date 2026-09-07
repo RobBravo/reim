@@ -1070,13 +1070,13 @@ nobody later reads it as a regression.
 |---|---|
 | **Organization** | Comisión Económica para América Latina y el Caribe (`CEPAL`) |
 | **Host** | `https://api-cepalstat.cepal.org` |
-| **Endpoint** | `GET /cepalstat/api/v1/indicator/2179/data?lang=en` and `GET /cepalstat/api/v1/indicator/2179/dimensions?lang=es` |
+| **Endpoint** | `GET /cepalstat/api/v1/indicator/2179/data?lang=en` — one request |
 | **Protocol** | Same undocumented REST JSON as the GDP section above |
 | **Auth** | None |
 | **Frequency** | Monthly, **average of the daily rates within the month** |
 | **Coverage** | **1990-01 … 2025-09**, verified — no gap inside any country's own span |
-| **Countries** | All seven, from two requests |
-| **Volume** | 1.19 MB for the data response, 28 KB for the dimensions; ~6 s for a full run |
+| **Countries** | All seven, from one request |
+| **Volume** | 1.19 MB, ~2–5 s |
 | **Licence** | ⚠️ **Not open** — CEPAL's terms, quoted in [the GDP section](#licence-not-open-and-the-terms-conflict-with-what-reim-does) above |
 | **Status** | ✅ **Enabled** — 2,749 observations, measured 2026-09-06 |
 
@@ -1098,10 +1098,34 @@ Per-country spans, from the live run:
 
 This is the third CEPALSTAT family REIM reads and the shape is the monetary
 one, with a simpler period dimension: 515 carries twelve members and they are
-all months, with no annual or quarterly restatement to discard. The Spanish
-`dimensions` request is still needed for the same reason — in `lang=en` the
-member names come back as the untranslated `descripcion_ingles` — and nothing
-from it is stored.
+all months, with no annual or quarterly restatement to discard.
+
+#### One request, not two — and the correction that got it there
+
+This connector shipped on 2026-09-06 making **two** requests: the data in
+English and the member table in Spanish, exactly as the monetary connector
+does. That second request was never necessary, and the reason first recorded
+here for it was wrong.
+
+The monetary family's period dimension is **3981**, and in `lang=en` all
+seventeen of its members really do come back as the untranslated string
+`descripcion_ingles`; its Spanish request is genuinely required. Dimension
+**515** is a different dimension and behaves differently: its twelve members
+arrive named `January` through `December` in the English data response itself.
+The assumption was carried across without being measured.
+
+Measured on 2026-09-06 against both recordings:
+
+| Dimension | Members | Names in `lang=en` |
+|---|---|---|
+| 3981 (monetary) | 17 | `descripcion_ingles`, seventeen times |
+| 515 (months) | 12 | `January` … `December` |
+
+The connector now makes one request, and
+`test_dimension_515_is_translated_and_3981_is_not` pins the contrast so the
+distinction is a fact in the suite rather than an assumption in a docstring.
+The member ids are still no help — May is 825, after April's 519 — so the name
+remains the only key.
 
 #### The rate is quoted in a currency El Salvador retired in 2001
 

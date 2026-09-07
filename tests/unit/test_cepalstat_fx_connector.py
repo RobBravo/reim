@@ -5,6 +5,7 @@ Every payload replayed here is a real recording; see `tests/fixtures/README.md`.
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -19,6 +20,8 @@ from reim.domain.pipelines.models import RawDataset
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.connectors.regional.cepalstat_exchange_rate import (
     CENTRAL_AMERICA,
+    MONTHS_BY_NAME,
+    PERIOD_DIMENSION,
     CepalstatExchangeRateConnector,
 )
 from tests.conftest import REPO_ROOT
@@ -44,15 +47,15 @@ def connector() -> CepalstatExchangeRateConnector:
 
 
 @pytest.fixture
-def raw(cepalstat_fx_2179_json: str, cepalstat_fx_dimensions_json: str) -> RawDataset:
+def raw(cepalstat_fx_2179_json: str) -> RawDataset:
     return RawDataset(
         source_key="cepalstat_exchange_rate_monthly",
         retrieved_at=datetime(2026, 9, 6, tzinfo=UTC),
         source_url="https://api-cepalstat.cepal.org/cepalstat/api/v1",
-        payload={"data": cepalstat_fx_2179_json, "dimensions": cepalstat_fx_dimensions_json},
+        payload={"data": cepalstat_fx_2179_json},
         content_type="application/json",
         http_status=200,
-        metadata={"indicator_id": 2179, "lang": "en", "dimensions_lang": "es"},
+        metadata={"indicator_id": 2179, "lang": "en"},
     )
 
 
@@ -265,60 +268,50 @@ BASE_URL = "https://api-cepalstat.cepal.org/cepalstat/api/v1"
 
 
 @respx.mock
-async def test_extract_makes_exactly_two_requests(
+async def test_extract_makes_exactly_one_request(
     connector: CepalstatExchangeRateConnector,
     cepalstat_fx_2179_json: str,
-    cepalstat_fx_dimensions_json: str,
 ) -> None:
-    """One for the data in English, one for the month names in Spanish."""
+    """The data response carries its own month names, so nothing else is needed."""
     data_route = respx.get(f"{BASE_URL}/indicator/2179/data").mock(
         return_value=httpx.Response(
             200, text=cepalstat_fx_2179_json, headers={"content-type": "application/json"}
         )
     )
     dims_route = respx.get(f"{BASE_URL}/indicator/2179/dimensions").mock(
-        return_value=httpx.Response(
-            200, text=cepalstat_fx_dimensions_json, headers={"content-type": "application/json"}
-        )
+        return_value=httpx.Response(200, json={})
     )
 
     raw = await connector.extract()
 
     assert data_route.call_count == 1
-    assert dims_route.call_count == 1
+    assert dims_route.call_count == 0
     assert data_route.calls[0].request.url.params["lang"] == "en"
-    assert dims_route.calls[0].request.url.params["lang"] == "es"
     assert raw.http_status == 200
     assert raw.metadata["indicator_id"] == 2179
 
+    assert len(connector.transform(raw)) == ROWS_FOR_THE_SEVEN
 
-@respx.mock
-async def test_the_language_split_is_pinned(
-    connector: CepalstatExchangeRateConnector,
-    cepalstat_fx_2179_json: str,
-    cepalstat_fx_dimensions_json: str,
+
+def test_dimension_515_is_translated_and_3981_is_not(
+    cepalstat_fx_2179_json: str, cepalstat_monetary_862_json: str
 ) -> None:
-    """Collapsing the two requests to one language breaks one of them.
+    """The measurement that decides how many requests each connector needs.
 
-    An English dimensions response names every month `descripcion_ingles`, so
-    the transform cannot tell January from July. This test exists so that a
-    later simplification to a single request fails loudly.
+    This connector once made a second request in Spanish, copied from the
+    monetary family without checking. The two dimensions do not behave the
+    same: 3981 comes back untranslated in English and genuinely needs the
+    second request; 515 does not. Pinned here so the difference is a fact in
+    the suite rather than an assumption in a docstring.
     """
-    respx.get(f"{BASE_URL}/indicator/2179/data").mock(
-        return_value=httpx.Response(
-            200, text=cepalstat_fx_2179_json, headers={"content-type": "application/json"}
-        )
-    )
-    respx.get(f"{BASE_URL}/indicator/2179/dimensions").mock(
-        return_value=httpx.Response(
-            200, text=cepalstat_fx_dimensions_json, headers={"content-type": "application/json"}
-        )
-    )
+    fx = json.loads(cepalstat_fx_2179_json)["body"]
+    monetary = json.loads(cepalstat_monetary_862_json)["body"]
 
-    raw = await connector.extract()
-    observations = connector.transform(raw)
+    fx_members = next(d for d in fx["dimensions"] if d["id"] == PERIOD_DIMENSION)["members"]
+    monetary_members = next(d for d in monetary["dimensions"] if d["id"] == 3981)["members"]
 
-    assert len(observations) == ROWS_FOR_THE_SEVEN
+    assert {m["name"] for m in fx_members} == set(MONTHS_BY_NAME)
+    assert {m["name"] for m in monetary_members} == {"descripcion_ingles"}
 
 
 @respx.mock

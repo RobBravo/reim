@@ -220,14 +220,6 @@ def cepalstat_fx_2179_json() -> str:
     return gzip.decompress((FIXTURES / "cepalstat_fx_2179.json.gz").read_bytes()).decode("utf-8")
 
 
-@pytest.fixture(scope="session")
-def cepalstat_fx_dimensions_json() -> str:
-    """Indicator 2179's member table in Spanish, where the months are named."""
-    return gzip.decompress((FIXTURES / "cepalstat_dimensions_2179.json.gz").read_bytes()).decode(
-        "utf-8"
-    )
-
-
 @pytest.fixture
 def inide_source(catalog: SourceCatalog) -> SourceEntry:
     """Catalog entry for the INIDE monthly CPI source."""
