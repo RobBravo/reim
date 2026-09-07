@@ -87,7 +87,7 @@ aggregator rather than the Nicaraguan publisher itself.
   which this item had not even anticipated. **Quarterly is now exercised too**,
   by SIECA's services trade in v0.3.0 — not by the SECMCA or IMF
   balance-of-payments candidates this line named. The catalog holds 6 annual,
-  8 monthly, 2 daily and 1 quarterly. **Weekly, semiannual and irregular remain
+  9 monthly, 2 daily and 1 quarterly. **Weekly, semiannual and irregular remain
   unexercised** — `Frequency` defines all three and the period model parses
   `YYYY-Wnn` and `YYYY-Hn`, but no source REIM reads publishes at those
   cadences.
@@ -132,6 +132,21 @@ and a fifth has its first country.
   government covers all seven countries — and the internal/external split is
   not stored either, because it does not sum to the total. See
   `docs/sources.md`.
+- ~~**CEPALSTAT regional consumer price index**~~ ✅ **done** — REIM's first
+  inflation data for more than one country: **3,451 observations**, all seven,
+  monthly from 1980-01, from one request. It ends **2026-07**, which makes it
+  REIM's freshest series by more than a year, and it lets `/compare` answer the
+  most ordinary question anyone brings to a regional monitor.
+
+  Three things measuring settled. CEPAL's declared base years **do not hold**
+  for three of the five it declares — Guatemala's declared December 2010 reads
+  56.69 — so REIM stores no base and records the month each series measurably
+  passes 100 instead; levels are not comparable across countries, only
+  movements. Guatemala's series is **spliced at 2010-01** without
+  normalisation, a 42.6% fall that is a change of base. And Nicaragua now has
+  **two official CPIs that disagree** by a median 4.2%: REIM reads INIDE, CEPAL
+  cites the central bank. Both are stored. See `docs/sources.md`.
+
 - ~~**Cross-country comparison endpoints**~~ ✅ **done** — `GET /api/v1/compare`
   takes one indicator and two to twenty countries and returns a **rectangular**
   matrix: every row carries an entry for every country asked for, `null` where

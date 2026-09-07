@@ -75,6 +75,7 @@ source. Nothing here is a scrape of an aggregator.
 | **CEPAL** — CEPALSTAT | **all seven** | **monthly** | monetary aggregates M1, M2 and M3, end of period, each in local currency | 1990-01 onward |
 | **CEPAL** — CEPALSTAT | **all seven** | annual | central government public debt stock, in dollars and as a share of GDP | 1990 onward |
 | **CEPAL** — CEPALSTAT | **all seven** | **monthly** | nominal exchange rate, local currency per USD, average of the daily rates within the month | 1990-01 onward |
+| **CEPAL** — CEPALSTAT | **all seven** | **monthly** | consumer price index, each country on its own base period | 1980-01 onward |
 | **World Bank** — Indicators API v2 | Nicaragua | annual | exchange rate, inflation, remittances, reserves, exports, imports | 1960 onward |
 
 The BCN, Banguat and INIDE series are **national primary sources** — the
@@ -256,7 +257,7 @@ second is easy to forget:
 ```bash
 alembic upgrade head
 python -m reim.cli db seed
-python -m reim.cli pipeline run-all          # ~46,600 observations
+python -m reim.cli pipeline run-all          # ~50,100 observations
 ```
 
 That leaves **`bcn_exchange_rate` with about 40 rows**, not the 5,334 it holds
@@ -277,9 +278,10 @@ request of 1.3 MB; SIECA's 69 quarters for six countries cost four requests of
 16.7 KB each; CEPAL's 36 years of GDP for seven countries cost four of about
 170 KB, its monthly monetary aggregates six requests of 1.4–1.6 MB, its
 central government public debt two requests of 617–635 KB, and its monthly
-nominal exchange rate two requests of 1.19 MB and 28 KB.
+nominal exchange rate one request of 1.19 MB, and its consumer price index
+one of 2.02 MB.
 
-A complete rebuild lands on the order of **51,600 observations**. No exact
+A complete rebuild lands on the order of **55,100 observations**. No exact
 figure is given on purpose: the BCN and Banguat each publish a rate every
 calendar day, so the total grows daily and any number printed here would be
 wrong tomorrow.
@@ -576,6 +578,16 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   a unit, and no stored figure is ever a converted one. `/compare?convert_to=`
   derives dollars at request time, beside the published figure and never in
   place of it; nothing derived is written to the database.
+- **The consumer price indices are not comparable across countries either, and
+  for a different reason.** Each country is on its own base period, so a
+  Guatemalan 104 and a Honduran 104 do not mean the same thing. CEPAL declares
+  a base year per country and **three of the five it declares do not hold**, so
+  REIM states none: the unit is `index`, and `docs/sources.md` records the
+  month each series measurably passes 100. Movements are comparable; levels are
+  not. Guatemala's series also carries an unnormalised splice at 2010-01 — a
+  42.6% fall that is a change of base — so inflation computed across that month
+  is meaningless. Nicaragua has two of these indices, REIM's from INIDE and
+  CEPAL's from the central bank, which differ by about 4% in level.
 - **The monetary aggregates are not comparable across countries.** M1, M2 and
   M3 are each in the publishing country's own currency — córdobas, quetzales,
   lempiras, colones, balboas, Belize dollars — and **as stored they cannot be

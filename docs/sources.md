@@ -1217,15 +1217,173 @@ threshold of 450. The series genuinely lags: CEPAL's own `last_update` is
 
 ---
 
+---
+
+### CEPAL — monthly consumer price index
+
+| | |
+|---|---|
+| **Organization** | Comisión Económica para América Latina y el Caribe (`CEPAL`) |
+| **Host** | `https://api-cepalstat.cepal.org` |
+| **Endpoint** | `GET /cepalstat/api/v1/indicator/365/data?lang=en` — one request |
+| **Protocol** | Same undocumented REST JSON as the GDP section above |
+| **Auth** | None |
+| **Frequency** | Monthly |
+| **Coverage** | **1980-01 … 2026-07**, verified |
+| **Countries** | All seven, from one request; 40 are returned and filtered |
+| **Volume** | 2.02 MB, ~9 s for a full run |
+| **Licence** | ⚠️ **Not open** — CEPAL's terms, quoted in [the GDP section](#licence-not-open-and-the-terms-conflict-with-what-reim-does) above |
+| **Status** | ✅ **Enabled** — 3,451 observations, measured 2026-09-06 |
+
+| CEPAL id | Published name | Published unit | REIM indicator | Observations |
+|---|---|---|---|---|
+| 365 | Consumer price index | `Index` | `cpi_index_monthly` | 3,451 |
+
+Per-country spans and value ranges, from the live run:
+
+| Country | Span | Months | Range |
+|---|---|---|---|
+| Belize | 1990-11 … 2026-06 | 266 | 61.99 – 125.26 |
+| Costa Rica | 1980-01 … 2026-06 | 558 | 0.62 – 113.06 |
+| Guatemala | 1980-01 … 2026-07 | 559 | 4.50 – 104.56 |
+| Honduras | 1994-01 … 2026-07 | 391 | 7.37 – 103.96 |
+| Nicaragua | 1980-01 … 2026-07 | 559 | **2E-9** – 335.01 |
+| Panama | 1980-01 … 2026-07 | 559 | 45.09 – 112.70 |
+| El Salvador | 1980-01 … 2026-07 | 559 | 5.17 – 134.55 |
+
+**This is REIM's freshest series**, ending 2026-07 against 2025-09 for the
+exchange rate and 2024-08 for the monetary aggregates. It is also the first
+CEPALSTAT family whose `data_features` names no vendor: each row cites its own
+national compiler — `CBN` for Nicaragua, `INEC` for Costa Rica and Panama,
+`NSI` for Guatemala, `CBH` for Honduras, `RBC` for El Salvador, `SIB` for
+Belize. On the freshest rows it cites nobody: **363 of the 3,451 carry a null
+`source_id`**, all of them 2022 onward, and REIM stores an empty string rather
+than inventing an attribution.
+
+#### The declared base years are wrong for three of the five CEPAL declares
+
+`body.metadata.comments` names a base year per country. Checking whether that
+period actually reads 100:
+
+| Country | Declared | Reads | |
+|---|---|---|---|
+| El Salvador | December 2009 | 100 | ✅ |
+| Nicaragua | 2006 | 100.0000 (annual mean) | ✅ |
+| Costa Rica | June 2015 | **93.40** | ❌ |
+| Guatemala | December 2010 | **56.69** | ❌ |
+| Honduras | December 1999 | **21.55** | ❌ |
+| Panama, Belize | *not declared* | — | |
+
+So REIM stores no base year and puts none in the unit — `index`, and nothing
+more. Contrast `ni_cpi_index_monthly`, which carries `index (2006=100)`
+because INIDE states its base and it holds.
+
+What REIM records instead is **measured**: the month each series actually
+passes through 100.
+
+| BLZ | CRI | GTM | HND | NIC | PAN | SLV |
+|---|---|---|---|---|---|---|
+| 2017-02 | 2020-02 | 2024-04 | 2025-11 | 2006-05 | 2013-05 | 2008-11 |
+
+Seven different bases. **Levels are not comparable across countries** — only
+movements are — and `/compare` will report the series as incomparable on unit
+grounds, correctly.
+
+#### Guatemala's series is spliced at 2010-01, and CEPAL does not say so
+
+| 2009-11 | 2009-12 | 2010-01 | 2010-02 |
+|---|---|---|---|
+| 94.929 | 94.882 | **54.4831537** | 54.71901151 |
+
+A 42.58% fall in one month with the series continuing smoothly either side.
+That is a rebased segment spliced in without normalisation, not deflation, and
+it is Guatemala's only move beyond 15% in forty-six years. **Inflation computed
+across January 2010 for Guatemala is meaningless.** REIM stores the figures
+exactly as published and pins the break in a check.
+
+#### El Salvador has one corrupt cell, which is a different thing
+
+| 1985-06 | 1985-07 | 1985-08 | 1985-09 | 1985-10 |
+|---|---|---|---|---|
+| 11.229 | 11.473 | **7.157** | 11.928 | 12.227 |
+
+August falls 37.6% and September rises 66.7%, which reads like two large moves
+and is not: September over July is **1.0397**, an unremarkable two-month rise.
+August is a single bad value the series steps around.
+
+The distinction from Guatemala matters. That is a permanent level shift; this
+is one cell. It also means the check's allow-list needs **three** entries, not
+two — one corrupt cell produces two moves beyond the threshold, and listing
+only the first would fail on real data every run.
+
+#### Nicaragua now has two consumer price indices, and they disagree
+
+REIM reads INIDE directly; CEPAL cites the **Banco Central de Nicaragua**. Both
+declare base 2006 and both read 100 there. Across the **198 months they
+share** (2007-01 … 2026-06):
+
+* **Not one month agrees to the digit.** Median difference **4.21%**.
+* The ratio CEPAL ÷ INIDE runs **1.02426 to 1.04758** — a spread of 2.3%.
+* Year-on-year inflation differs by more than 0.5 percentage points in only
+  **15 of 198 months**.
+
+So they tell substantially the same inflation story at different levels: the
+signature of a rebasing difference between two official compilers, not of a
+data disagreement. REIM stores both and chooses between neither, following the
+same rule it applies everywhere — two sources publishing one concept stay
+separate series. A unit test pins the ratio, so if a future revision makes the
+two converge or diverge, the explanation above is known to have stopped being
+true.
+
+Nicaragua's own range runs from **2E-9** to 335: the 1980s hyperinflation and
+two córdoba redenominations, seen through an index rebased twenty years later.
+`docs/sources.md` records the same phenomenon on the World Bank exchange rate.
+Those years hold 58 month-on-month moves beyond 15%, all real.
+
+#### Why `max_period_change_pct` is null, and what replaces it
+
+Guatemala's splice is −42.6% and Nicaragua's 1991-03 is **+261%**. No single
+threshold serves both: one that tolerates Nicaragua detects nothing anywhere,
+and one that catches Guatemala rejects real Nicaraguan history. The rule is
+left null **by choice**, the same call the debt indicators' `max_value` already
+makes, and `cepalstat_cpi_known_splices` does the work instead — a three-entry
+allow-list, Nicaragua's pre-1992 span excluded by date, and every other move
+beyond 15% reported as a new break.
+
+It compares **calendar-adjacent months only**. Belize published quarterly for
+twenty-one years, and comparing March against the following December would
+manufacture breaks that are really gaps.
+
+#### Belize warns on continuity from the first run
+
+Belize holds **266 months inside a 428-month span**: it reported quarterly from
+1990 until 2011 and monthly only from 2012. `cepalstat_monthly_continuity`
+therefore reports **162 missing months** on every run, at `warning`.
+
+That is the correct output, not a regression. Interpolating those months would
+be imputation, which REIM does not do, and dropping Belize would lose the
+country that CEPALSTAT gave REIM its first data of any kind for. The same call
+was already made for Honduras on freshness in the monetary section.
+
+**Three connector checks**, all as expected on the first live run:
+`cepalstat_cpi_expected_countries` (completeness, `critical`, all seven
+returned), `cepalstat_cpi_known_splices` (consistency, `error`, no unrecorded
+break across 3,220 adjacent months with 3 of the 3 known breaks seen) and
+`cepalstat_monthly_continuity` (completeness, `warning`, Belize as above). The
+standard battery passes, freshness at **69 days** against a threshold of 120 —
+REIM's tightest, and it should be.
+
 ## Reachable, not ingested
 
 Indicator families that a source REIM **already reads** publishes, and REIM
 does not yet store. Listed so the next increment starts from a measurement
 rather than a search.
 
-### CEPALSTAT — four families beyond the four REIM reads
+### CEPALSTAT — three families beyond the five REIM reads
 
 Found on 2026-09-06 by walking `GET /cepalstat/api/v1/thematic-tree?lang=es&theme_id=N`.
+The regional CPI, indicator 365, was on this list until the same day and is now
+[ingested](#cepal--monthly-consumer-price-index).
 The theme ids are worth recording because nothing maps an area to its
 indicators: **6** is `BADECON`, **9** is `BADEPAG` (balance of payments) and
 **24** is `COYUNTURA` (short-term indicators). `GET /themes?lang=es` returns
@@ -1240,7 +1398,6 @@ trimestral".
 
 | CEPAL id | Published name | Dimensions, read from `/dimensions?lang=es` | Shape it reuses |
 |---|---|---|---|
-| 365 | Índice de precios al consumidor | `País(145) × Meses(12) × Años(201)` | `cepalstat_exchange_rate.py` exactly |
 | 856 | Tasa de interés activa nominal | `País(145) × Periodo__ind mon(17) × Años(201)` | `cepalstat_monetary.py` exactly |
 | 1206 | Tasa de política monetaria | `País(145) × Periodo__ind mon(17) × Años(201)` | `cepalstat_monetary.py` exactly |
 | 547 | Balanza de pagos trimestral | `País(145) × Trimestres(4) × Rubro(66) × Años(201)` | `cepalstat_debt.py` — four dimensions |
