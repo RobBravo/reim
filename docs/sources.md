@@ -1174,6 +1174,76 @@ threshold of 450. The series genuinely lags: CEPAL's own `last_update` is
 
 ---
 
+## Reachable, not ingested
+
+Indicator families that a source REIM **already reads** publishes, and REIM
+does not yet store. Listed so the next increment starts from a measurement
+rather than a search.
+
+### CEPALSTAT — four families beyond the four REIM reads
+
+Found on 2026-09-06 by walking `GET /cepalstat/api/v1/thematic-tree?lang=es&theme_id=N`.
+The theme ids are worth recording because nothing maps an area to its
+indicators: **6** is `BADECON`, **9** is `BADEPAG` (balance of payments) and
+**24** is `COYUNTURA` (short-term indicators). `GET /themes?lang=es` returns
+46 of them.
+
+**Searching the tree by indicator name does not find these.** The concept
+usually sits in a *dimension member*, not in the title — the same property that
+made the public debt slice hard to name. A search for "remesas" or "reservas"
+across themes 6, 9 and 24 returns nothing; both concepts are members of a
+66-value `Rubro` dimension inside an indicator called "Balanza de pagos
+trimestral".
+
+| CEPAL id | Published name | Dimensions, read from `/dimensions?lang=es` | Shape it reuses |
+|---|---|---|---|
+| 365 | Índice de precios al consumidor | `País(145) × Meses(12) × Años(201)` | `cepalstat_exchange_rate.py` exactly |
+| 856 | Tasa de interés activa nominal | `País(145) × Periodo__ind mon(17) × Años(201)` | `cepalstat_monetary.py` exactly |
+| 1206 | Tasa de política monetaria | `País(145) × Periodo__ind mon(17) × Años(201)` | `cepalstat_monetary.py` exactly |
+| 547 | Balanza de pagos trimestral | `País(145) × Trimestres(4) × Rubro(66) × Años(201)` | `cepalstat_debt.py` — four dimensions |
+| 361 | Valores Corrientes (theme 9) | `Países(38) × Años(34) × Cuentas(55)` | none — see the warning below |
+
+Indicator **857**, "Tasa de interés pasiva nominal", appears in the same tree
+node as 856 and 1206. Its dimensions were **not** fetched.
+
+**What was measured is the shape and nothing else.** No data response was
+requested for any of these. Coverage for the seven Central American countries,
+each country's span, the published units and decimals, and the response size
+are all **unknown** and must be measured before any of them is designed. The
+exchange-rate work is the precedent for why: its data response contradicted two
+assumptions that its dimensions alone would have left standing.
+
+#### Two traps on indicator 547, recorded before anyone reads it as a solution
+
+`ROADMAP.md` lists monthly **remittances** and monthly **reserves** as open
+gaps. Indicator 547 carries `Rubro` members named "Transferencias corrientes
+(crédito)" and "Activos de reserva", and **neither is the thing the roadmap is
+asking for**:
+
+* **"Transferencias corrientes" is not remittances.** It is the whole current
+  transfers line of the balance of payments, official transfers included.
+  Personal remittances are a sub-item of it that the 66 members do not break
+  out, so the figure cannot be reconstructed. The World Bank series REIM
+  already stores annually, `BX.TRF.PWKR.CD.DT`, is personal transfers plus
+  compensation of employees — a different definition again.
+* **"Activos de reserva" is a flow, not a stock.** It is the
+  balance-of-payments movement in reserve assets over the quarter. The roadmap
+  wants the reserves *level*, which is what `FI.RES.TOTL.CD` and the IMF's
+  `IRFCL` hold.
+
+Ingesting 547 would be worthwhile — it would be REIM's first balance-of-payments
+data and its second quarterly source. Labelling either member as remittances or
+as reserves would not be, and would be the kind of quiet redefinition this file
+exists to prevent.
+
+**Indicator 361 uses a different dimension vocabulary entirely** — country
+dimension `1` with 38 members rather than `208` with 145, years dimension `40`
+rather than `29117`. Every CEPALSTAT connector REIM has written addresses
+dimensions by the ids in `cepalstat.py`, and none of them applies here. It is
+an older table and would need its own investigation, not an adaptation.
+
+---
+
 ## Registered but not yet implemented
 
 These organizations exist in `reim/domain/sources/organizations.py` so that

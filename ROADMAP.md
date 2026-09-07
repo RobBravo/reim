@@ -61,13 +61,19 @@ aggregator rather than the Nicaraguan publisher itself.
     and its first that are **not comparable across countries** — each is in its
     own local currency and REIM does not convert. Honduras warns on freshness
     from the first run, deliberately. See `docs/sources.md`.
-  - **remittances** — still absent, and this increment did not touch them.
-    Nicaragua reports none to the IMF (0 observations, against 183 for Costa
-    Rica), and CEPALSTAT's monetary family does not carry them. SECMCA, behind
-    a credentialed account, remains the only route named so far.
+  - **remittances** — still absent. Nicaragua reports none to the IMF (0
+    observations, against 183 for Costa Rica), and CEPALSTAT's monetary family
+    does not carry them. CEPALSTAT's **quarterly balance of payments**
+    (indicator 547) carries a "Transferencias corrientes" line, and it is
+    **not** remittances: it is the whole current-transfers account, official
+    transfers included, with no sub-item breaking personal remittances out.
+    SECMCA, behind a credentialed account, remains the only route named so
+    far. See `docs/sources.md`.
   - **reserves** — the IMF has 1,740 monthly observations, but its indicator
-    codes cannot be named from anything its API exposes. See `docs/sources.md`
-    for the unblocking step.
+    codes cannot be named from anything its API exposes. CEPALSTAT's quarterly
+    balance of payments carries an "Activos de reserva" line, which is the
+    *flow* over the quarter and not the *stock* this item wants. See
+    `docs/sources.md` for the unblocking step and for both traps.
 
   This also retired the planned **XLSX ingestion support** in the connector
   toolkit. It was listed only to read these bulletins, and nothing else in the
