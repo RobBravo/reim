@@ -109,14 +109,35 @@ M3 are **end-of-period** stocks — `docs/sources.md` records them as such.
 Converting a month-end stock at that month's average rate is a real mismatch,
 and it is the largest methodological caveat in this design.
 
-CEPAL publishes no end-of-month rate for this indicator, and REIM will not
-derive one: taking the last daily observation from BCN or Banguat for two
-countries and CEPAL's average for the other five is precisely the mixed-method
-authorship section 1 rules out. So the mismatch is **declared, not fixed** — it
-appears in the `conversion` block of every response that uses it, in the
-indicator description, and in `docs/sources.md`. A reader who needs
-end-of-period conversion has the original figure and the rate's provenance and
-can do it themselves.
+**A single-publisher fix was looked for and does not exist.** CEPALSTAT's
+thematic tree was searched on 2026-09-06 under both themes that could hold one —
+`BADECON` (theme 6) and `COYUNTURA` (theme 24). They return exactly two
+exchange-rate indicators between them: 2179, the monthly average read here, and
+1901, the real effective exchange rate, which measures something else entirely.
+**CEPAL publishes no end-of-period nominal rate.**
+
+REIM will not derive one either: taking the last daily observation from BCN or
+Banguat for two countries and CEPAL's average for the other five is precisely
+the mixed-method authorship section 1 rules out.
+
+So the mismatch cannot be fixed, and the design's job is to stop it from being
+read as something it is not. Three measures, all in decision D11:
+
+1. Every converted cell is accompanied by `rate_basis`, whose only value today
+   is `"monthly average"`. It is a field rather than a sentence in the docs
+   because a client charting `values_converted` will never read the docs, and a
+   field travels with the number.
+2. The `conversion` block states in words that the target series are
+   end-of-period stocks converted at a within-period average, and that the
+   converted figures are therefore **indicative**.
+3. The same statement goes in the indicator description and in
+   `docs/sources.md`.
+
+The alternative — refusing to convert stocks at all — was considered and
+rejected: M1, M2 and M3 are the only multi-currency series REIM holds, so it
+would leave increment B with no case at all. Converting them with a stated
+basis is more useful than converting nothing, and more honest than converting
+silently.
 
 ### 3.3 The payload contradicts itself about provenance
 
@@ -188,6 +209,7 @@ separately:
 | D8 | `comparable` keeps describing the **published** figures and is unaffected by conversion. | Flipping it to `true` because a derived view exists would tell a client that CEPAL published comparable data. |
 | D9 | Per-cell rates are returned alongside per-cell converted values. | Every derived figure must be recomputable by hand from the response alone. Provenance that requires a second request is not provenance. |
 | D10 | Converted values quantize to two decimal places. | An amount, by convention. The real precision limit is the rate's one decimal, stated once in `conversion` rather than implied by twenty digits of `Decimal` division. |
+| D11 | Every converted cell carries `rate_basis`, and `conversion` calls the figures **indicative**. | The rate is a within-period average and the target series are end-of-period stocks (§3.2). No single-publisher end-of-period rate exists, so the mismatch is permanent; a field that travels with the number is what stops it being read as an exact conversion. |
 
 ## 6. Components
 
@@ -241,10 +263,15 @@ where the rate fetch goes and is already at 214 lines.
 ### 6.5 `apps/api/routers/comparison.py` and `reim/schemas/comparison.py`
 
 `convert_to: Literal["USD"] | None = None` on the query. When set and the gates
-pass, each `ComparisonRow` gains `values_converted` and `rates`, both keyed by
-ISO-3 like `values`, and the response gains a `conversion` block: target
-currency, rate indicator code, rate source key, the 3.2 and 3.4 caveats, and
-counts of converted / already-at-target / no-rate cells.
+pass, each `ComparisonRow` gains `values_converted`, `rates` and `rate_basis`,
+all keyed by ISO-3 like `values`, and the response gains a `conversion` block:
+target currency, rate indicator code, rate source key, the 3.2 and 3.4 caveats
+in words, the word **indicative** applied to the figures, and counts of
+converted / already-at-target / no-rate cells.
+
+`rate_basis` is `"monthly average"` wherever a rate was applied and `null`
+wherever one was not — including El Salvador's pass-throughs, which had no rate
+applied and so have no basis to report.
 
 When `convert_to` is absent the response is byte-identical to today's.
 
@@ -318,7 +345,9 @@ Increment B adds no observations at all.
   design, not a flag on this one.
 * **Any target but USD**, and any cross-rate — D4.
 * **End-of-period rates**, whether published or derived from BCN and Banguat
-  dailies — 3.2.
+  dailies — 3.2. CEPAL publishes none, verified across both candidate themes;
+  if one ever appears, using it for stocks is a single-publisher change and
+  needs no new argument, only a new increment.
 * **Conversion on `/observations` or the CSV export.** `/observations` returns
   what the publisher published, unconditionally; keeping one endpoint with no
   derived mode is worth more than the reach.
