@@ -807,3 +807,100 @@ def test_without_convert_to_the_response_gains_no_keys(
 
     assert "conversion" not in body
     assert set(body["data"][0]) == {"period_start", "period_end", "period_label", "values"}
+
+
+@pytest.fixture
+def no_rates_client(seeded_session: Session, make_observation) -> Iterator[TestClient]:  # type: ignore[no-untyped-def]
+    """A convertible indicator in local currencies, and no rates at all.
+
+    `compare_client` cannot serve this: its indicator is not convertible, so
+    the gate would refuse the request before an empty rate table ever mattered.
+    """
+    from reim.services.observation_writer import write_observations
+
+    write_observations(
+        seeded_session,
+        [
+            make_observation(
+                "2024-01",
+                value,
+                indicator_code="money_m1_monthly",
+                source_key="cepalstat_monetary_monthly",
+                country_iso3=iso3,
+                unit=currency,
+                currency_code=currency,
+            )
+            for iso3, currency, value in (("NIC", "NIO", "36800"), ("GTM", "GTQ", "7800"))
+        ],
+        connector_version="1.0.0",
+    )
+    seeded_session.commit()
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: seeded_session
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+def test_converting_a_rate_indicator_is_refused_with_400(
+    convert_client: TestClient,
+) -> None:
+    """36.8 NIO *per USD* divided by 36.8 is a confident, meaningless 1.00."""
+    response = convert_client.get(
+        "/api/v1/compare",
+        params={
+            "indicator": "exchange_rate_nominal_monthly",
+            "country": ["NI", "SV"],
+            "convert_to": "USD",
+        },
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "invalid_request"
+    assert "exchange_rate_nominal_monthly" in body["error"]["message"]
+
+
+def test_an_unsupported_target_is_refused_with_422(convert_client: TestClient) -> None:
+    """From FastAPI's Literal, not from code this increment wrote.
+
+    Asserted so that widening the type later cannot silently accept a target
+    with no rates behind it.
+    """
+    response = convert_client.get(
+        "/api/v1/compare",
+        params={
+            "indicator": "money_m1_monthly",
+            "country": ["NI", "SV"],
+            "convert_to": "EUR",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_an_unloaded_rate_series_converts_nothing_and_still_returns_200(
+    no_rates_client: TestClient,
+) -> None:
+    """A missing rate is a gap (D7), not a failure.
+
+    An operator who has never run `cepalstat_exchange_rate_monthly` gets a
+    page, with the count saying plainly that nothing converted.
+    """
+    response = no_rates_client.get(
+        "/api/v1/compare",
+        params={
+            "indicator": "money_m1_monthly",
+            "country": ["NI", "GT"],
+            "convert_to": "USD",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["conversion"]["no_rate"] == 2
+    assert body["conversion"]["converted"] == 0
+    assert body["conversion"]["rate_source_key"] is None
+    assert body["data"][0]["values_converted"] == {"NIC": None, "GTM": None}
