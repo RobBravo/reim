@@ -156,3 +156,16 @@ def test_a_country_with_no_data_still_gets_a_summary(
     assert summaries["HND"].first_period is None
     assert summaries["HND"].last_period is None
     assert summaries["HND"].units == ()
+
+
+def test_cells_carry_their_own_currency(
+    seeded_session: Session, two_countries: ComparisonQuery
+) -> None:
+    """The observation's currency, not the country's.
+
+    Two countries can report one indicator in different currencies, and one
+    country's series can change currency over time; conversion keys on this.
+    """
+    cells = fetch_comparison_cells(seeded_session, two_countries, limit=10, offset=0)
+
+    assert {cell.currency_code for cell in cells} == {"USD"}

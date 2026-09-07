@@ -40,6 +40,10 @@ class ComparisonCell:
     period_label: str
     country_iso3: str
     value_numeric: Decimal | None
+    #: The observation's own currency, not the country's. Two countries can
+    #: report one indicator in different currencies, and one country's series
+    #: can change currency over time; conversion keys on this.
+    currency_code: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +135,7 @@ def fetch_comparison_cells(
             Observation.period_label,
             Country.iso3,
             Observation.value_numeric,
+            Observation.currency_code,
         )
         .join(Observation.indicator)
         .join(Observation.country),
@@ -146,6 +151,7 @@ def fetch_comparison_cells(
             period_label=row[2],
             country_iso3=row[3],
             value_numeric=row[4],
+            currency_code=row[5],
         )
         for row in rows
     ]
