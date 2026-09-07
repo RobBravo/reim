@@ -22,13 +22,19 @@ here; everything else belongs to the connector that reads its family.
    ``404``, so every ``extract`` reads ``header.success`` rather than trusting
    the status line alone.
 
-This base class is deliberately not a generic CEPALSTAT engine. It holds the
-protocol — the envelope, the JSON decode, a dimension's member table, a row's
-label and a row's value — and nothing about any indicator family's shape. Each
-connector still names its own dimensions and writes its own ``extract``,
-``transform`` and ``validate``: GDP reads a country-by-year matrix, the monetary
-aggregates carry a third period-within-year dimension, and public debt carries
-four. Merging those transforms was rejected in design and stays rejected.
+This base class is deliberately not a generic CEPALSTAT engine. It holds two
+things. The first is the protocol — the envelope, the JSON decode, a
+dimension's member table, a row's label and a row's value. The second is
+behaviour that is about periods rather than about any family's shape:
+``_check_monthly_continuity`` walks each country's own span looking for holes
+and would read identically in every monthly connector, so it lives here rather
+than being copied. Nothing about an indicator family's dimensions belongs in
+this file. Each connector still names its own dimensions and writes its own
+``extract``, ``transform`` and ``validate``: GDP reads a country-by-year
+matrix, the monetary aggregates carry a third period-within-year dimension,
+public debt carries four, and the exchange rate carries a twelve-member month
+dimension of its own. Merging those transforms was rejected in design and
+stays rejected.
 """
 
 from __future__ import annotations
@@ -37,7 +43,9 @@ import json
 from decimal import Decimal
 from typing import Any
 
+from reim.core.constants import CheckSeverity, CheckType
 from reim.core.exceptions import ExtractionError, TransformationError
+from reim.domain.pipelines.models import NormalizedObservation, QualityResult
 from reim.ingestion.base import BaseConnector
 
 #: Dimension ids, identical across every indicator family read so far.
@@ -133,3 +141,52 @@ class CepalstatConnector(BaseConnector):
         except (KeyError, TypeError, ValueError, ArithmeticError) as exc:
             msg = f"CEPALSTAT returned an unreadable value for indicator {cepal_id}: {exc}"
             raise TransformationError(msg, source_key=self.source.key) from exc
+
+    def _check_monthly_continuity(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """Holes inside each country's own span, per indicator.
+
+        Walked per country and per series: pooling them would hide a hole
+        whenever another country published that month, and six of the seven
+        usually did.
+        """
+        spans: dict[tuple[str, str], set[tuple[int, int]]] = {}
+        for obs in observations:
+            year, month = obs.period.label.split("-")
+            spans.setdefault((obs.indicator_code, obs.country_iso3), set()).add(
+                (int(year), int(month))
+            )
+
+        missing: list[str] = []
+        expected = present = 0
+        for (code, iso3), months in sorted(spans.items()):
+            if len(months) < 2:
+                continue
+            first, last = min(months), max(months)
+            width = (last[0] - first[0]) * 12 + (last[1] - first[1]) + 1
+            expected += width
+            present += len(months)
+            cursor = first
+            for _ in range(width):
+                if cursor not in months:
+                    missing.append(f"{iso3} {cursor[0]}-{cursor[1]:02d} ({code})")
+                cursor = (cursor[0] + 1, 1) if cursor[1] == 12 else (cursor[0], cursor[1] + 1)
+
+        if not missing:
+            return QualityResult.passed(
+                "cepalstat_monthly_continuity",
+                CheckType.COMPLETENESS,
+                f"No gaps in any of the {len(spans)} country-series",
+                expected_value=str(expected),
+                actual_value=str(present),
+            )
+
+        shown = ", ".join(missing[:5])
+        suffix = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
+        return QualityResult.failure(
+            "cepalstat_monthly_continuity",
+            CheckType.COMPLETENESS,
+            CheckSeverity.WARNING,
+            f"{len(missing)} month(s) missing: {shown}{suffix}",
+            expected_value=str(expected),
+            actual_value=str(present),
+        )

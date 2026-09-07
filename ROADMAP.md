@@ -81,7 +81,7 @@ aggregator rather than the Nicaraguan publisher itself.
   which this item had not even anticipated. **Quarterly is now exercised too**,
   by SIECA's services trade in v0.3.0 — not by the SECMCA or IMF
   balance-of-payments candidates this line named. The catalog holds 6 annual,
-  7 monthly, 2 daily and 1 quarterly. **Weekly, semiannual and irregular remain
+  8 monthly, 2 daily and 1 quarterly. **Weekly, semiannual and irregular remain
   unexercised** — `Frequency` defines all three and the period model parses
   `YYYY-Wnn` and `YYYY-Hn`, but no source REIM reads publishes at those
   cadences.
@@ -134,7 +134,17 @@ and a fifth has its first country.
   currency, differing publishers are noted, and the endpoint never refuses and
   never converts. See `docs/sources.md` and the API section of the README.
 - Currency handling for genuinely multi-currency comparisons — always alongside
-  the original figure, never replacing it.
+  the original figure, never replacing it. **Half done.** The rate series is in:
+  CEPALSTAT's monthly nominal exchange rate, **2,749 observations**, all seven
+  countries, 1993-06 onward (Panama 1990-01, Costa Rica 1994-02). It is REIM's
+  first indicator whose values are rates rather than amounts or ratios. The
+  converted view on `/compare` is the remaining half and is designed but not
+  built; see `docs/superpowers/specs/2026-09-06-currency-conversion-design.md`.
+  Two things that design had to settle are worth knowing before using the rate:
+  CEPAL still quotes El Salvador in colones twenty-four years after
+  dollarisation, and the rate is a within-month average while the only
+  multi-currency series REIM holds are end-of-period stocks. See
+  `docs/sources.md`.
 
 ## v0.4.0 — Making the data visible
 

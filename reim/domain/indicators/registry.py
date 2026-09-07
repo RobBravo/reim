@@ -517,6 +517,27 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         value_type=ValueType.PERCENT,
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=1240&lang=en",
     ),
+    IndicatorDefinition(
+        code="exchange_rate_nominal_monthly",
+        name="Nominal exchange rate (monthly average)",
+        description=(
+            "Units of each country's own currency per US dollar, published by "
+            "ECLAC as the average of the daily rates within the month. Being "
+            "a within-period average, it does not line up exactly with a "
+            "figure measured at the close of the month. The payload names "
+            "Bloomberg as the underlying source while its sources array claims "
+            "official figures; REIM stores the series without repeating the "
+            "second claim. El Salvador is quoted in colones at its fixed "
+            "conversion rate throughout, twenty-four years after it adopted "
+            "the dollar, so this series carries a rate for a currency no "
+            "longer in circulation."
+        ),
+        category=IndicatorCategory.EXCHANGE_RATE,
+        frequency=Frequency.MONTHLY,
+        unit="units of local currency per USD",
+        value_type=ValueType.RATE,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=2179&lang=en",
+    ),
 )
 
 INDICATORS_BY_CODE: dict[str, IndicatorDefinition] = {i.code: i for i in INDICATORS}

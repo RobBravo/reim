@@ -29,12 +29,14 @@ never calls an official source.
 | `cepalstat_monetary_869.json.gz` | Same endpoint, indicator `869` — broad liquidity M3 (1.44 MB → 105 KB). El Salvador is absent from this series. | 2026-08-19 |
 | `cepalstat_debt_1239.json.gz` | `GET https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/1239/data?lang=en`, byte-for-byte, gzipped only to keep the repo small (603 KB → 39 KB). Tests decompress it before parsing. The **complete** response — 145 countries, all four institutional coverages and all six classification members — because that is what proves the filter to central government and to Total-public-debt-by-residence works at all. | 2026-09-03 |
 | `cepalstat_debt_1240.json.gz` | Same endpoint, indicator `1240` — the same stock as a percentage of GDP (620 KB → 37 KB). Recorded so the six cells where the two units disagree on coverage are asserted against both published series rather than one. | 2026-09-03 |
+| `cepalstat_fx_2179.json.gz` | `GET https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/2179/data?lang=en`, byte-for-byte, gzipped only to keep the repo small (1.19 MB → 54 KB). Tests decompress it before parsing. The **complete** response — 30 countries and every month — because that is what proves the filter to the seven Central American countries works, and it is the only place El Salvador's post-dollarisation colón rate can be asserted. | 2026-09-06 |
+| `cepalstat_dimensions_2179.json.gz` | `GET .../indicator/2179/dimensions?lang=es`, byte-for-byte, gzipped (28 KB → 4 KB). Recorded in Spanish for the same reason as the monetary dimensions: `lang=en` returns the period members as the untranslated string `descripcion_ingles`. Dimension 515 carries twelve members and no annual or quarterly restatement, unlike the monetary family's seventeen. | 2026-09-06 |
 | `cepalstat_dimensions_862.json.gz` | `GET .../indicator/862/dimensions?lang=es`, byte-for-byte, gzipped (28 KB → 4 KB). Recorded in Spanish because `lang=en` returns all seventeen period members as the untranslated string `descripcion_ingles`; this is the only place a month can be told from a quarter. | 2026-08-19 |
 | `cepalstat_dimensions_868.json.gz` | Same endpoint, indicator `868`. | 2026-08-19 |
 | `cepalstat_dimensions_869.json.gz` | Same endpoint, indicator `869`. | 2026-08-19 |
 
 The CEPALSTAT API needs no User-Agent override and no TLS accommodation; these
-four were recorded with REIM's own identifier. `body.credits[0].description` is
+fifteen were recorded with REIM's own identifier. `body.credits[0].description` is
 CEPAL's own fetch date and differs between recordings — nothing asserts it, and
 `raw_metadata` stores only the citation elements that follow it.
 

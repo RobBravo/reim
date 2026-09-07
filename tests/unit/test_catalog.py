@@ -430,3 +430,38 @@ def test_the_debt_change_threshold_clears_the_nicaraguan_relief() -> None:
 
     for code in ("public_debt_usd_annual", "public_debt_pct_gdp_annual"):
         assert rules.for_indicator(code).max_period_change_pct == 60
+
+
+def test_exchange_rate_source_is_registered() -> None:
+    """The rate source names its indicator and its connector module."""
+    catalog = load_catalog(REPO_ROOT / "sources" / "catalog.yml")
+    source = next(s for s in catalog.sources if s.key == "cepalstat_exchange_rate_monthly")
+
+    assert source.enabled is True
+    assert source.official is True
+    assert source.frequency is Frequency.MONTHLY
+    assert source.license == "cepal_terms_of_use"
+    assert source.indicators == ["exchange_rate_nominal_monthly"]
+    assert source.connector == "reim.ingestion.connectors.regional.cepalstat_exchange_rate"
+    assert str(source.base_url).startswith("https://api-cepalstat.cepal.org")
+
+
+def test_the_exchange_rate_indicator_is_a_rate_not_an_amount() -> None:
+    """Its unit says 'per USD', which is what distinguishes it from a stock."""
+    definition = INDICATORS_BY_CODE["exchange_rate_nominal_monthly"]
+
+    assert definition.category is IndicatorCategory.EXCHANGE_RATE
+    assert definition.frequency is Frequency.MONTHLY
+    assert definition.unit == "units of local currency per USD"
+    assert definition.value_type is ValueType.RATE
+    assert definition.is_active is True
+
+
+def test_the_exchange_rate_rule_leaves_room_for_the_colon() -> None:
+    """Costa Rica is past 500 and rising, so no ceiling is configured."""
+    rules = load_quality_rules(REPO_ROOT / "sources" / "quality_rules.yml")
+    rule = rules.for_indicator("exchange_rate_nominal_monthly")
+
+    assert rule.max_value is None
+    assert rule.min_value == 0
+    assert rule.allow_zero is False

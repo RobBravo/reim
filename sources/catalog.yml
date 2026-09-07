@@ -523,3 +523,25 @@ sources:
     license: cepal_terms_of_use
     official: true
     enabled: true
+
+  - key: cepalstat_exchange_rate_monthly
+    name: Central American nominal exchange rates (monthly)
+    description: >-
+      Units of each country's own currency per US dollar for the seven Central
+      American countries, from CEPALSTAT, as the average of the daily rates
+      within each month. ECLAC publishes it; the payload names Bloomberg as the
+      underlying source. El Salvador is quoted in colones at its fixed
+      conversion rate throughout, long after dollarisation.
+    organization: CEPAL
+    category: exchange_rate
+    access_type: http_api
+    frequency: monthly
+    format: json
+    base_url: https://api-cepalstat.cepal.org/cepalstat/api/v1
+    documentation_url: https://statistics.cepal.org/portal/cepalstat/
+    connector: reim.ingestion.connectors.regional.cepalstat_exchange_rate
+    indicators:
+      - exchange_rate_nominal_monthly
+    license: cepal_terms_of_use
+    official: true
+    enabled: true

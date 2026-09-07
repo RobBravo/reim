@@ -352,3 +352,19 @@ indicators:
   public_debt_pct_gdp_annual:
     <<: *public_debt
     min_observations: 224
+
+  exchange_rate_nominal_monthly:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: false
+    # The largest real month-on-month move in the series is Nicaragua's 7.69%
+    # in 2000-10. 25 clears that threefold and still reports a discontinuity.
+    max_period_change_pct: 25
+    monotonic_increasing: false
+    # The series ends 2025-09 while CEPAL's own last_update is 2026-08: it
+    # genuinely lags about a year, so the stalest country is ~341 days old as
+    # of 2026-09-06. 450 passes that with headroom and still catches a series
+    # that has stopped being extended.
+    freshness_max_age_days: 450
+    min_observations: 2700
