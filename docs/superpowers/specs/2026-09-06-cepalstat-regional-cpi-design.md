@@ -242,10 +242,16 @@ merging family transforms was rejected in design.
 | `cepalstat_monthly_continuity` | `warning` | Holes inside a country's own span — inherited from `CepalstatConnector` |
 
 The second check is the one that carries this design's judgement. It holds a
-two-entry allow-list — `("GTM", "2010-01")` and `("SLV", "1985-08")` — and
-Nicaragua's whole pre-1992 span, which contains 58 legitimate moves beyond the
-threshold and is excluded by date rather than enumerated. Everything else
-beyond ±15% is a new break and fails.
+**three-entry** allow-list, keyed on the month moved *into*:
+`("GTM", "2010-01")`, `("SLV", "1985-08")` and `("SLV", "1985-09")`. El
+Salvador needs two entries because one corrupt cell produces two large moves —
+the fall into August and the recovery into September — and listing only the
+first would fail the check on the second every run.
+
+Nicaragua's whole pre-1992 span is excluded by date rather than enumerated: it
+contains 58 legitimate moves beyond the threshold, and its worst move from 1992
+onward is 9.28%, so the cut is clean. Everything else beyond ±15% is a new
+break and fails.
 
 The continuity check will **warn on Belize on every run**, reporting its 162
 absent months. That is the correct output for a country that published
