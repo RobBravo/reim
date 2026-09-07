@@ -192,8 +192,16 @@ separately:
 
 * **A.** `cepalstat_exchange_rate_monthly`: the connector and one indicator.
   Rates become ordinary REIM observations with full provenance, useful on their
-  own whatever happens to B.
-* **B.** `?convert_to=USD` on `/compare`. Cannot be built until A's data exists.
+  own whatever happens to B. ✅ **Shipped 2026-09-06** — 2,749 observations,
+  three checks passing; see `docs/sources.md`. Its plan is
+  `docs/superpowers/plans/2026-09-06-cepalstat-exchange-rate.md`.
+* **B.** `?convert_to=USD` on `/compare`. Cannot be built until A's data exists,
+  which it now does. Sections 6.4 to 6.6 are its design; it has no plan yet.
+
+Two things A's execution changed in this document rather than merely confirming:
+the indicator's value type (6.1), and the peg check becoming a band because
+Belize is not always 2 (section 7). Both are recorded where they belong rather
+than in a changelog.
 
 ## 5. Decisions
 
@@ -204,12 +212,13 @@ separately:
 | D3 | Keyed on the observation's `currency_code`, never on its country. | Defuses 3.1. An observation already in USD passes through at an implied rate of 1. |
 | D4 | `convert_to` accepts `USD` only. | Rates are local-currency-per-USD. NIO→GTQ means triangulating through the dollar and squaring the rounding error of 3.4 for a comparison nobody has asked for. |
 | D5 | The indicator must declare `currency_convertible`. | `ni_exchange_rate_official_daily` carries `currency_code = NIO` and means "36.8 NIO **per** USD". Dividing it by a rate returns a confident `1.00`. An amount denominated in a currency and a ratio expressed per that currency are different things and only the registry can tell them apart. |
-| D6 | Both gate failures return **422**, naming the reason. | Silently ignoring a parameter the client asked for is worse than refusing it. |
+| D6 | Both gates refuse, naming the reason — but with **different status codes**, because they are different kinds of wrong. An unsupported target is **422** from FastAPI's own `Literal` validation; a non-convertible indicator is **400** `invalid_request`, raised as `InvalidRequestError`. | Silently ignoring a parameter the client asked for is worse than refusing it. The split is not invented for this endpoint: `InvalidRequestError` already exists and its docstring is "the caller supplied an invalid combination of query parameters", which is exactly what `convert_to=USD` on a rate indicator is. `convert_to=EUR` never reaches handler code at all — typing the parameter `Literal["USD"]` makes FastAPI reject it, and this API already renders that as 422 `validation_error`. |
 | D7 | Exact period match only. No nearest rate, no carry-forward, no annual average standing in for a month. | That is imputation, which `ROADMAP.md` lists under "explicitly not planned". A missing rate yields `null` and a count. |
 | D8 | `comparable` keeps describing the **published** figures and is unaffected by conversion. | Flipping it to `true` because a derived view exists would tell a client that CEPAL published comparable data. |
 | D9 | Per-cell rates are returned alongside per-cell converted values. | Every derived figure must be recomputable by hand from the response alone. Provenance that requires a second request is not provenance. |
 | D10 | Converted values quantize to two decimal places. | An amount, by convention. The real precision limit is the rate's one decimal, stated once in `conversion` rather than implied by twenty digits of `Decimal` division. |
 | D11 | Every converted cell carries `rate_basis`, and `conversion` calls the figures **indicative**. | The rate is a within-period average and the target series are end-of-period stocks (§3.2). No single-publisher end-of-period rate exists, so the mismatch is permanent; a field that travels with the number is what stops it being read as an exact conversion. |
+| D12 | `ComparisonCell` gains `currency_code`, read per observation rather than per country. | D3 is not implementable without it: the cell carries only a value today, and the per-country `SeriesSummary.currency_codes` is a **tuple** precisely because one country's series may hold more than one currency over time. Collapsing it to pick a rate would reintroduce the bug D3 exists to prevent. |
 
 ## 6. Components
 
@@ -229,11 +238,18 @@ One new indicator:
 
 | Code | Name | Frequency | Unit | Value type |
 |---|---|---|---|---|
-| `exchange_rate_nominal_monthly` | Nominal exchange rate (monthly average) | `MONTHLY` | `units of local currency per USD` | `LEVEL` |
+| `exchange_rate_nominal_monthly` | Nominal exchange rate (monthly average) | `MONTHLY` | `units of local currency per USD` | `RATE` |
 
 Its description states 3.2 and 3.3: a monthly average of daily rates, published
 by ECLAC, with Bloomberg named in the payload as the underlying source, and El
 Salvador quoted in a currency retired in 2001.
+
+> **Shipped 2026-09-06 in increment A**, with one change from what this section
+> first said: the value type is `RATE`, not `LEVEL`. Both existing exchange-rate
+> indicators use `RATE` and it is literally what the series is. This does **not**
+> make `value_type` a substitute for D5's flag: `money_m1_monthly` and
+> `gdp_current_usd_annual` are both `LEVEL`, and only one of them should ever be
+> converted.
 
 ### 6.2 `sources/catalog.yml`
 
@@ -252,28 +268,175 @@ no `× 10^6`.
 
 ### 6.4 `reim/domain/conversion.py` (new)
 
-Pure functions over cells, summaries and a rate table: the D3–D7 gates and the
-arithmetic, with no database and no session. This is where the El Salvador rule
-and the exact-period rule are tested directly.
+Pure functions over cells and a rate table: the D3–D7 gates and the arithmetic,
+with no database and no session. This is where the El Salvador rule and the
+exact-period rule are tested directly.
 
 Kept out of `reim/schemas/comparison.py`, which already holds
 `assess_comparability`, and out of `reim/repositories/comparison.py`, which is
 where the rate fetch goes and is already at 214 lines.
 
-### 6.5 `apps/api/routers/comparison.py` and `reim/schemas/comparison.py`
+```text
+TARGET_CURRENCY = "USD"
+RATE_INDICATOR_CODE = "exchange_rate_nominal_monthly"
+RATE_BASIS = "monthly average"
+QUANTUM = Decimal("0.01")
 
-`convert_to: Literal["USD"] | None = None` on the query. When set and the gates
-pass, each `ComparisonRow` gains `values_converted`, `rates` and `rate_basis`,
-all keyed by ISO-3 like `values`, and the response gains a `conversion` block:
-target currency, rate indicator code, rate source key, the 3.2 and 3.4 caveats
-in words, the word **indicative** applied to the figures, and counts of
-converted / already-at-target / no-rate cells.
+@dataclass(frozen=True, slots=True)
+class ConvertedCell:
+    #: None when no rate applied, whether the cell was already at the target
+    #: or no rate exists for its period.
+    value: Decimal | None
+    rate: Decimal | None
+    basis: str | None
+
+@dataclass(frozen=True, slots=True)
+class ConversionSummary:
+    target_currency: str
+    rate_indicator_code: str
+    rate_source_key: str | None
+    basis: str
+    converted: int
+    already_at_target: int
+    no_rate: int
+    caveats: tuple[str, ...]
+
+def ensure_convertible(definition: IndicatorDefinition) -> None:
+    """Raise InvalidRequestError unless this indicator may be converted."""
+
+def convert(
+    value: Decimal | None,
+    currency_code: str | None,
+    rate: Decimal | None,
+) -> ConvertedCell:
+    """One cell, by D3, D7 and D10."""
+
+def summarise(cells: Iterable[ConvertedCell], rate_source_key: str | None) -> ConversionSummary:
+    """Counts and caveats for the response's conversion block."""
+```
+
+`convert` is total and raises nothing. Its four branches are the whole of D3
+and D7, and each is a named test:
+
+| `currency_code` | rate | Result | Counted as |
+|---|---|---|---|
+| `"USD"` | any | `value` unchanged, `rate=None`, `basis=None` | already at target |
+| other | present | `(value / rate).quantize(QUANTUM)`, rate and basis set | converted |
+| other | absent | all three `None` | no rate |
+| `None` | any | all three `None` | no rate |
+
+The last row is the one worth stating: an observation with no `currency_code`
+is not an amount this design knows how to convert, and guessing from the
+country would be D3's bug wearing a different hat.
+
+**A cell with no published value short-circuits before any of that** — all
+three fields `null`, and counted in none of the three totals. `/compare` is
+rectangular (C2), so most cells in a wide comparison are holes in the published
+data, and counting them as "no rate" would blame the rate series for a gap that
+is the publisher's.
+
+### 6.5 `reim/repositories/comparison.py`
+
+Two changes.
+
+`ComparisonCell` gains `currency_code: str | None`, and
+`fetch_comparison_cells` selects `Observation.currency_code` alongside the
+value. This is D12, and without it nothing downstream can honour D3.
+
+One new function, which is the only database work increment B adds:
+
+```text
+def fetch_rates(
+    session: Session,
+    *,
+    country_ids: tuple[uuid.UUID, ...],
+    period_starts: Sequence[date],
+) -> dict[tuple[str, date], Decimal]:
+    """Active monthly rates, keyed by (country ISO-3, period start)."""
+```
+
+It reads `exchange_rate_nominal_monthly` for `ACTIVE` observations only,
+matching the rule `fetch_comparison_cells` already applies. **It is given the
+page's period starts, not a range**, so a request for one page of a
+thirty-year comparison fetches that page's rates and no more.
+
+### 6.6 `apps/api/routers/comparison.py` and `reim/schemas/comparison.py`
+
+`convert_to: Annotated[Literal["USD"] | None, Query(...)] = None`. When absent,
+the response is **byte-identical to today's** — no new keys, not even null ones.
+
+When present, `ensure_convertible` runs before any query work, then each
+`ComparisonRow` gains `values_converted`, `rates` and `rate_basis`, all keyed by
+ISO-3 exactly like `values`, and the response gains a `conversion` block.
 
 `rate_basis` is `"monthly average"` wherever a rate was applied and `null`
 wherever one was not — including El Salvador's pass-throughs, which had no rate
 applied and so have no basis to report.
 
-When `convert_to` is absent the response is byte-identical to today's.
+#### The response, with conversion asked for
+
+```json
+{
+  "meta": { "total": 273, "limit": 500, "offset": 0, "returned": 273, "has_more": false },
+  "indicator": { "code": "money_m1_monthly", "name": "Money (M1, end of period)", "frequency": "monthly" },
+  "comparable": false,
+  "comparability_notes": [
+    "Units differ across countries: NIO, SVC, USD.",
+    "Currencies differ across countries: NIO, USD."
+  ],
+  "conversion": {
+    "target_currency": "USD",
+    "rate_indicator_code": "exchange_rate_nominal_monthly",
+    "rate_source_key": "cepalstat_exchange_rate_monthly",
+    "basis": "monthly average",
+    "converted": 271,
+    "already_at_target": 273,
+    "no_rate": 0,
+    "caveats": [
+      "Converted figures are indicative. The rate is the average of the daily rates within the month, while these observations are end-of-period stocks; CEPAL publishes no end-of-period rate.",
+      "The rate is published to one decimal, which is the precision limit of every figure derived from it."
+    ]
+  },
+  "series": [ "… unchanged …" ],
+  "data": [
+    {
+      "period_start": "2024-06-01",
+      "period_end": "2024-06-30",
+      "period_label": "2024-06",
+      "values": { "NIC": "119875800000", "SLV": "9482300000" },
+      "values_converted": { "NIC": "3257494565.22", "SLV": "9482300000" },
+      "rates": { "NIC": "36.8", "SLV": null },
+      "rate_basis": { "NIC": "monthly average", "SLV": null }
+    }
+  ]
+}
+```
+
+The rate and the arithmetic in that row are real: `36.8` is Nicaragua's
+published 2024-06 figure in the increment A recording, and 119,875,800,000 /
+36.8 quantizes to exactly the value shown. The M1 levels themselves are
+illustrative — the shape is what this example is for.
+
+El Salvador is the row to read twice. Its published figure and its converted
+figure are **the same number**, its rate is `null` and its basis is `null` —
+because it is already in dollars and nothing was applied. A response that
+showed it divided by 8.8 would be the bug D3 exists to prevent, and it would
+look perfectly plausible.
+
+The counts do not add up to 273 x 2, and that is the rule above working:
+Nicaragua's M1 runs to 2024-06 and El Salvador's to 2024-08, so two of the 546
+cells carry no published figure and are counted in none of the three totals.
+
+Note `comparable` stays `false` (D8) even though every cell that could convert
+did.
+
+#### When the rate series is not loaded
+
+An operator who has never run `cepalstat_exchange_rate_monthly` gets a valid
+response, not an error: every non-USD cell reports `no_rate`, `values_converted`
+is `null` for them, and `conversion.no_rate` carries the count. The gates are
+about what the client asked for; an empty rate table is a state of the data, and
+D7 already says a missing rate is a gap rather than a failure.
 
 ## 7. Quality
 
@@ -331,15 +494,28 @@ Connector: the two-request extract, the month-name resolution from the Spanish
 dimensions, the seven-entry currency table producing `SVC` for El Salvador, and
 each of the three checks passing and failing.
 
-Conversion, as pure unit tests with no database:
+Conversion, as pure unit tests with no database — one per branch of the table
+in 6.4:
 
-* El Salvador passes through untouched at an implied rate of 1 — the regression
-  test for 3.1, and the one that would have caught the ninefold error.
+* El Salvador passes through untouched, with `rate` and `basis` both `null` —
+  the regression test for 3.1, and the one that would have caught the ninefold
+  error.
 * A period with no rate yields `null`, not a neighbouring month's rate.
-* A non-convertible indicator returns 422; `ni_exchange_rate_official_daily`
-  named explicitly, since it is the trap D5 exists for.
-* `convert_to=EUR` returns 422.
+* An observation with no `currency_code` yields `null` rather than being
+  converted at the country's rate.
 * The arithmetic, including D10's quantization.
+
+Through the endpoint:
+
+* A non-convertible indicator returns **400** `invalid_request`;
+  `ni_exchange_rate_official_daily` named explicitly, since it is the trap D5
+  exists for.
+* `convert_to=EUR` returns **422** `validation_error`, from FastAPI's `Literal`
+  rather than from any code this increment writes — asserted so that widening
+  the type later cannot silently accept a target with no rates behind it.
+* Omitting `convert_to` returns a payload with **no** conversion keys at all,
+  asserted key-by-key rather than by comparing a rendered string.
+* An empty rate table converts nothing and still returns 200.
 
 One integration test through the real writer, database and endpoint, following
 the pattern the existing `comparable: false` test established: two countries,
@@ -348,8 +524,8 @@ compared.
 
 ## 9. Volume
 
-Increment A adds **2,749 observations** — the seven countries' rows, from two
-requests and about 6 s. REIM's catalog gains its eighth monthly series and its
+Increment A added **2,749 observations** — the seven countries' rows, from two
+requests and about 6 s. REIM's catalog gained its eighth monthly series and its
 first indicator whose values are rates rather than amounts or ratios.
 
 Increment B adds no observations at all.
