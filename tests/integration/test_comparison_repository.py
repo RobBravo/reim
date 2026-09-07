@@ -12,6 +12,7 @@ from reim.repositories.comparison import (
     ComparisonQuery,
     count_comparison_periods,
     fetch_comparison_cells,
+    fetch_rates,
     summarise_series,
 )
 from reim.repositories.reference import get_country_by_iso3
@@ -169,3 +170,57 @@ def test_cells_carry_their_own_currency(
     cells = fetch_comparison_cells(seeded_session, two_countries, limit=10, offset=0)
 
     assert {cell.currency_code for cell in cells} == {"USD"}
+
+
+@pytest.fixture
+def nicaraguan_rates(seeded_session: Session, make_observation) -> None:  # type: ignore[no-untyped-def]
+    """Two months of rates, so a page-scoped query can be seen to skip one."""
+    from reim.services.observation_writer import write_observations
+
+    write_observations(
+        seeded_session,
+        [
+            make_observation(
+                period,
+                value,
+                indicator_code="exchange_rate_nominal_monthly",
+                source_key="cepalstat_exchange_rate_monthly",
+                country_iso3="NIC",
+                unit="NIO per USD",
+                currency_code="NIO",
+            )
+            for period, value in (("2024-01", "36.6"), ("2024-02", "36.7"))
+        ],
+        connector_version="1.0.0",
+    )
+    seeded_session.commit()
+
+
+def test_fetch_rates_keys_on_country_and_period(
+    seeded_session: Session, nicaraguan_rates: None
+) -> None:
+    """Scoped to the page's periods: 2024-02 exists and is deliberately absent."""
+    nic = get_country_by_iso3(seeded_session, "NIC")
+    assert nic is not None
+
+    table = fetch_rates(
+        seeded_session,
+        country_ids=(nic.id,),
+        period_starts=[date(2024, 1, 1)],
+    )
+
+    assert table.by_period == {("NIC", date(2024, 1, 1)): Decimal("36.6")}
+    assert table.source_key == "cepalstat_exchange_rate_monthly"
+
+
+def test_fetch_rates_returns_empty_when_the_series_is_not_loaded(
+    seeded_session: Session,
+) -> None:
+    """Not an error: an operator who never ran the pipeline still gets a page."""
+    nic = get_country_by_iso3(seeded_session, "NIC")
+    assert nic is not None
+
+    table = fetch_rates(seeded_session, country_ids=(nic.id,), period_starts=[date(2024, 1, 1)])
+
+    assert table.by_period == {}
+    assert table.source_key is None

@@ -9,6 +9,7 @@ across these countries, period by period".
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -19,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from reim.core.constants import ObservationStatus
 from reim.database.models import Country, DataSource, Indicator, Observation, Organization
+from reim.domain.conversion import RATE_INDICATOR_CODE
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,3 +220,57 @@ def summarise_series(
         )
         for country in countries
     ]
+
+
+@dataclass(frozen=True, slots=True)
+class RateTable:
+    """The exchange rates for one page of a comparison, and where they came from."""
+
+    by_period: dict[tuple[str, date], Decimal]
+    #: The source that supplied them, when exactly one did. ``None`` when the
+    #: rate series holds nothing for this page, and also when more than one
+    #: source supplies it — REIM has one today, and a second would be a real
+    #: change to reckon with rather than one to average over silently.
+    source_key: str | None
+
+
+def fetch_rates(
+    session: Session,
+    *,
+    country_ids: tuple[uuid.UUID, ...],
+    period_starts: Sequence[date],
+) -> RateTable:
+    """Active monthly rates for exactly these countries and periods.
+
+    Scoped to the page's periods rather than to a range, so a request for one
+    page of a thirty-year comparison fetches that page's rates and no more.
+    """
+    if not country_ids or not period_starts:
+        return RateTable(by_period={}, source_key=None)
+
+    statement = (
+        select(
+            Country.iso3,
+            Observation.period_start,
+            Observation.value_numeric,
+            DataSource.source_key,
+        )
+        .join(Observation.indicator)
+        .join(Observation.country)
+        .join(Observation.source)
+        .where(
+            Indicator.code == RATE_INDICATOR_CODE,
+            Observation.country_id.in_(country_ids),
+            Observation.period_start.in_(period_starts),
+            Observation.status == ObservationStatus.ACTIVE,
+            Observation.value_numeric.is_not(None),
+        )
+    )
+
+    by_period: dict[tuple[str, date], Decimal] = {}
+    sources: set[str] = set()
+    for iso3, start, value, source_key in session.execute(statement):
+        by_period[(iso3, start)] = value
+        sources.add(source_key)
+
+    return RateTable(by_period=by_period, source_key=sources.pop() if len(sources) == 1 else None)
