@@ -4,8 +4,15 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 
 from reim.core.constants import Frequency
 from reim.repositories.comparison import SeriesSummary
@@ -86,6 +93,21 @@ class ComparisonSeries(BaseModel):
     last_period: str | None
 
 
+class ConversionBlock(BaseModel):
+    """What a converted response did, and what the reader must know about it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    target_currency: str
+    rate_indicator_code: str
+    rate_source_key: str | None
+    basis: str
+    converted: int
+    already_at_target: int
+    no_rate: int
+    caveats: list[str]
+
+
 class ComparisonRow(BaseModel):
     """One period, with an entry for every requested country."""
 
@@ -95,6 +117,36 @@ class ComparisonRow(BaseModel):
     values: dict[str, Decimal | None] = Field(
         description="Country ISO-3 to value. Null where that country has no figure."
     )
+    values_converted: dict[str, Decimal | None] | None = Field(
+        default=None,
+        description=(
+            "Country ISO-3 to the figure in the target currency, beside the published "
+            "one and never in place of it. Absent unless convert_to was requested."
+        ),
+    )
+    rates: dict[str, Decimal | None] | None = Field(
+        default=None,
+        description="The rate applied to each country's cell, or null where none was.",
+    )
+    rate_basis: dict[str, str | None] | None = Field(
+        default=None,
+        description="What each rate is; null where no rate was applied.",
+    )
+
+    @model_serializer(mode="wrap")
+    def _drop_absent_conversion(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """Omit the conversion keys entirely when none was requested.
+
+        A null ``values_converted`` would read as "conversion ran and produced
+        nothing", which is a different claim from "conversion was not asked
+        for". A blanket ``exclude_none`` is not used because it would also
+        strip ``first_period`` and ``last_period`` from a country with no data.
+        """
+        data: dict[str, Any] = handler(self)
+        if self.values_converted is None:
+            for key in ("values_converted", "rates", "rate_basis"):
+                data.pop(key, None)
+        return data
 
 
 class ComparisonResponse(BaseModel):
@@ -109,5 +161,17 @@ class ComparisonResponse(BaseModel):
         )
     )
     comparability_notes: list[str]
+    conversion: ConversionBlock | None = Field(
+        default=None,
+        description="Present only when convert_to was requested.",
+    )
     series: list[ComparisonSeries]
     data: list[ComparisonRow]
+
+    @model_serializer(mode="wrap")
+    def _drop_absent_conversion(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """Omit ``conversion`` entirely when none was requested. See ComparisonRow."""
+        data: dict[str, Any] = handler(self)
+        if self.conversion is None:
+            data.pop("conversion", None)
+        return data

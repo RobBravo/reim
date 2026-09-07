@@ -682,3 +682,128 @@ def test_compare_rejects_an_unknown_country(compare_client: TestClient) -> None:
     )
 
     assert response.status_code == 404
+
+
+# --------------------------------------------------------------------------
+# Currency conversion
+# --------------------------------------------------------------------------
+@pytest.fixture
+def convert_client(seeded_session: Session, make_observation) -> Iterator[TestClient]:  # type: ignore[no-untyped-def]
+    """Nicaragua in córdobas, El Salvador already in dollars, rates for both."""
+    from reim.services.observation_writer import write_observations
+
+    write_observations(
+        seeded_session,
+        [
+            make_observation(
+                "2024-01",
+                "36800",
+                indicator_code="money_m1_monthly",
+                source_key="cepalstat_monetary_monthly",
+                country_iso3="NIC",
+                unit="NIO",
+                currency_code="NIO",
+            ),
+            make_observation(
+                "2024-01",
+                "9482",
+                indicator_code="money_m1_monthly",
+                source_key="cepalstat_monetary_monthly",
+                country_iso3="SLV",
+                unit="USD",
+                currency_code="USD",
+            ),
+            make_observation(
+                "2024-01",
+                "36.8",
+                indicator_code="exchange_rate_nominal_monthly",
+                source_key="cepalstat_exchange_rate_monthly",
+                country_iso3="NIC",
+                unit="NIO per USD",
+                currency_code="NIO",
+            ),
+            make_observation(
+                "2024-01",
+                "8.8",
+                indicator_code="exchange_rate_nominal_monthly",
+                source_key="cepalstat_exchange_rate_monthly",
+                country_iso3="SLV",
+                unit="SVC per USD",
+                currency_code="SVC",
+            ),
+        ],
+        connector_version="1.0.0",
+    )
+    seeded_session.commit()
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: seeded_session
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+def _converted(client: TestClient) -> dict:  # type: ignore[type-arg]
+    return client.get(
+        "/api/v1/compare",
+        params={
+            "indicator": "money_m1_monthly",
+            "country": ["NI", "SV"],
+            "convert_to": "USD",
+        },
+    ).json()
+
+
+def test_convert_puts_dollars_beside_the_published_figure(
+    convert_client: TestClient,
+) -> None:
+    row = _converted(convert_client)["data"][0]
+
+    assert row["values"]["NIC"] == "36800"
+    assert row["values_converted"]["NIC"] == "1000.00"
+    assert row["rates"]["NIC"] == "36.8"
+    assert row["rate_basis"]["NIC"] == "monthly average"
+
+
+def test_el_salvador_is_not_divided_by_a_currency_it_retired(
+    convert_client: TestClient,
+) -> None:
+    """The ninefold error, asserted through the endpoint.
+
+    CEPAL publishes a rate for El Salvador and REIM stores it. The converted
+    figure must still equal the published one, because the observation is
+    already in dollars.
+    """
+    row = _converted(convert_client)["data"][0]
+
+    assert row["values"]["SLV"] == "9482"
+    assert row["values_converted"]["SLV"] == "9482"
+    assert row["rates"]["SLV"] is None
+    assert row["rate_basis"]["SLV"] is None
+
+
+def test_conversion_does_not_make_the_series_comparable(
+    convert_client: TestClient,
+) -> None:
+    """D8: `comparable` describes what the publisher published."""
+    body = _converted(convert_client)
+
+    assert body["comparable"] is False
+    assert body["conversion"]["converted"] == 1
+    assert body["conversion"]["already_at_target"] == 1
+    assert body["conversion"]["no_rate"] == 0
+    assert body["conversion"]["rate_source_key"] == "cepalstat_exchange_rate_monthly"
+    assert len(body["conversion"]["caveats"]) == 2
+
+
+def test_without_convert_to_the_response_gains_no_keys(
+    convert_client: TestClient,
+) -> None:
+    """Asserted key-by-key rather than against a rendered string."""
+    body = convert_client.get(
+        "/api/v1/compare",
+        params={"indicator": "money_m1_monthly", "country": ["NI", "SV"]},
+    ).json()
+
+    assert "conversion" not in body
+    assert set(body["data"][0]) == {"period_start", "period_end", "period_label", "values"}
