@@ -33,6 +33,11 @@ class IndicatorDefinition:
     value_type: ValueType
     methodology_url: str
     seasonal_adjustment: SeasonalAdjustment = SeasonalAdjustment.NOT_ADJUSTED
+    #: Whether this indicator's values are amounts denominated in a currency
+    #: and may therefore be converted into another one. False for rates,
+    #: indices and ratios, which are expressed *per* a currency rather than
+    #: *in* it — see the currency-conversion design, decision D5.
+    currency_convertible: bool = False
     is_active: bool = True
 
 
@@ -448,13 +453,15 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
             "Narrow money at the close of each month: currency held by the "
             "public plus demand deposits, as compiled by CEPAL from central "
             "bank figures. Stored in whole units of each country's own "
-            "currency, so values are not comparable across countries without "
-            "a conversion REIM does not perform."
+            "currency, so values are not comparable across countries as "
+            "published. `/compare?convert_to=USD` returns a converted view "
+            "beside the published figures, never in place of them."
         ),
         category=IndicatorCategory.MONETARY,
         frequency=Frequency.MONTHLY,
         unit="units of local currency",
         value_type=ValueType.LEVEL,
+        currency_convertible=True,
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=862&lang=en",
     ),
     IndicatorDefinition(
@@ -469,6 +476,7 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         frequency=Frequency.MONTHLY,
         unit="units of local currency",
         value_type=ValueType.LEVEL,
+        currency_convertible=True,
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=868&lang=en",
     ),
     IndicatorDefinition(
@@ -483,6 +491,7 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         frequency=Frequency.MONTHLY,
         unit="units of local currency",
         value_type=ValueType.LEVEL,
+        currency_convertible=True,
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=869&lang=en",
     ),
     IndicatorDefinition(

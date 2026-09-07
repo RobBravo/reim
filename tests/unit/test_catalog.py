@@ -465,3 +465,21 @@ def test_the_exchange_rate_rule_leaves_room_for_the_colon() -> None:
     assert rule.max_value is None
     assert rule.min_value == 0
     assert rule.allow_zero is False
+
+
+def test_only_the_monetary_aggregates_are_convertible() -> None:
+    """The flag is an allow-list, asserted whole so an addition is deliberate."""
+    convertible = {i.code for i in INDICATORS if i.currency_convertible}
+
+    assert convertible == {"money_m1_monthly", "money_m2_monthly", "money_m3_monthly"}
+
+
+def test_a_rate_indicator_is_not_convertible() -> None:
+    """The trap D5 exists for: 36.8 NIO *per USD* divided by 36.8 is 1.00."""
+    for code in ("exchange_rate_nominal_monthly", "ni_exchange_rate_official_daily"):
+        assert INDICATORS_BY_CODE[code].currency_convertible is False
+
+
+def test_dollar_indicators_are_not_convertible_either() -> None:
+    """Converting USD to USD is a no-op, but declaring it convertible is a claim."""
+    assert INDICATORS_BY_CODE["gdp_current_usd_annual"].currency_convertible is False

@@ -484,8 +484,9 @@ sources:
       Monthly M1, M2 and M3 at the close of each month for the seven Central
       American countries, from CEPALSTAT. Published in millions of each
       country's own currency and stored in whole units of it, so the series
-      are not comparable across countries without a conversion REIM does not
-      perform. CEPAL's compilation from central bank figures.
+      are not comparable across countries as published; `/compare` can return
+      a converted view beside them. CEPAL's compilation from central bank
+      figures.
     organization: CEPAL
     category: monetary
     access_type: http_api
