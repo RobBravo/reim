@@ -856,10 +856,18 @@ only "local currency" — one code per country, verified after the first run:
 
 **These are REIM's first observations that are not comparable across
 countries.** A quetzal figure and a córdoba figure cannot be added, ranked or
-charted on one axis, and REIM performs no conversion — doing so would make REIM
-the author of an exchange-rate choice it has no basis to make. El Salvador and
-Panama are dollarised, so those two alone line up with each other. Anyone
-comparing the rest must bring their own rates.
+charted on one axis, and **REIM performs no conversion today**. El Salvador and
+Panama are dollarised, so those two alone line up with each other.
+
+The reason this file gave until 2026-09-06 was that converting would make REIM
+the author of an exchange-rate choice it had no basis to make. That was true
+while REIM's only rates were Nicaragua's and Guatemala's, on two different
+national methodologies. It stopped being true when
+[CEPAL's monthly nominal exchange rate](#cepal--monthly-nominal-exchange-rate)
+landed: one publisher, one method, all seven countries. REIM stores that series
+and still performs no conversion — a converted view is designed but not yet
+built. Anyone comparing the rest today must bring their own rates, and REIM now
+holds a published set they can use.
 
 #### The nesting identity, and the rounding that appears to break it
 
@@ -1034,6 +1042,135 @@ exists to say, the same call already made for Honduras in the monetary section
 above. The warning is the correct output, expected on every run until Belize's
 dollar figures catch up to its own ratio series, and it is recorded here so
 nobody later reads it as a regression.
+
+---
+
+### CEPAL — monthly nominal exchange rate
+
+| | |
+|---|---|
+| **Organization** | Comisión Económica para América Latina y el Caribe (`CEPAL`) |
+| **Host** | `https://api-cepalstat.cepal.org` |
+| **Endpoint** | `GET /cepalstat/api/v1/indicator/2179/data?lang=en` and `GET /cepalstat/api/v1/indicator/2179/dimensions?lang=es` |
+| **Protocol** | Same undocumented REST JSON as the GDP section above |
+| **Auth** | None |
+| **Frequency** | Monthly, **average of the daily rates within the month** |
+| **Coverage** | **1990-01 … 2025-09**, verified — no gap inside any country's own span |
+| **Countries** | All seven, from two requests |
+| **Volume** | 1.19 MB for the data response, 28 KB for the dimensions; ~6 s for a full run |
+| **Licence** | ⚠️ **Not open** — CEPAL's terms, quoted in [the GDP section](#licence-not-open-and-the-terms-conflict-with-what-reim-does) above |
+| **Status** | ✅ **Enabled** — 2,749 observations, measured 2026-09-06 |
+
+| CEPAL id | Published name | Published unit | REIM indicator | Observations |
+|---|---|---|---|---|
+| 2179 | Nominal exchange rate | `National currency by USA dolar` | `exchange_rate_nominal_monthly` | 2,749 |
+
+Per-country spans, from the live run:
+
+| Country | Span | Months | Currency quoted | Range |
+|---|---|---|---|---|
+| Belize | 1993-06 … 2025-09 | 388 | `BZD` | 1.9 – 2 |
+| Costa Rica | 1994-02 … 2025-09 | 380 | `CRC` | 152.4 – 689.5 |
+| El Salvador | 1993-06 … 2025-09 | 388 | `SVC` | 8.7 – 8.8 |
+| Guatemala | 1993-06 … 2025-09 | 388 | `GTQ` | 5.6 – 8.3 |
+| Honduras | 1993-06 … 2025-09 | 388 | `HNL` | 6.2 – 26.2 |
+| Nicaragua | 1993-06 … 2025-09 | 388 | `NIO` | 6.1 – 36.8 |
+| Panama | 1990-01 … 2025-09 | 429 | `PAB` | 1 – 1 |
+
+This is the third CEPALSTAT family REIM reads and the shape is the monetary
+one, with a simpler period dimension: 515 carries twelve members and they are
+all months, with no annual or quarterly restatement to discard. The Spanish
+`dimensions` request is still needed for the same reason — in `lang=en` the
+member names come back as the untranslated `descripcion_ingles` — and nothing
+from it is stored.
+
+#### The rate is quoted in a currency El Salvador retired in 2001
+
+CEPAL publishes El Salvador at 8.7–8.8 colones per dollar **through 2025**,
+twenty-four years after it adopted the dollar. That is the colón's fixed legal
+conversion rate, which CEPAL never stopped publishing.
+
+The currency a rate is *quoted in* and the currency a country *transacts in*
+are different questions, and El Salvador is where they give different answers.
+REIM's country registry answers the second — it holds `USD` for El Salvador,
+which is correct — so taking the unit from it would label these observations
+`USD per USD`. The connector therefore carries its own seven-entry table and
+stores `SVC per USD`.
+
+The same distinction is what will keep any future conversion honest: El
+Salvador's monetary observations carry `currency_code = USD`, so a conversion
+keyed on the observation's own currency never reaches for this rate. One keyed
+on the country would divide already-dollar figures by 8.8.
+
+#### A monthly average, against end-of-period stocks
+
+`calculation_methodology` reads `Daily exchange rate, monthly average`. REIM's
+only multi-currency series — M1, M2 and M3 — are **end-of-period** stocks.
+Converting a month-end stock at that month's average rate is a real mismatch.
+
+CEPAL publishes no end-of-period nominal rate. The thematic tree was searched
+on 2026-09-06 under both themes that could hold one, `BADECON` (6) and
+`COYUNTURA` (24); between them they carry exactly two exchange-rate
+indicators, 2179 and 1901, and 1901 is the real effective exchange rate, which
+measures something else entirely.
+
+REIM will not derive one either. Taking the last daily observation from the BCN
+or Banguat for two countries and CEPAL's average for the other five would make
+REIM the author of a mixed-method choice — two countries converted one way and
+five another — which is exactly what this file says elsewhere it does not do.
+
+So the mismatch is permanent, and it is stated rather than fixed: in this
+section, in the indicator description, and — when the converted view lands —
+in a field travelling with every derived number.
+
+#### The payload contradicts itself about provenance
+
+`data_features` says `Source Bloomberg`. The `sources` array says
+`On the basis of official figures.` One names a commercial data vendor and the
+other claims officialdom, and they arrive in the same response.
+
+Both strings are stored in `raw_metadata` and REIM repeats neither as its own.
+The indicator description says ECLAC publishes the series and that the payload
+names Bloomberg underneath, so a reader weighing this rate against a central
+bank's own daily rate knows they are not the same kind of figure.
+
+**The data settles which one is behaving.** Belize's dollar has been pegged at
+2:1 since 1976 and has never moved — yet the series reads **1.9 in ten of its
+388 months**, in October 2009 and October 2012. A series carrying the official
+parity would read 2 in every month. One carrying a market quote, averaged
+across the month and rounded to the single decimal CEPAL publishes, does not.
+
+#### Declared two decimals, published one
+
+`decimals` is 2. Across the 2,749 rows for the seven countries, **1,813 carry
+one decimal and 936 carry none. None carries two.**
+
+So `GTQ 7.8` is two significant figures, and anything derived from it inherits
+up to about 0.6% of rounding error from the rate alone. This is the same class
+of discrepancy between declared and published precision that the monetary
+section records, and it is handled the same way: measured, stated, and left in
+the data exactly as published.
+
+It is also why `cepalstat_fx_pegs_hold` is a **10% band rather than an
+equality**. Belize's 1.9 sits exactly 5% below its parity; an equality check
+would call a rounding artefact a defect on every run. The band is twice that,
+and still far tighter than any real misreading of the matrix — the next
+smallest rate in it is Guatemala's ~7.7, some 285% off Belize's peg. Panama is
+exactly 1 in all 429 of its months.
+
+#### Three connector checks, all passing on the first live run
+
+`cepalstat_fx_expected_countries` (completeness, `critical`, all seven
+returned), `cepalstat_fx_pegs_hold` (consistency, `error`, both parities within
+tolerance across 776 pegged country-months) and `cepalstat_monthly_continuity`
+(completeness, `warning`, no gaps in any of the seven country-series). The last
+is shared with the monetary connector rather than copied: it lives on
+`CepalstatConnector` because it is about periods, not about any indicator
+family's shape.
+
+The standard battery passes too, freshness included at **342 days** against a
+threshold of 450. The series genuinely lags: CEPAL's own `last_update` is
+2026-08-31 but the data still ends 2025-09.
 
 ---
 

@@ -74,6 +74,7 @@ source. Nothing here is a scrape of an aggregator.
 | **CEPAL** — CEPALSTAT | **all seven** | annual | GDP and GDP per inhabitant, each at current and at constant 2018 prices | 1990 onward |
 | **CEPAL** — CEPALSTAT | **all seven** | **monthly** | monetary aggregates M1, M2 and M3, end of period, each in local currency | 1990-01 onward |
 | **CEPAL** — CEPALSTAT | **all seven** | annual | central government public debt stock, in dollars and as a share of GDP | 1990 onward |
+| **CEPAL** — CEPALSTAT | **all seven** | **monthly** | nominal exchange rate, local currency per USD, average of the daily rates within the month | 1990-01 onward |
 | **World Bank** — Indicators API v2 | Nicaragua | annual | exchange rate, inflation, remittances, reserves, exports, imports | 1960 onward |
 
 The BCN, Banguat and INIDE series are **national primary sources** — the
@@ -255,7 +256,7 @@ second is easy to forget:
 ```bash
 alembic upgrade head
 python -m reim.cli db seed
-python -m reim.cli pipeline run-all          # ~43,900 observations
+python -m reim.cli pipeline run-all          # ~46,600 observations
 ```
 
 That leaves **`bcn_exchange_rate` with about 40 rows**, not the 5,334 it holds
@@ -274,10 +275,11 @@ ships its full history in the routine run, because each of those sources
 publishes the complete series on every request. Banguat's 36 years cost one
 request of 1.3 MB; SIECA's 69 quarters for six countries cost four requests of
 16.7 KB each; CEPAL's 36 years of GDP for seven countries cost four of about
-170 KB, its monthly monetary aggregates six requests of 1.4–1.6 MB, and its
-central government public debt two requests of 617–635 KB.
+170 KB, its monthly monetary aggregates six requests of 1.4–1.6 MB, its
+central government public debt two requests of 617–635 KB, and its monthly
+nominal exchange rate two requests of 1.19 MB and 28 KB.
 
-A complete rebuild lands on the order of **48,900 observations**. No exact
+A complete rebuild lands on the order of **51,600 observations**. No exact
 figure is given on purpose: the BCN and Banguat each publish a rate every
 calendar day, so the total grows daily and any number printed here would be
 wrong tomorrow.
