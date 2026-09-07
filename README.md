@@ -337,6 +337,7 @@ GET /api/v1/observations/latest          newest observation per series
 GET /api/v1/observations/export.csv      streamed CSV
 
 GET /api/v1/compare                      one indicator, 2-20 countries, aligned
+                                         ?convert_to=USD adds a converted view
 
 GET /api/v1/pipelines                    health, volumes and freshness
 GET /api/v1/pipelines/runs               ?pipeline_key &status
@@ -351,8 +352,39 @@ Observation filters: `country` (ISO2 or ISO3), `indicator`, `source`,
 **rectangular** matrix: every row carries an entry for every country asked
 for, `null` where that country publishes no figure, so a gap is stated rather
 than inferred. It reports whether the series are comparable — the flag turns
-on unit and currency — and names what differs. It **never converts
-currencies**: heterogeneous units are surfaced, not reconciled.
+on unit and currency — and names what differs.
+
+`?convert_to=USD` adds a converted view **beside** the published figures and
+never in place of them. Each row gains `values_converted`, `rates` and
+`rate_basis`, keyed by country exactly like `values`, so every derived number
+can be recomputed by hand from the response alone. Omit the parameter and the
+response carries none of those keys at all.
+
+El Salvador is the row that teaches the rule. CEPAL still quotes it at 8.8
+colones per dollar, twenty-four years after dollarisation, and REIM stores that
+rate — but El Salvador's monetary observations carry `currency_code = USD`, so
+they pass through untouched:
+
+```json
+"values":           { "NIC": "36800",   "SLV": "9482" },
+"values_converted": { "NIC": "1000.00", "SLV": "9482" },
+"rates":            { "NIC": "36.8",    "SLV": null   }
+```
+
+Conversion keys on **the observation's own currency, never on its country**.
+Keyed on the country, that `9482` would have been divided by 8.8.
+
+Three things it will not do. It does not convert an indicator whose values are
+rates, indices or ratios — `36.8 NIO per USD` divided by `36.8` is a confident,
+meaningless `1.00`, so those are refused with `400`. It does not fall back to a
+neighbouring month's rate: no rate for the period means `null`, and the
+`conversion` block counts how many. And it does not change `comparable`, which
+describes what the publisher published.
+
+The converted figures are **indicative**, and the response says so. The rate is
+an average of the daily rates across the month while the monetary series are
+end-of-period stocks; CEPAL publishes no end-of-period rate, so the mismatch is
+declared rather than hidden.
 
 ### Examples
 
@@ -540,15 +572,19 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   CEPAL's two per-inhabitant GDP series are also stored exactly as published.
   Every rescaled observation keeps the published value, the published unit and
   the scale applied in `raw_metadata`, so the original figure is recoverable
-  exactly. These four rescalings are the whole of it: nothing in REIM converts
-  a currency or restates a unit.
+  exactly. These four rescalings are the whole of it: nothing in REIM restates
+  a unit, and no stored figure is ever a converted one. `/compare?convert_to=`
+  derives dollars at request time, beside the published figure and never in
+  place of it; nothing derived is written to the database.
 - **The monetary aggregates are not comparable across countries.** M1, M2 and
   M3 are each in the publishing country's own currency — córdobas, quetzales,
-  lempiras, colones, balboas, Belize dollars — and **REIM does not convert
-  them**. They cannot be summed, ranked or charted on a shared axis without
-  exchange rates the consumer brings. El Salvador and Panama are dollarised, so
-  those two alone line up with each other. Every observation carries its
-  `currency_code`, so the mismatch is visible rather than implicit.
+  lempiras, colones, balboas, Belize dollars — and **as stored they cannot be
+  summed, ranked or charted on a shared axis**. El Salvador and Panama are
+  dollarised, so those two alone line up with each other. Every observation
+  carries its `currency_code`, so the mismatch is visible rather than implicit.
+  `/compare?convert_to=USD` will derive a comparable view at request time from
+  CEPAL's published monthly rate, labelled indicative and never written to the
+  database; the published figures stay exactly as they are.
 - **The public debt ratio's GDP is not REIM's GDP.** CEPAL's
   `public_debt_pct_gdp_annual` divides by each country's GDP in local currency
   converted at the IMF's 31 December rate — **not** REIM's own

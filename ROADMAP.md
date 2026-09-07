@@ -139,18 +139,33 @@ and a fifth has its first country.
   Comparability is declared, never enforced: the flag turns on unit and
   currency, differing publishers are noted, and the endpoint never refuses and
   never converts. See `docs/sources.md` and the API section of the README.
-- Currency handling for genuinely multi-currency comparisons — always alongside
-  the original figure, never replacing it. **Half done.** The rate series is in:
-  CEPALSTAT's monthly nominal exchange rate, **2,749 observations**, all seven
-  countries, 1993-06 onward (Panama 1990-01, Costa Rica 1994-02). It is REIM's
-  first indicator whose values are rates rather than amounts or ratios. The
-  converted view on `/compare` is the remaining half and is designed but not
-  built; see `docs/superpowers/specs/2026-09-06-currency-conversion-design.md`.
-  Two things that design had to settle are worth knowing before using the rate:
-  CEPAL still quotes El Salvador in colones twenty-four years after
-  dollarisation, and the rate is a within-month average while the only
-  multi-currency series REIM holds are end-of-period stocks. See
-  `docs/sources.md`.
+- ~~**Currency handling for genuinely multi-currency comparisons**~~ ✅ **done**
+  — always alongside the original figure, never replacing it, in two pieces.
+  The rate series first: CEPALSTAT's monthly nominal exchange rate, **2,749
+  observations**, all seven countries, 1993-06 onward (Panama 1990-01, Costa
+  Rica 1994-02), REIM's first indicator whose values are rates rather than
+  amounts or ratios. Then `/compare?convert_to=USD`, which derives dollars **at
+  request time** and writes nothing: each row gains `values_converted`, `rates`
+  and `rate_basis` beside the published `values`, and omitting the parameter
+  returns a payload with none of those keys.
+
+  This reverses decision **C5** of the comparison-endpoint design, "no currency
+  conversion, ever". That decision's premise was that REIM would have to author
+  an exchange-rate choice; one publisher covering all seven countries on one
+  method ended it. The replacement rule is narrower, not absent: REIM converts
+  only with a single published series, only on an exact period match, only for
+  indicators that declare themselves convertible, and only into a field beside
+  the original.
+
+  Three things the work had to settle. Conversion keys on **the observation's
+  own currency, never on its country** — CEPAL still quotes El Salvador in
+  colones twenty-four years after dollarisation, and keying on the country
+  would divide its already-dollar figures by 8.8. The rate is a within-month
+  average while the monetary series are end-of-period stocks, and CEPAL
+  publishes no end-of-period alternative, so converted figures are labelled
+  **indicative** rather than silently mismatched. And a missing rate is a gap:
+  `null`, counted, never a neighbouring month's rate. See `docs/sources.md`
+  and `docs/superpowers/specs/2026-09-06-currency-conversion-design.md`.
 
 ## v0.4.0 — Making the data visible
 

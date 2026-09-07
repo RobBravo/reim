@@ -856,18 +856,37 @@ only "local currency" — one code per country, verified after the first run:
 
 **These are REIM's first observations that are not comparable across
 countries.** A quetzal figure and a córdoba figure cannot be added, ranked or
-charted on one axis, and **REIM performs no conversion today**. El Salvador and
-Panama are dollarised, so those two alone line up with each other.
+charted on one axis. El Salvador and Panama are dollarised, so those two alone
+line up with each other **as published**.
 
-The reason this file gave until 2026-09-06 was that converting would make REIM
-the author of an exchange-rate choice it had no basis to make. That was true
-while REIM's only rates were Nicaragua's and Guatemala's, on two different
-national methodologies. It stopped being true when
+Until 2026-09-06 this file said converting would make REIM the author of an
+exchange-rate choice it had no basis to make. That was true while REIM's only
+rates were Nicaragua's and Guatemala's, on two different national
+methodologies. It stopped being true when
 [CEPAL's monthly nominal exchange rate](#cepal--monthly-nominal-exchange-rate)
-landed: one publisher, one method, all seven countries. REIM stores that series
-and still performs no conversion — a converted view is designed but not yet
-built. Anyone comparing the rest today must bring their own rates, and REIM now
-holds a published set they can use.
+landed: one publisher, one method, all seven countries.
+
+**`GET /api/v1/compare?convert_to=USD` now returns a converted view beside
+these figures**, and the rules that keep it from becoming an authored number
+are narrow:
+
+* Nothing derived is **stored**. Conversion happens at request time; the
+  observations table holds only what publishers published.
+* Conversion keys on **the observation's own `currency_code`, never on its
+  country**. El Salvador's rows carry `USD`, so they pass through untouched at
+  an implied rate of 1 — CEPAL's 8.8 colón rate is stored and simply never
+  applies, because REIM holds no observation denominated in `SVC`. Keyed on the
+  country instead, those figures would come back divided by 8.8.
+* **A missing rate is a gap.** Exact period match only; no nearest rate, no
+  carry-forward. The response counts what did not convert.
+* The figures are labelled **indicative**, because the rate is a within-month
+  average and these are end-of-period stocks — see
+  [that section](#a-monthly-average-against-end-of-period-stocks).
+* `comparable` is unaffected. It describes what CEPAL published, and a derived
+  view does not change that.
+
+Anyone who prefers their own rates still has the published figures untouched,
+and REIM now holds a published rate set they can use instead.
 
 #### The nesting identity, and the rounding that appears to break it
 
