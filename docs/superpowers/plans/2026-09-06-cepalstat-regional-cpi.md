@@ -30,8 +30,9 @@ work needs `make db-up CONTAINER_ENGINE=podman`.
 * **Tests never call an official source.** The payload is replayed from a
   recording through `respx`.
 * Measured facts this plan asserts, all from 2026-09-06: 3,451 rows for the
-  seven of 16,913; five countries 1980-01…2026-07 (559 months), Honduras
-  1994-01 (391), Belize 1990-11…2026-06 (266 in a 428-month span); Guatemala
+  seven of 16,913; four countries 1980-01…2026-07 (559 months), Costa Rica
+  1980-01…2026-06 (558), Honduras 1994-01 (391), Belize 1990-11…2026-06 (266
+  in a 428-month span); Guatemala
   2009-12 = `94.882` and 2010-01 = `54.4831537`; El Salvador 1985-07 =
   `11.473`, 1985-08 = `7.157`, 1985-09 = `11.928`.
 
@@ -337,7 +338,7 @@ BASE_URL = "https://api-cepalstat.cepal.org/cepalstat/api/v1"
 ROWS_FOR_THE_SEVEN = 3451
 SPANS = {
     "BLZ": ("1990-11", "2026-06", 266),
-    "CRI": ("1980-01", "2026-07", 559),
+    "CRI": ("1980-01", "2026-06", 558),
     "GTM": ("1980-01", "2026-07", 559),
     "HND": ("1994-01", "2026-07", 391),
     "NIC": ("1980-01", "2026-07", 559),

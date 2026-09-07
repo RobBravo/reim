@@ -60,7 +60,8 @@ vendor: each row cites its own national compiler through `source_id` —
 
 | Country | Span | Months | Interior gaps |
 |---|---|---|---|
-| Costa Rica, Guatemala, Nicaragua, Panama, El Salvador | 1980-01 … 2026-07 | 559 | none |
+| Guatemala, Nicaragua, Panama, El Salvador | 1980-01 … 2026-07 | 559 | none |
+| Costa Rica | 1980-01 … 2026-06 | 558 | none |
 | Honduras | 1994-01 … 2026-07 | 391 | none |
 | Belize | 1990-11 … 2026-06 | 266 | **162 months, in 81 runs** |
 
