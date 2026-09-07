@@ -284,12 +284,28 @@ pattern:
 |---|---|---|
 | `cepalstat_fx_expected_countries` | `critical` | A country dropping out of the rate matrix, keyed per series rather than pooled |
 | `cepalstat_monthly_continuity` | `warning` | A hole inside one country's own span |
-| `cepalstat_fx_pegs_hold` | `error` | Panama ≠ 1 or Belize ≠ 2 in any month from 1993-06 |
+| `cepalstat_fx_pegs_hold` | `error` | Panama or Belize more than 10% off their peg in any month from 1993-06 |
 
 The third is worth its own check because both pegs are legal facts rather than
 market outcomes: a value drifting off them means the matrix has been misread —
 a dimension mis-keyed, a country column shifted — far more probably than that
 Panama has floated the balboa.
+
+**It is a band, not an equality, and the data is why.** Measured on the
+recording: Panama is exactly 1 in all 429 months, but Belize is **1.9 in ten of
+its 388** — October 2009 and October 2012. Belize's dollar has been pegged at
+2:1 since 1976 and has never moved, so those tens are not a currency event.
+They are §3.4 and §3.3 compounding: a Bloomberg market quote that wandered a
+fraction below the official parity, averaged over the month, then rounded to
+the one decimal CEPAL publishes. 1.9 against 2 is exactly 5%, so the band is
+10% — twice the largest artefact, and still far tighter than any real
+misreading, since the next smallest rate in the matrix is Guatemala's ~7.7,
+some 285% off Belize's peg.
+
+This is also the sharpest evidence for §3.3. A series carrying the official
+parity would read 2 in every month; one carrying a market quote does not. What
+CEPAL's `sources` array calls "official figures" behaves like what its
+`data_features` calls Bloomberg.
 
 The continuity check is **not** reusable as it stands: it is
 `_check_monthly_continuity`, a private method on the monetary connector. Its
