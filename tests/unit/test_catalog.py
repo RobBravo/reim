@@ -547,3 +547,46 @@ def test_methodology_varies_by_country_defaults_to_false() -> None:
         "deposit_rate_nominal_monthly",
         "policy_rate_monthly",
     }
+
+
+def test_every_rates_indicator_has_a_quality_rule(quality_rules: QualityRuleSet) -> None:
+    """The three interest rates pin the thresholds their design argued for.
+
+    Every value asserted here was derived from a measurement against the live
+    API, so an edit that changes one has to change this test too.
+    """
+    codes = (
+        "lending_rate_nominal_monthly",
+        "deposit_rate_nominal_monthly",
+        "policy_rate_monthly",
+    )
+    rules = {code: quality_rules.for_indicator(code) for code in codes}
+
+    for code, rule in rules.items():
+        assert rule is not quality_rules.defaults, f"{code} fell through to the defaults"
+        assert rule.min_value == 0
+        assert rule.max_value is None
+        assert rule.allow_negative is False
+        assert rule.monotonic_increasing is False
+        # CEPAL lags this family by about eleven months while still touching the
+        # table. 450 clears the stalest country-series at 372 days and still
+        # catches a family that has stopped being extended.
+        assert rule.freshness_max_age_days == 450
+
+    # Percentage change is a useless tripwire on series that sit near zero:
+    # Nicaragua's deposit rate moving 0.5 -> 1.7 is +240% and 1.2 points. Only
+    # the lending rate, whose largest real move is +45.1%, keeps it.
+    assert rules["lending_rate_nominal_monthly"].max_period_change_pct == 60
+    assert rules["deposit_rate_nominal_monthly"].max_period_change_pct is None
+    assert rules["policy_rate_monthly"].max_period_change_pct is None
+
+    # Nicaragua publishes a genuine zero for the policy rate in 2010-03 and
+    # 2010-04. The other two series never publish one.
+    assert rules["policy_rate_monthly"].allow_zero is True
+    assert rules["lending_rate_nominal_monthly"].allow_zero is False
+    assert rules["deposit_rate_nominal_monthly"].allow_zero is False
+
+    # Measured 2,490 / 2,453 / 1,621 stored observations.
+    assert rules["lending_rate_nominal_monthly"].min_observations == 2400
+    assert rules["deposit_rate_nominal_monthly"].min_observations == 2350
+    assert rules["policy_rate_monthly"].min_observations == 1550

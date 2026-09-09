@@ -568,3 +568,28 @@ sources:
     license: cepal_terms_of_use
     official: true
     enabled: true
+
+  - key: cepalstat_rates_monthly
+    name: Central American interest rates (monthly)
+    description: >-
+      Monthly nominal lending rates, nominal deposit rates and monetary policy
+      rates for the seven Central American countries, from CEPALSTAT, compiled
+      from each country's own central bank. CEPAL defines each rate
+      differently in each country, so levels are not comparable across
+      countries — only their movements are. Panama is absent from the policy
+      rate: it has no central bank.
+    organization: CEPAL
+    category: financial
+    access_type: http_api
+    frequency: monthly
+    format: json
+    base_url: https://api-cepalstat.cepal.org/cepalstat/api/v1
+    documentation_url: https://statistics.cepal.org/portal/cepalstat/
+    connector: reim.ingestion.connectors.regional.cepalstat_rates
+    indicators:
+      - lending_rate_nominal_monthly
+      - deposit_rate_nominal_monthly
+      - policy_rate_monthly
+    license: cepal_terms_of_use
+    official: true
+    enabled: true

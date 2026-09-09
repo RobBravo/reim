@@ -386,3 +386,54 @@ indicators:
     # should be — this is its freshest series.
     freshness_max_age_days: 120
     min_observations: 3400
+
+  lending_rate_nominal_monthly:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: false
+    # Nicaragua's largest real move is +45.1% in 2011-12 (9.09 -> 13.19).
+    # 60 clears it and still reports a discontinuity. Kept only on this
+    # series: see the two below for why it cannot work on them.
+    max_period_change_pct: 60
+    monotonic_increasing: false
+    # The family ends 2025-10 worldwide while CEPAL's own last_update is
+    # 2026-08: it genuinely lags about eleven months, so the stalest country
+    # is 342 days old as of 2026-09-07. 450 matches the exchange-rate rule at
+    # the identical lag, passes with headroom, and still catches a family that
+    # has stopped being extended.
+    freshness_max_age_days: 450
+    min_observations: 2400
+
+  deposit_rate_nominal_monthly:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: false
+    # Deliberately null. This series sits near zero, where a percentage change
+    # is unbounded and meaningless as a tripwire: Nicaragua moving 0.5 -> 1.7
+    # is +240% and 1.2 points, and 79 moves exceed 25%, essentially all real.
+    # `cepalstat_rates_step` measures percentage *points* instead. Same call
+    # ni_cpi_inflation_monthly already makes.
+    max_period_change_pct: null
+    monotonic_increasing: false
+    # Belize, Costa Rica and Honduras end 2025-08, the stalest in the family
+    # at 372 days on 2026-09-07. 450 passes that with 78 days of headroom.
+    freshness_max_age_days: 450
+    min_observations: 2350
+
+  policy_rate_monthly:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    # Nicaragua publishes a genuine 0 in 2010-03 and 2010-04, inside a real
+    # attributed series. The other two rate series never publish a zero.
+    allow_zero: true
+    # Null for the same reason as the deposit rate: El Salvador moving
+    # 1.47 -> 4.87 is +231% and 3.4 points, and 85 moves exceed 25%.
+    max_period_change_pct: null
+    monotonic_increasing: false
+    freshness_max_age_days: 450
+    # 1,621 measured across six countries; Nicaragua's 61 interior gaps could
+    # widen, so this sits further below the measurement than its two siblings.
+    min_observations: 1550
