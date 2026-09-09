@@ -47,12 +47,17 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from reim.core.constants import Frequency
+from reim.core.exceptions import TransformationError
+from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
     NormalizedObservation,
     QualityResult,
     RawDataset,
 )
-from reim.ingestion.connectors.regional.cepalstat import CepalstatConnector
+from reim.ingestion.connectors.regional.cepalstat import (
+    YEARS_DIMENSION,
+    CepalstatConnector,
+)
 from reim.ingestion.http import ensure_ok, fetch, http_client
 
 CENTRAL_AMERICA = frozenset({"NIC", "GTM", "SLV", "HND", "CRI", "PAN", "BLZ"})
@@ -159,12 +164,87 @@ class CepalstatRatesConnector(CepalstatConnector):
         )
 
     def transform(self, raw: RawDataset) -> list[NormalizedObservation]:
-        """Normalize the three responses into monthly observations.
+        """Normalize the three payloads into one observation per country-month.
 
-        Not yet implemented; the module docstring describes what this will
-        do once it exists.
+        Pure function of ``raw``.
+
+        Raises:
+            TransformationError: The payload is not the expected mapping, a
+                period or years dimension is missing, or a row names a member
+                that does not exist.
         """
-        raise NotImplementedError  # Task 6
+        payload = raw.payload
+        if not isinstance(payload, dict) or "data" not in payload or "dimensions" not in payload:
+            msg = "CEPALSTAT payload must carry 'data' and 'dimensions'"
+            raise TransformationError(msg, source_key=self.source.key)
+
+        months = self._months_of_period_dimension(
+            self._decode(str(payload["dimensions"]), DIMENSIONS_INDICATOR),
+            DIMENSIONS_INDICATOR,
+        )
+
+        observations: list[NormalizedObservation] = []
+        for spec in SERIES:
+            observations.extend(
+                self._read_series(spec, str(payload["data"][spec.cepal_id]), months, raw)
+            )
+        observations.sort(key=lambda obs: (obs.indicator_code, obs.country_iso3, obs.period.start))
+        return observations
+
+    def _read_series(
+        self,
+        spec: SeriesSpec,
+        text: str,
+        months: dict[int, int | None],
+        raw: RawDataset,
+    ) -> list[NormalizedObservation]:
+        """Turn one indicator's payload into its Central American observations."""
+        body = self._decode(text, spec.cepal_id)["body"]
+        years = self._members_of(body, YEARS_DIMENSION, "years", spec.cepal_id)
+        published_unit = str(body["metadata"]["unit"])
+        sources = {source["id"]: source["organization_name"] for source in body["sources"]}
+        credits = [entry["description"] for entry in body["credits"] if entry["id"] != 0]
+
+        wanted = CENTRAL_AMERICA - spec.excluded_countries
+        observations: list[NormalizedObservation] = []
+        for row in body["data"]:
+            iso3 = row.get("iso3")
+            if iso3 not in wanted:
+                continue
+            month = self._month_of_period_dimension(row, months, spec.cepal_id)
+            if month is None:
+                continue
+            year = self._label_of(row, years, YEARS_DIMENSION, "year", spec.cepal_id)
+            value = self._value_of(row, spec.cepal_id)
+            label = f"{year}-{month:02d}"
+            observations.append(
+                NormalizedObservation(
+                    country_iso3=str(iso3),
+                    indicator_code=spec.indicator_code,
+                    source_key=self.source.key,
+                    period=parse_period(label, Frequency.MONTHLY),
+                    unit=UNIT,
+                    currency_code=None,
+                    value_numeric=value,
+                    retrieved_at=raw.retrieved_at,
+                    source_url=f"{raw.source_url}/indicator/{spec.cepal_id}/data",
+                    source_record_id=f"cepalstat:{spec.cepal_id}:{iso3}:{label}",
+                    raw_metadata={
+                        "cepalstat_indicator_id": spec.cepal_id,
+                        "cepalstat_published_value": format(value.normalize(), "f"),
+                        "cepalstat_published_unit": published_unit,
+                        # Empty when CEPAL cites nobody: 345 rows of 1206
+                        # carry a null source_id, which is a gap in the
+                        # publisher's provenance rather than an error here.
+                        "cepalstat_source": sources.get(row.get("source_id"), ""),
+                        # credits[0] is CEPAL's own fetch date and changes
+                        # between runs; only the citation is kept.
+                        "cepalstat_credits": credits,
+                        "contract_status": "verified",
+                    },
+                )
+            )
+        return observations
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
         """Run this family's own quality checks.
