@@ -34,9 +34,13 @@ never calls an official source.
 | `cepalstat_dimensions_862.json.gz` | `GET .../indicator/862/dimensions?lang=es`, byte-for-byte, gzipped (28 KB → 4 KB). Recorded in Spanish because `lang=en` returns all seventeen period members as the untranslated string `descripcion_ingles`; this is the only place a month can be told from a quarter. | 2026-08-19 |
 | `cepalstat_dimensions_868.json.gz` | Same endpoint, indicator `868`. | 2026-08-19 |
 | `cepalstat_dimensions_869.json.gz` | Same endpoint, indicator `869`. | 2026-08-19 |
+| `cepalstat_rates_856.json.gz` | `GET https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/856/data?lang=en`, byte-for-byte, gzipped only to keep the repo small (1.70 MB → 96 KB). Tests decompress it before parsing. The **complete** response — 145 countries and every period member — because that is what proves the filter to the seven Central American countries and the discarding of the annual and quarterly members. | 2026-09-08 |
+| `cepalstat_rates_857.json.gz` | Same endpoint, indicator `857` — nominal deposit rate (1.80 MB → 82 KB). The only place the lending-above-deposit invariant can be asserted, and the only place CEPAL's `CBBO` misattribution of Costa Rica is visible. | 2026-09-08 |
+| `cepalstat_rates_1206.json.gz` | Same endpoint, indicator `1206` — monetary policy rate (1.38 MB → 59 KB). Holds Panama's sixteen uniformly zero, wholly unattributed 2022 rows, Nicaragua's two genuine 2010 zeros, and the 345 rows whose `source_id` is null. | 2026-09-08 |
+| `cepalstat_dimensions_856.json.gz` | `GET .../indicator/856/dimensions?lang=es`, byte-for-byte, gzipped (28 KB → 4 KB). Recorded in Spanish because `lang=en` returns all seventeen period members as the untranslated string `descripcion_ingles`. Dimension 3981's member table was measured identical across 856, 857 and 1206, so the rates connector fetches it once. | 2026-09-08 |
 
 The CEPALSTAT API needs no User-Agent override and no TLS accommodation; these
-fifteen were recorded with REIM's own identifier. `body.credits[0].description` is
+nineteen were recorded with REIM's own identifier. `body.credits[0].description` is
 CEPAL's own fetch date and differs between recordings — nothing asserts it, and
 `raw_metadata` stores only the citation elements that follow it.
 

@@ -226,6 +226,32 @@ def cepalstat_cpi_365_json() -> str:
     return gzip.decompress((FIXTURES / "cepalstat_cpi_365.json.gz").read_bytes()).decode("utf-8")
 
 
+@pytest.fixture(scope="session")
+def cepalstat_rates_856_json() -> str:
+    """CEPALSTAT indicator 856, nominal lending rate (stored gzipped)."""
+    return gzip.decompress((FIXTURES / "cepalstat_rates_856.json.gz").read_bytes()).decode("utf-8")
+
+
+@pytest.fixture(scope="session")
+def cepalstat_rates_857_json() -> str:
+    """CEPALSTAT indicator 857, nominal deposit rate (stored gzipped)."""
+    return gzip.decompress((FIXTURES / "cepalstat_rates_857.json.gz").read_bytes()).decode("utf-8")
+
+
+@pytest.fixture(scope="session")
+def cepalstat_rates_1206_json() -> str:
+    """CEPALSTAT indicator 1206, monetary policy rate (stored gzipped)."""
+    return gzip.decompress((FIXTURES / "cepalstat_rates_1206.json.gz").read_bytes()).decode("utf-8")
+
+
+@pytest.fixture(scope="session")
+def cepalstat_dimensions_856_json() -> str:
+    """Indicator 856's dimensions in Spanish — the only place a month is named."""
+    return gzip.decompress((FIXTURES / "cepalstat_dimensions_856.json.gz").read_bytes()).decode(
+        "utf-8"
+    )
+
+
 @pytest.fixture
 def inide_source(catalog: SourceCatalog) -> SourceEntry:
     """Catalog entry for the INIDE monthly CPI source."""
