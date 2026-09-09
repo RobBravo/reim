@@ -245,8 +245,8 @@ regression gate: they must pass unchanged, with no edit to the test file.
   - `PERIOD_DIMENSION: int` — `3981`
   - `MONTHS_BY_SPANISH_NAME: dict[str, int]`
   - `NON_MONTH_MEMBERS: frozenset[str]`
-  - `CepalstatConnector._months_of(self, dimensions_document: Any, cepal_id: int) -> dict[int, int | None]`
-  - `CepalstatConnector._month_of(self, row: Any, months: dict[int, int | None], cepal_id: int) -> int | None`
+  - `CepalstatConnector._months_of_period_dimension(self, dimensions_document: Any, cepal_id: int) -> dict[int, int | None]`
+  - `CepalstatConnector._month_of_period_dimension(self, row: Any, months: dict[int, int | None], cepal_id: int) -> int | None`
 
 - [ ] **Step 1: Confirm the gate is green before moving anything**
 
@@ -300,10 +300,21 @@ NON_MONTH_MEMBERS = frozenset({"Anual", "Trimestre 1", "Trimestre 2", "Trimestre
 
 Cut `_months_of` and `_month_of` from `cepalstat_monetary.py` and paste them
 into `CepalstatConnector` in `cepalstat.py`, immediately before
-`_check_monthly_continuity`. The bodies are unchanged. Their docstrings gain
-one line each recording that they are shared:
+`_check_monthly_continuity`, **renaming them** to
+`_months_of_period_dimension` and `_month_of_period_dimension`.
 
-`_months_of` — after its existing first line, add:
+The rename is required, not cosmetic: `cepalstat_cpi.py` and
+`cepalstat_exchange_rate.py` already define `_months_of` and `_month_of` for
+**dimension 515**, with different signatures. Moving these in under their old
+names would have both subclasses silently shadow them. Naming the base methods
+for the dimension they handle also puts the explicit name on the general class,
+where it belongs. Update the two call sites in `cepalstat_monetary.py`; leave
+`cepalstat_cpi.py` and `cepalstat_exchange_rate.py` untouched.
+
+The bodies are otherwise unchanged. Their docstrings gain one line each
+recording that they are shared:
+
+`_months_of_period_dimension` — after its existing first line, add:
 
 ```text
     Shared by every family that carries dimension 3981.
@@ -321,7 +332,7 @@ Dimension 3981 is the one exception, and it earns it: the period-within-year
 member table is a property of the dimension, not of a family. Two families
 carry it — the monetary aggregates and the interest rates — with the same
 seventeen members, the same out-of-order ids and the same untranslated
-English names, so ``_months_of`` and ``_month_of`` live here rather than
+English names, so ``_months_of_period_dimension`` and ``_month_of_period_dimension`` live here rather than
 being copied. Everything else about a family's dimensions still belongs to
 its own connector. Each connector still names its own dimensions and writes
 its own ``extract``, ``transform`` and ``validate``: GDP reads a
@@ -336,7 +347,7 @@ Delete its local `PERIOD_DIMENSION`, `MONTHS_BY_SPANISH_NAME` and
 `NON_MONTH_MEMBERS` definitions (lines 54, 64-78 and 83 as the file stands).
 
 **Do not add an import for them.** All three are referenced only from inside
-`_months_of` and `_month_of`, the two methods that moved — verified by line
+`_months_of_period_dimension` and `_month_of_period_dimension`, the two methods that moved — verified by line
 number: every use sits in 250-296, while `_read_series` spans 200-249 and uses
 none of them. So the existing import stays exactly as it is:
 
@@ -913,7 +924,7 @@ class CepalstatRatesConnector(CepalstatConnector):
 
         Four requests. The dimensions request is made once because dimension
         3981's members belong to the dimension rather than to an indicator;
-        ``_month_of`` raises on any member id the table does not hold, so a
+        ``_month_of_period_dimension`` raises on any member id the table does not hold, so a
         future divergence between the three surfaces as a failure rather than
         as a silent drop.
 
@@ -1185,7 +1196,7 @@ Append to `CepalstatRatesConnector`, replacing any temporary
             msg = "CEPALSTAT payload must carry 'data' and 'dimensions'"
             raise TransformationError(msg, source_key=self.source.key)
 
-        months = self._months_of(
+        months = self._months_of_period_dimension(
             self._decode(str(payload["dimensions"]), DIMENSIONS_INDICATOR),
             DIMENSIONS_INDICATOR,
         )
@@ -1218,7 +1229,7 @@ Append to `CepalstatRatesConnector`, replacing any temporary
             iso3 = row.get("iso3")
             if iso3 not in wanted:
                 continue
-            month = self._month_of(row, months, spec.cepal_id)
+            month = self._month_of_period_dimension(row, months, spec.cepal_id)
             if month is None:
                 continue
             year = self._label_of(row, years, YEARS_DIMENSION, "year", spec.cepal_id)
