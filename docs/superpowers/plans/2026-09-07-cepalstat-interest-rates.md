@@ -333,29 +333,31 @@ transforms was rejected in design and stays rejected.
 - [ ] **Step 5: Re-point `cepalstat_monetary.py` at the base**
 
 Delete its local `PERIOD_DIMENSION`, `MONTHS_BY_SPANISH_NAME` and
-`NON_MONTH_MEMBERS`, and import them instead:
+`NON_MONTH_MEMBERS` definitions (lines 54, 64-78 and 83 as the file stands).
+
+**Do not add an import for them.** All three are referenced only from inside
+`_months_of` and `_month_of`, the two methods that moved — verified by line
+number: every use sits in 250-296, while `_read_series` spans 200-249 and uses
+none of them. So the existing import stays exactly as it is:
 
 ```python
 from reim.ingestion.connectors.regional.cepalstat import (
-    MONTHS_BY_SPANISH_NAME,
-    NON_MONTH_MEMBERS,
-    PERIOD_DIMENSION,
     YEARS_DIMENSION,
     CepalstatConnector,
 )
 ```
 
-`MONTHS_BY_SPANISH_NAME` and `NON_MONTH_MEMBERS` are no longer referenced in
-that module's body once the methods have moved, but the module docstring
-discusses them and the test module imports neither. Verify with:
+Importing the three back would leave three unused imports and fail
+`ruff check`. Confirm nothing still references them before running the gate:
 
 ```bash
 grep -n "MONTHS_BY_SPANISH_NAME\|NON_MONTH_MEMBERS\|PERIOD_DIMENSION" \
   reim/ingestion/connectors/regional/cepalstat_monetary.py
 ```
 
-If a name is genuinely unreferenced after the move, drop it from the import
-rather than leaving `ruff` to flag it.
+Expected after the edit: only the module docstring's prose, which discusses
+the members without naming these constants — if a code line still matches,
+the move is incomplete.
 
 - [ ] **Step 6: Run the regression gate**
 
