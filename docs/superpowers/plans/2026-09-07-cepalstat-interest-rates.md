@@ -1840,12 +1840,19 @@ what the run actually produced.
 - Consumes: everything above.
 - Produces: no code.
 
-- [ ] **Step 1: Bring the database up and migrate**
+- [ ] **Step 1: Bring the database up, migrate, and seed**
 
 ```bash
 make db-up CONTAINER_ENGINE=podman
 .venv/bin/alembic upgrade head
+.venv/bin/python -m reim.cli db seed
 ```
+
+**The seed is not optional.** It writes countries, organizations, **indicators**
+and **catalog sources** into the database, so without it neither the three new
+indicators nor the `cepalstat_rates_monthly` source exists and the pipeline run
+in Step 2 fails. It is idempotent and safe to re-run. Expect its output to
+report 3 indicators created and 1 source created.
 
 - [ ] **Step 2: Run the pipeline**
 
@@ -1864,11 +1871,34 @@ a finding** — record it as one rather than adjusting a threshold to hide it.
 
 - [ ] **Step 3: Verify what landed**
 
+The CLI has exactly four command groups — `catalog`, `db`, `pipeline` and
+`quality`. There is **no `observations` command**; read what landed through the
+run's own report and the API:
+
+Neither command takes a pipeline argument — `pipeline status` accepts only
+`--limit` and `quality report` only `--days` and `--limit`. Both list the most
+recent runs, which is this one:
+
 ```bash
-.venv/bin/python -m reim.cli observations list \
-  --indicator lending_rate_nominal_monthly --limit 5
+.venv/bin/python -m reim.cli pipeline status --limit 5
+.venv/bin/python -m reim.cli quality report --days 1
+```
+
+Compare `quality report`'s output against Step 2's predicted state before
+moving on. Note it **exits 1** when anything at `error` or worse is recorded;
+the predicted warnings alone should leave it at 0.
+
+Then start the API and query it — Step 2 does not start it, and the endpoint
+below is served by the API, not the CLI. The invocation is the `run-api`
+target's, minus the reload flag:
+
+```bash
+.venv/bin/uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 &
+API_PID=$!
+sleep 3
 curl -s 'http://localhost:8000/api/v1/compare?indicator=lending_rate_nominal_monthly&country=NIC&country=GTM&country=CRI&limit=3' \
-  | .venv/bin/python -m json.tool | head -50
+  | .venv/bin/python -m json.tool | head -60
+kill $API_PID
 ```
 
 Confirm the comparison payload carries `comparable: true` **and** the
