@@ -45,8 +45,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from itertools import pairwise
 
-from reim.core.constants import Frequency
+from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import TransformationError
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
@@ -247,9 +248,142 @@ class CepalstatRatesConnector(CepalstatConnector):
         return observations
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
-        """Run this family's own quality checks.
+        """Assert CEPALSTAT-specific expectations beyond the standard battery."""
+        return [
+            self._check_spread(observations),
+            self._check_step(observations),
+            self._check_expected_countries(observations),
+            self._check_monthly_continuity(observations),
+        ]
 
-        Not yet implemented; the module docstring describes what this will
-        do once it exists.
+    def _check_spread(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """Lending above deposit, which is what a bank is for.
+
+        Holds in all 2,453 shared country-months as measured on 2026-09-07,
+        from 1.18 points (El Salvador) to 18.84 (Honduras). Unlike the
+        monetary family's nesting check this needs no tolerance: the margin is
+        two orders of magnitude above any rounding CEPAL applies.
         """
-        raise NotImplementedError  # Task 7
+        sides: dict[str, dict[tuple[str, str], Decimal]] = {
+            "lending_rate_nominal_monthly": {},
+            "deposit_rate_nominal_monthly": {},
+        }
+        for obs in observations:
+            if obs.indicator_code in sides and obs.value_numeric is not None:
+                sides[obs.indicator_code][(obs.country_iso3, obs.period.label)] = obs.value_numeric
+
+        lending = sides["lending_rate_nominal_monthly"]
+        deposit = sides["deposit_rate_nominal_monthly"]
+        shared = sorted(set(lending) & set(deposit))
+        broken = [key for key in shared if lending[key] <= deposit[key]]
+
+        if not broken:
+            return QualityResult.passed(
+                "cepalstat_rates_spread",
+                CheckType.CONSISTENCY,
+                f"Lending exceeds deposit on all {len(shared)} shared country-month(s)",
+                expected_value="0 inversions",
+                actual_value="0",
+            )
+
+        shown = ", ".join(f"{country} {period}" for country, period in broken[:5])
+        suffix = f" (+{len(broken) - 5} more)" if len(broken) > 5 else ""
+        return QualityResult.failure(
+            "cepalstat_rates_spread",
+            CheckType.CONSISTENCY,
+            CheckSeverity.CRITICAL,
+            f"{len(broken)} month(s) where the deposit rate meets or exceeds "
+            f"the lending rate: {shown}{suffix}",
+            expected_value="0 inversions",
+            actual_value=str(len(broken)),
+        )
+
+    def _check_step(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """Calendar-adjacent moves beyond ``MAX_STEP_POINTS`` percentage points.
+
+        Measured in points rather than percent because these series sit near
+        zero, where a percentage change is unbounded and says nothing: 0.5 to
+        1.7 is +240% and 1.2 points. Adjacent months only — comparing across a
+        hole would manufacture a break that is really a gap.
+        """
+        series: dict[tuple[str, str], dict[tuple[int, int], Decimal]] = {}
+        for obs in observations:
+            if obs.value_numeric is None:
+                continue
+            year, month = obs.period.label.split("-")
+            series.setdefault((obs.indicator_code, obs.country_iso3), {})[
+                (int(year), int(month))
+            ] = obs.value_numeric
+
+        compared = 0
+        breaks: list[str] = []
+        for (code, iso3), months in sorted(series.items()):
+            ordered = sorted(months)
+            for earlier, later in pairwise(ordered):
+                if (later[0] - earlier[0]) * 12 + (later[1] - earlier[1]) != 1:
+                    continue
+                compared += 1
+                move = abs(months[later] - months[earlier])
+                if move > MAX_STEP_POINTS:
+                    breaks.append(f"{iso3} {later[0]}-{later[1]:02d} ({code}, {move} pts)")
+
+        if not breaks:
+            return QualityResult.passed(
+                "cepalstat_rates_step",
+                CheckType.VALIDITY,
+                f"No move beyond {MAX_STEP_POINTS} point(s) in {compared} adjacent pair(s)",
+                expected_value=f"<= {MAX_STEP_POINTS} points",
+                actual_value="0 beyond",
+            )
+
+        shown = ", ".join(breaks[:5])
+        suffix = f" (+{len(breaks) - 5} more)" if len(breaks) > 5 else ""
+        return QualityResult.failure(
+            "cepalstat_rates_step",
+            CheckType.VALIDITY,
+            CheckSeverity.WARNING,
+            f"{len(breaks)} move(s) beyond {MAX_STEP_POINTS} points: {shown}{suffix}",
+            expected_value=f"<= {MAX_STEP_POINTS} points",
+            actual_value=str(len(breaks)),
+        )
+
+    def _check_expected_countries(self, observations: list[NormalizedObservation]) -> QualityResult:
+        """Each series has its own country set; Panama is absent from one.
+
+        An expectation rather than a floor, so that a country arriving is
+        reported as loudly as one disappearing. Panama appearing in the policy
+        rate would mean CEPAL had replaced its zero placeholder with something,
+        which is worth a human reading it.
+        """
+        seen: dict[str, set[str]] = {spec.indicator_code: set() for spec in SERIES}
+        for obs in observations:
+            if obs.indicator_code in seen:
+                seen[obs.indicator_code].add(obs.country_iso3)
+
+        problems: list[str] = []
+        for code, expected in EXPECTED_COUNTRIES.items():
+            for iso3 in sorted(expected - seen[code]):
+                problems.append(f"{code} lost {iso3}")
+            for iso3 in sorted(seen[code] - expected):
+                problems.append(f"{code} gained {iso3}")
+
+        if not problems:
+            return QualityResult.passed(
+                "cepalstat_rates_expected_countries",
+                CheckType.COMPLETENESS,
+                "Every series carries exactly the countries it is expected to",
+                expected_value=str(sum(len(v) for v in EXPECTED_COUNTRIES.values())),
+                actual_value=str(sum(len(v) for v in seen.values())),
+            )
+
+        # Not truncated, unlike the other checks: this family holds at most
+        # twenty country-series pairs in total, so every change fits in one
+        # message and a gain is never buried behind a run of losses.
+        return QualityResult.failure(
+            "cepalstat_rates_expected_countries",
+            CheckType.COMPLETENESS,
+            CheckSeverity.CRITICAL,
+            f"{len(problems)} change(s) in country coverage: {', '.join(problems)}",
+            expected_value=str(sum(len(v) for v in EXPECTED_COUNTRIES.values())),
+            actual_value=str(sum(len(v) for v in seen.values())),
+        )

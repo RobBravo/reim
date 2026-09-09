@@ -13,9 +13,10 @@ import httpx
 import pytest
 import respx
 
-from reim.core.constants import Frequency
+from reim.core.constants import CheckSeverity, CheckStatus, Frequency
 from reim.core.exceptions import TransformationError
-from reim.domain.pipelines.models import RawDataset
+from reim.domain.observations.periods import parse_period
+from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.connectors.regional.cepalstat_rates import (
     CENTRAL_AMERICA,
@@ -113,6 +114,23 @@ def raw(
             1206: cepalstat_rates_1206_json,
         },
         cepalstat_dimensions_856_json,
+    )
+
+
+def _observation(code: str, iso3: str, label: str, value: Decimal) -> NormalizedObservation:
+    """A minimal observation for checks that need constructed data."""
+    return NormalizedObservation(
+        country_iso3=iso3,
+        indicator_code=code,
+        source_key="cepalstat_rates_monthly",
+        period=parse_period(label, Frequency.MONTHLY),
+        unit="percent per annum",
+        currency_code=None,
+        value_numeric=value,
+        retrieved_at=datetime(2026, 9, 7, tzinfo=UTC),
+        source_url="https://example.invalid",
+        source_record_id=f"test:{code}:{iso3}:{label}",
+        raw_metadata={},
     )
 
 
@@ -230,3 +248,90 @@ def test_english_only_run_cannot_name_a_month(
 
     with pytest.raises(TransformationError, match="descripcion_ingles"):
         build_connector().transform(broken)
+
+
+def results_of(observations: list[NormalizedObservation]) -> dict[str, QualityResult]:
+    return {result.check_name: result for result in build_connector().validate(observations)}
+
+
+def test_validate_reports_four_checks_and_the_known_first_run_state(raw: RawDataset) -> None:
+    """Spread, step and coverage pass; continuity warns on two known gaps."""
+    results = results_of(build_connector().transform(raw))
+
+    assert set(results) == {
+        "cepalstat_rates_spread",
+        "cepalstat_rates_step",
+        "cepalstat_rates_expected_countries",
+        "cepalstat_monthly_continuity",
+    }
+    assert results["cepalstat_rates_spread"].status is CheckStatus.PASSED
+    assert results["cepalstat_rates_step"].status is CheckStatus.PASSED
+    assert results["cepalstat_rates_expected_countries"].status is CheckStatus.PASSED
+    # Panama's 33 deposit gaps and Nicaragua's 61 policy gaps are real.
+    continuity = results["cepalstat_monthly_continuity"]
+    assert continuity.status is CheckStatus.FAILED
+    assert continuity.severity is CheckSeverity.WARNING
+    assert "94 month(s) missing" in continuity.message
+
+
+def test_spread_holds_on_every_shared_month(raw: RawDataset) -> None:
+    """Lending above deposit in all 2,453 shared country-months."""
+    result = results_of(build_connector().transform(raw))["cepalstat_rates_spread"]
+
+    assert result.status is CheckStatus.PASSED
+    assert "2453" in result.message.replace(",", "")
+
+
+def test_spread_fails_on_a_constructed_inversion() -> None:
+    """A bank charging less than it pays is a defect, not a rounding artifact."""
+    observations = [
+        _observation("lending_rate_nominal_monthly", "NIC", "2020-01", Decimal("4.0")),
+        _observation("deposit_rate_nominal_monthly", "NIC", "2020-01", Decimal("9.0")),
+    ]
+    result = results_of(observations)["cepalstat_rates_spread"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.CRITICAL
+    assert "NIC 2020-01" in result.message
+
+
+def test_step_fires_beyond_eight_points_and_not_at_seven() -> None:
+    """8 points is the threshold; Belize's real 18 -> 11 step is 7 and passes."""
+    passing = [
+        _observation("policy_rate_monthly", "BLZ", "2010-12", Decimal("18")),
+        _observation("policy_rate_monthly", "BLZ", "2011-01", Decimal("11")),
+    ]
+    result = results_of(passing)["cepalstat_rates_step"]
+    assert result.status is CheckStatus.PASSED
+
+    failing = [
+        _observation("policy_rate_monthly", "BLZ", "2010-12", Decimal("18")),
+        _observation("policy_rate_monthly", "BLZ", "2011-01", Decimal("9.99")),
+    ]
+    result = results_of(failing)["cepalstat_rates_step"]
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.WARNING
+
+
+def test_step_ignores_a_move_across_a_gap() -> None:
+    """Comparing across a hole manufactures a break that is really an absence."""
+    across_a_gap = [
+        _observation("policy_rate_monthly", "NIC", "2010-01", Decimal("2")),
+        _observation("policy_rate_monthly", "NIC", "2014-01", Decimal("18")),
+    ]
+    result = results_of(across_a_gap)["cepalstat_rates_step"]
+
+    assert result.status is CheckStatus.PASSED
+
+
+def test_expected_countries_reports_a_gain_as_loudly_as_a_loss() -> None:
+    """Panama appearing in the policy rate is news, not a silent improvement."""
+    with_panama = [
+        _observation("policy_rate_monthly", iso3, "2020-01", Decimal("5"))
+        for iso3 in CENTRAL_AMERICA
+    ]
+    result = results_of(with_panama)["cepalstat_rates_expected_countries"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.CRITICAL
+    assert "policy_rate_monthly gained PAN" in result.message
