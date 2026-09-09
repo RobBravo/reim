@@ -15,11 +15,15 @@ from pydantic import (
 )
 
 from reim.core.constants import Frequency
+from reim.domain.indicators.registry import IndicatorDefinition
 from reim.repositories.comparison import SeriesSummary
 from reim.schemas.common import PageMeta
 
 
-def assess_comparability(summaries: list[SeriesSummary]) -> tuple[bool, list[str]]:
+def assess_comparability(
+    summaries: list[SeriesSummary],
+    definition: IndicatorDefinition | None = None,
+) -> tuple[bool, list[str]]:
     """Decide whether these series may be read against each other, and why not.
 
     Comparability turns on **unit and currency only**. Differing sources are
@@ -28,8 +32,18 @@ def assess_comparability(summaries: list[SeriesSummary]) -> tuple[bool, list[str
     mismatch would cry wolf. Having no data at all is a gap to report, not an
     incomparability.
 
+    An indicator whose publisher defines it differently in each country adds a
+    note and **does not** flip the flag. CEPAL's interest rates are the case:
+    they share a unit and carry no currency, so the flag is true and correct
+    on the axes it measures, while their levels still are not readable against
+    each other. Flipping it would widen what ``comparable`` means for every
+    existing caller and would misreport comparing how two countries' rates
+    *moved*, which is sound.
+
     Args:
         summaries: One per requested country, empty series included.
+        definition: The registered indicator, when the caller has it. Only
+            ``methodology_varies_by_country`` is read.
 
     Returns:
         ``(comparable, notes)`` — notes are human-readable and always
@@ -63,6 +77,12 @@ def assess_comparability(summaries: list[SeriesSummary]) -> tuple[bool, list[str
     publishers = {code for s in populated for code in s.organization_codes}
     if len(publishers) > 1:
         notes.append(f"Publishers differ across countries: {', '.join(sorted(publishers))}.")
+
+    if definition is not None and definition.methodology_varies_by_country:
+        notes.append(
+            "The publisher defines this indicator differently in each country, "
+            "so levels are not comparable; movements over time are."
+        )
 
     comparable = len(units) <= 1 and len(currencies) <= 1 and not mixed_within
     return comparable, notes

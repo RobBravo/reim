@@ -107,8 +107,9 @@ def compare(
         msg = f"Indicator {indicator!r} is not registered"
         raise ResourceNotFoundError(msg, indicator=indicator)
 
+    registered = INDICATORS_BY_CODE.get(definition.code)
+
     if convert_to is not None:
-        registered = INDICATORS_BY_CODE.get(definition.code)
         if registered is None:
             msg = f"Indicator {definition.code!r} is not in the registry"
             raise ResourceNotFoundError(msg, indicator=definition.code)
@@ -131,7 +132,7 @@ def compare(
         descending=order == "desc",
     )
     summaries = summarise_series(session, query, countries)
-    comparable, notes = assess_comparability(summaries)
+    comparable, notes = assess_comparability(summaries, registered)
 
     conversion: ConversionBlock | None = None
     converted: dict[tuple[str, str], ConvertedCell] = {}

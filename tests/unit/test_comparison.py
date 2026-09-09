@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from reim.domain.indicators.registry import INDICATORS_BY_CODE
 from reim.repositories.comparison import SeriesSummary
 from reim.schemas.comparison import assess_comparability
 
@@ -91,3 +92,46 @@ def test_one_country_carrying_two_units_is_not_comparable() -> None:
 
     assert comparable is False
     assert any("NIC" in note for note in notes)
+
+
+def test_varying_methodology_is_noted_and_does_not_flip_the_flag() -> None:
+    """Comparability turns on unit and currency; this is a caveat, not a refusal.
+
+    CEPAL's rates share a unit and carry no currency, so the flag is true and
+    correct on the axes it measures. The note carries what the flag cannot:
+    movements are comparable, levels are not.
+    """
+    summaries = [
+        summary("NIC", units=("percent per annum",), currencies=(None,)),
+        summary("GTM", units=("percent per annum",), currencies=(None,)),
+    ]
+    definition = INDICATORS_BY_CODE["lending_rate_nominal_monthly"]
+
+    comparable, notes = assess_comparability(summaries, definition)
+
+    assert comparable is True
+    assert any("differently in each country" in note for note in notes)
+    assert any("movements" in note for note in notes)
+
+
+def test_no_methodology_note_for_an_ordinary_indicator() -> None:
+    """The note must not appear on the 30-odd indicators that do not declare it."""
+    summaries = [
+        summary("NIC", units=("index",), currencies=(None,)),
+        summary("GTM", units=("index",), currencies=(None,)),
+    ]
+    definition = INDICATORS_BY_CODE["cpi_index_monthly"]
+
+    comparable, notes = assess_comparability(summaries, definition)
+
+    assert comparable is True
+    assert not any("differently in each country" in note for note in notes)
+
+
+def test_assess_comparability_without_a_definition_is_unchanged() -> None:
+    """The parameter is optional; existing callers keep their behaviour."""
+    summaries = [
+        summary("NIC", units=("index",), currencies=(None,)),
+        summary("GTM", units=("index",), currencies=(None,)),
+    ]
+    assert assess_comparability(summaries) == assess_comparability(summaries, None)
