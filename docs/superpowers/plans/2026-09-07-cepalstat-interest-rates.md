@@ -146,7 +146,7 @@ years = {m["id"]: m["name"] for d in nic["dimensions"] if d["id"] == 29117 for m
 zeros = sorted((years[r["dim_29117"]], period[r["dim_3981"]]) for r in nic["data"]
                if r["iso3"] == "NIC" and r["value"] == "0" and period[r["dim_3981"]] in MONTHS)
 print("Nicaragua zero months in 1206:", zeros)
-assert zeros == [("2010", "Marzo"), ("2010", "Abril")]
+assert set(zeros) == {("2010", "Marzo"), ("2010", "Abril")}
 print("ALL RECORDING ASSERTIONS PASSED")
 PY
 ```
