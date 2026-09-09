@@ -28,13 +28,18 @@ dimension's member table, a row's label and a row's value. The second is
 behaviour that is about periods rather than about any family's shape:
 ``_check_monthly_continuity`` walks each country's own span looking for holes
 and would read identically in every monthly connector, so it lives here rather
-than being copied. Nothing about an indicator family's dimensions belongs in
-this file. Each connector still names its own dimensions and writes its own
-``extract``, ``transform`` and ``validate``: GDP reads a country-by-year
-matrix, the monetary aggregates carry a third period-within-year dimension,
-public debt carries four, and the exchange rate carries a twelve-member month
-dimension of its own. Merging those transforms was rejected in design and
-stays rejected.
+than being copied. Dimension 3981 is the one exception, and it earns it: the
+period-within-year member table is a property of the dimension, not of a
+family. Two families carry it — the monetary aggregates and the interest
+rates — with the same seventeen members, the same out-of-order ids and the
+same untranslated English names, so ``_months_of_period_dimension`` and
+``_month_of_period_dimension`` live here rather than being copied. Everything
+else about a family's dimensions still
+belongs to its own connector. Each connector still names its own dimensions
+and writes its own ``extract``, ``transform`` and ``validate``: GDP reads a
+country-by-year matrix, public debt carries four dimensions, and the exchange
+rate carries a twelve-member month dimension of its own. Merging those
+transforms was rejected in design and stays rejected.
 """
 
 from __future__ import annotations
@@ -53,6 +58,40 @@ from reim.ingestion.base import BaseConnector
 #: ``lang``.
 COUNTRY_DIMENSION = 208
 YEARS_DIMENSION = 29117
+
+#: The period-within-year dimension. Belongs to the dimension rather than to
+#: any family: the monetary aggregates and the interest rates both carry it,
+#: with the same seventeen members and the same ids.
+PERIOD_DIMENSION = 3981
+
+#: The only member names that become observations. Read from the Spanish
+#: dimensions response, because ``lang=en`` returns all seventeen members as
+#: the untranslated string ``descripcion_ingles`` and the ids run 3982-3998
+#: out of calendar order, with September at 3993 and July at 3994.
+MONTHS_BY_SPANISH_NAME = {
+    "Enero": 1,
+    "Febrero": 2,
+    "Marzo": 3,
+    "Abril": 4,
+    "Mayo": 5,
+    "Junio": 6,
+    "Julio": 7,
+    "Agosto": 8,
+    "Septiembre": 9,
+    "Octubre": 10,
+    "Noviembre": 11,
+    "Diciembre": 12,
+}
+
+#: The only period members that are legitimately not months. Together with
+#: ``MONTHS_BY_SPANISH_NAME`` this makes the label classification total: any
+#: label in neither set is a contract break (a rename or an unannounced new
+#: member) and must raise rather than silently fall out as "not a month".
+#:
+#: What these members *mean* differs by family, and neither connector stores
+#: them either way: for the monetary aggregates they restate a period-end
+#: stock exactly, and for the interest rates they are means of their months.
+NON_MONTH_MEMBERS = frozenset({"Anual", "Trimestre 1", "Trimestre 2", "Trimestre 3", "Trimestre 4"})
 
 
 class CepalstatConnector(BaseConnector):
@@ -141,6 +180,59 @@ class CepalstatConnector(BaseConnector):
         except (KeyError, TypeError, ValueError, ArithmeticError) as exc:
             msg = f"CEPALSTAT returned an unreadable value for indicator {cepal_id}: {exc}"
             raise TransformationError(msg, source_key=self.source.key) from exc
+
+    def _months_of_period_dimension(
+        self, dimensions_document: Any, cepal_id: int
+    ) -> dict[int, int | None]:
+        """Map each period member id to a month number, or ``None`` to skip.
+
+        Shared by every family that carries dimension 3981.
+
+        ``None`` marks the annual and quarterly members, which restate a month
+        exactly and are not stored. The classification is total: a label that
+        is neither a known month nor a known non-month member means CEPAL
+        renamed or added one, which is a contract break, not a row to drop.
+
+        Raises:
+            TransformationError: The period dimension is absent, or one of its
+                members carries a label that is neither in
+                ``MONTHS_BY_SPANISH_NAME`` nor in ``NON_MONTH_MEMBERS``.
+        """
+        members = self._members_of(
+            dimensions_document["body"], PERIOD_DIMENSION, "period", cepal_id
+        )
+        months: dict[int, int | None] = {}
+        for member_id, label in members.items():
+            if label in MONTHS_BY_SPANISH_NAME:
+                months[member_id] = MONTHS_BY_SPANISH_NAME[label]
+            elif label in NON_MONTH_MEMBERS:
+                months[member_id] = None
+            else:
+                msg = (
+                    f"CEPALSTAT period dimension for indicator {cepal_id} names an "
+                    f"unrecognized member {label!r}: neither a known month nor a known "
+                    f"non-month member. CEPAL renamed or added a period member."
+                )
+                raise TransformationError(msg, source_key=self.source.key)
+        return months
+
+    def _month_of_period_dimension(
+        self, row: Any, months: dict[int, int | None], cepal_id: int
+    ) -> int | None:
+        """Resolve a row's month, or ``None`` when it is a restatement.
+
+        Raises:
+            TransformationError: The row names a period member id that is not
+                in ``months`` at all, which means the id itself does not
+                exist in the dimension's member table.
+        """
+        member = row.get(f"dim_{PERIOD_DIMENSION}")
+        if member not in months:
+            msg = (
+                f"CEPALSTAT row for indicator {cepal_id} names an unknown period member {member!r}"
+            )
+            raise TransformationError(msg, source_key=self.source.key)
+        return months[member]
 
     def _check_monthly_continuity(self, observations: list[NormalizedObservation]) -> QualityResult:
         """Holes inside each country's own span, per indicator.
