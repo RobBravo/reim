@@ -86,16 +86,16 @@ aggregator rather than the Nicaraguan publisher itself.
 - ~~**Monthly frequency exercised end to end**~~ ✅ **done**, and daily with it,
   which this item had not even anticipated. **Quarterly is now exercised too**,
   by SIECA's services trade in v0.3.0 — not by the SECMCA or IMF
-  balance-of-payments candidates this line named. The catalog holds 6 annual,
-  9 monthly, 2 daily and 1 quarterly. **Weekly, semiannual and irregular remain
+  balance-of-payments candidates this line named. The catalog holds 8 annual,
+  11 monthly, 2 daily and 1 quarterly. **Weekly, semiannual and irregular remain
   unexercised** — `Frequency` defines all three and the period model parses
   `YYYY-Wnn` and `YYYY-Hn`, but no source REIM reads publishes at those
   cadences.
 
 ## v0.3.0 — Central America
 
-This release is five independent pieces, not one increment. Four are done,
-and a fifth has its first country.
+This release is nine independent pieces, not one increment. Eight are done,
+and the ninth — the national central banks — has its first country.
 
 - ~~**Regional merchandise trade**~~ ✅ **done** — REIM's first data for more
   than one country: 7,848 monthly observations for Nicaragua, Guatemala, El
@@ -181,6 +181,36 @@ and a fifth has its first country.
   **indicative** rather than silently mismatched. And a missing rate is a gap:
   `null`, counted, never a neighbouring month's rate. See `docs/sources.md`
   and `docs/superpowers/specs/2026-09-06-currency-conversion-design.md`.
+- ~~**CEPALSTAT interest rates**~~ ✅ **done** — REIM's **first interest-rate
+  data of any kind** and the first use of the `financial` indicator category,
+  unused since v0.1.0: **6,564 observations**, nominal lending rates, nominal
+  deposit rates and monetary policy rates, monthly from 1990-01, from four
+  requests. Until this landed REIM's monetary data was M1, M2 and M3, which say
+  how much money exists and nothing about its price.
+
+  Four things measuring settled. The annual and quarterly members of the period
+  dimension are **means of their months**, not the period-end restatements the
+  monetary family publishes — 693 of 693 quarters and 202 of 202 annual figures
+  on the lending rate. REIM stores the twelve monthly members only: the same
+  decision as the monetary connector, for the opposite reason, because storing
+  a mean beside its own inputs would publish a derived figure as if it were
+  published. **Panama's policy rate is absent by decision**: CEPAL publishes
+  sixteen rows for it, every value zero, every one unattributed, all inside
+  2022, for a dollarised country with no central bank; Nicaragua's two genuine
+  2010 zeros, inside a real attributed series, **are** stored. **CEPAL defines
+  each country's rate differently and says so** in its own
+  `calculation_methodology` — Belize's "policy rate" is its central bank's
+  lending rate — so `IndicatorDefinition` gained
+  `methodology_varies_by_country` and `/compare` now states that levels are not
+  comparable while movements are, without flipping `comparable` to false. And
+  percentage change is **useless** on two of the three: a policy rate moving
+  1.47 → 4.87 is +231% and 3.4 points, so `max_period_change_pct` is null there
+  and a check measuring percentage *points* does the work.
+
+  CEPAL's own defects are recorded rather than repaired: indicator 857
+  attributes Costa Rica to the **Central Bank of Bolivia**, describes
+  Guatemala's deposit rate as a lending rate, and indicator 856 declares zero
+  decimals while publishing two in five cells out of six. See `docs/sources.md`.
 
 ## v0.4.0 — Making the data visible
 

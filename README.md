@@ -61,7 +61,7 @@ See [ROADMAP.md](./ROADMAP.md).
 
 ### Data available
 
-**19 live pipelines feeding 33 indicators**, every one verified against its
+**22 live pipelines feeding 38 indicators**, every one verified against its
 source. Nothing here is a scrape of an aggregator.
 
 | Source | Countries | Frequency | Series | Coverage |
@@ -76,6 +76,7 @@ source. Nothing here is a scrape of an aggregator.
 | **CEPAL** — CEPALSTAT | **all seven** | annual | central government public debt stock, in dollars and as a share of GDP | 1990 onward |
 | **CEPAL** — CEPALSTAT | **all seven** | **monthly** | nominal exchange rate, local currency per USD, average of the daily rates within the month | 1990-01 onward |
 | **CEPAL** — CEPALSTAT | **all seven** | **monthly** | consumer price index, each country on its own base period | 1980-01 onward |
+| **CEPAL** — CEPALSTAT | **all seven**, six for the policy rate | **monthly** | nominal lending rate, nominal deposit rate and monetary policy rate | 1990-01 onward |
 | **World Bank** — Indicators API v2 | Nicaragua | annual | exchange rate, inflation, remittances, reserves, exports, imports | 1960 onward |
 
 The BCN, Banguat and INIDE series are **national primary sources** — the
@@ -257,7 +258,7 @@ second is easy to forget:
 ```bash
 alembic upgrade head
 python -m reim.cli db seed
-python -m reim.cli pipeline run-all          # ~50,100 observations
+python -m reim.cli pipeline run-all          # ~56,700 observations
 ```
 
 That leaves **`bcn_exchange_rate` with about 40 rows**, not the 5,334 it holds
@@ -278,10 +279,11 @@ request of 1.3 MB; SIECA's 69 quarters for six countries cost four requests of
 16.7 KB each; CEPAL's 36 years of GDP for seven countries cost four of about
 170 KB, its monthly monetary aggregates six requests of 1.4–1.6 MB, its
 central government public debt two requests of 617–635 KB, and its monthly
-nominal exchange rate one request of 1.19 MB, and its consumer price index
-one of 2.02 MB.
+nominal exchange rate one request of 1.19 MB, its consumer price index one
+of 2.02 MB, and its three interest rates four requests — three data responses
+of 1.38–1.80 MB and one shared dimensions response of 28 KB.
 
-A complete rebuild lands on the order of **55,100 observations**. No exact
+A complete rebuild lands on the order of **61,700 observations**. No exact
 figure is given on purpose: the BCN and Banguat each publish a rate every
 calendar day, so the total grows daily and any number printed here would be
 wrong tomorrow.
@@ -354,7 +356,11 @@ Observation filters: `country` (ISO2 or ISO3), `indicator`, `source`,
 **rectangular** matrix: every row carries an entry for every country asked
 for, `null` where that country publishes no figure, so a gap is stated rather
 than inferred. It reports whether the series are comparable — the flag turns
-on unit and currency — and names what differs.
+on unit and currency — and names what differs. An indicator can also declare
+that its publisher **defines it differently in each country**, as CEPAL's three
+interest rates do; that adds a note saying levels are not comparable while
+movements are, and leaves `comparable` alone, because the flag describes what
+the publisher published.
 
 `?convert_to=USD` adds a converted view **beside** the published figures and
 never in place of them. Each row gains `values_converted`, `rates` and
@@ -588,6 +594,20 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   42.6% fall that is a change of base — so inflation computed across that month
   is meaningless. Nicaragua has two of these indices, REIM's from INIDE and
   CEPAL's from the central bank, which differ by about 4% in level.
+- **The interest rates are not comparable across countries either, and CEPAL
+  says so itself.** `calculation_methodology` on all three series reads
+  "According to the definition from each country", and the definitions differ
+  in substance: Belize's "monetary policy rate" is its central bank's own
+  lending rate, El Salvador's is a stock-exchange repo yield over 1–7 days, and
+  Nicaragua's is the yield on 180-day central bank bonds. The three indicators
+  declare `methodology_varies_by_country`, so `/compare` returns a note saying
+  levels are not comparable while movements are — and leaves `comparable`
+  alone, because that flag describes unit and currency agreement. **Panama has
+  no policy rate here by decision**: it is dollarised and has no central bank,
+  and CEPAL's sixteen zero-valued, unattributed 2022 cells for it are an
+  artifact REIM does not store. Nicaragua's two genuine 2010 zeros, inside a
+  real attributed series, are stored. See
+  [`docs/sources.md`](./docs/sources.md).
 - **The monetary aggregates are not comparable across countries.** M1, M2 and
   M3 are each in the publishing country's own currency — córdobas, quetzales,
   lempiras, colones, balboas, Belize dollars — and **as stored they cannot be
@@ -613,13 +633,15 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   itself; REIM reports it rather than filling it.
 - **World Bank data lags.** Annual figures for year *Y* land during *Y+1*, so
   freshness thresholds are measured in hundreds of days, not days.
-- **Seven countries, but only two of them beyond trade and GDP.** Nicaragua has
-  the BCN's daily exchange rate and INIDE's monthly CPI; Guatemala has Banguat's
-  daily rate pair. El Salvador, Honduras, Costa Rica and Panama have **trade and
-  GDP only** — monthly merchandise from the IMF, quarterly services from SIECA,
-  annual GDP from CEPAL. **Belize has GDP only**: it reports nothing to the IMF
-  dataflow at any frequency and is not one of SIECA's six, so 144 annual
-  observations are everything REIM holds for it.
+- **Coverage is uneven, and only two countries have a national primary
+  source.** Nicaragua has the BCN's daily exchange rate and INIDE's monthly
+  CPI; Guatemala has Banguat's daily rate pair. Every other country is read
+  through multilaterals alone — the IMF's monthly merchandise trade, SIECA's
+  quarterly services, and CEPAL's annual GDP and public debt plus its four
+  monthly families: monetary aggregates, exchange rate, consumer prices and
+  interest rates. **Belize is CEPAL-only**: it reports nothing to the IMF
+  dataflow at any frequency and is not one of SIECA's six, so every figure REIM
+  holds for it comes from CEPALSTAT.
 - **No authentication or rate limiting.** Do not expose this publicly without
   putting a gateway in front and narrowing `REIM_CORS_ALLOW_ORIGINS`.
 - **Revisions are recorded, not reconciled.** REIM keeps the history but does

@@ -40,7 +40,7 @@ never calls an official source.
 | `cepalstat_dimensions_856.json.gz` | `GET .../indicator/856/dimensions?lang=es`, byte-for-byte, gzipped (28 KB → 4 KB). Recorded in Spanish because `lang=en` returns all seventeen period members as the untranslated string `descripcion_ingles`. Dimension 3981's member table was measured identical across 856, 857 and 1206, so the rates connector fetches it once. | 2026-09-08 |
 
 The CEPALSTAT API needs no User-Agent override and no TLS accommodation; these
-nineteen were recorded with REIM's own identifier. `body.credits[0].description` is
+eighteen were recorded with REIM's own identifier. `body.credits[0].description` is
 CEPAL's own fetch date and differs between recordings — nothing asserts it, and
 `raw_metadata` stores only the citation elements that follow it.
 

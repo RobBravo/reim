@@ -1373,17 +1373,381 @@ break across 3,220 adjacent months with 3 of the 3 known breaks seen) and
 standard battery passes, freshness at **69 days** against a threshold of 120 —
 REIM's tightest, and it should be.
 
+---
+
+### CEPAL — monthly interest rates
+
+| | |
+|---|---|
+| **Organization** | Comisión Económica para América Latina y el Caribe (`CEPAL`) |
+| **Host** | `https://api-cepalstat.cepal.org` |
+| **Endpoints** | `GET /cepalstat/api/v1/indicator/{856,857,1206}/data?lang=en` — three requests |
+| | `GET /cepalstat/api/v1/indicator/856/dimensions?lang=es` — one, for the period member table |
+| **Protocol** | Same undocumented REST JSON as the GDP section above |
+| **Auth** | None |
+| **Frequency** | Monthly |
+| **Coverage** | **1990-01 … 2025-10**, verified — interior gaps in two country-series only |
+| **Countries** | All seven for the lending and deposit rates; **six** for the policy rate, [see below](#panama-has-no-monetary-policy-rate-and-cepal-publishes-sixteen-zeros-anyway) |
+| **Volume** | 1.70 MB, 1.80 MB and 1.38 MB for the data, 28 KB for the dimensions; **61 s** for a full run |
+| **Licence** | ⚠️ **Not open** — CEPAL's terms, quoted in [the GDP section](#licence-not-open-and-the-terms-conflict-with-what-reim-does) above |
+| **Status** | ✅ **Enabled** — 6,564 observations, measured 2026-09-09 |
+
+REIM's **first interest-rate data of any kind** and the first use of the
+`financial` indicator category, which had existed unused since v0.1.0. Until
+this landed, REIM's monetary data was three aggregates — M1, M2 and M3 — which
+say how much money exists and nothing about its price.
+
+| CEPAL id | Published name | Published unit | REIM indicator | Observations |
+|---|---|---|---|---|
+| 856 | Nominal lending rate | `Annual percentage` | `lending_rate_nominal_monthly` | 2,490 |
+| 857 | Nominal deposit rate | `Annual percentage` | `deposit_rate_nominal_monthly` | 2,453 |
+| 1206 | Monetary policy rate | `Annual percentage` | `policy_rate_monthly` | 1,621 |
+
+**Coverage per country**, from the live run of 2026-09-09:
+
+| Country | Lending | Deposit | Policy |
+|---|---|---|---|
+| Belize | 429 — 1990-01 … 2025-09 | 428 — 1990-01 … 2025-08 | 429 — 1990-01 … 2025-09 |
+| Honduras | 406 — 1991-12 … 2025-09 | 405 — 1991-12 … 2025-08 | 246 — 2005-04 … 2025-09 |
+| El Salvador | 369 — 1995-01 … 2025-09 | 369 — 1995-01 … 2025-09 | 297 — 2001-01 … 2025-09 |
+| Guatemala | 357 — 1996-01 … 2025-09 | 357 — 1996-01 … 2025-09 | 249 — 2005-01 … 2025-09 |
+| Costa Rica | 322 — 1999-01 … 2025-10 | 320 — 1999-01 … 2025-08 | 235 — 2006-03 … 2025-09 |
+| Nicaragua | 321 — 1999-01 … 2025-09 | 321 — 1999-01 … 2025-09 | 165 — 2007-01 … 2025-10, **61 gaps** |
+| Panama | 286 — 2001-12 … 2025-09 | 253 — 2001-12 … 2025-09, **33 gaps** | **excluded** |
+| **Total** | **2,490** | **2,453** | **1,621** |
+
+Only those two spans have interior gaps. Every other country-series is
+complete between its own first and last month.
+
+Measured value ranges, which are what a reader wants before plotting them
+together:
+
+| Country | Lending | Deposit | Policy |
+|---|---|---|---|
+| Belize | 8.04 – 16.6 | 0.9 – 7.2 | 11 – 18 |
+| Costa Rica | 8.27 – 30.5 | 3.2 – 18.7 | 0.75 – 10 |
+| El Salvador | 5.02 – 13.35 | 1.8 – 8.8 | 0.96 – 7.62 |
+| Guatemala | 11.83 – 23 | 3.9 – 11.9 | 1.75 – 7.25 |
+| Honduras | 14.17 – 33.57 | 2.5 – 16.5 | 3 – 9 |
+| Nicaragua | 7.79 – 20.83 | 0.5 – 13.3 | **0** – 10.32 |
+| Panama | 6.34 – 9.72 | 1.3 – 5 | — |
+
+This is the fifth CEPALSTAT family REIM reads and the shape is the monetary
+one: dimension 208 for the country, **3981** for the period inside the year,
+29117 for the year — including 3981's untranslated English members, which is
+why a Spanish dimensions request appears above. That request is made **once**,
+not once per indicator: the member table belongs to the dimension, not to any
+indicator, and it was measured byte-identical across 856, 857 and 1206. The
+whole family therefore costs four requests rather than six.
+
+Unlike the GDP and debt families, where CEPAL is the compiler, **every row
+cites the publisher it came from**. What REIM stores in
+`raw_metadata.cepalstat_source` is CEPAL's own organization name for that row:
+
+| Country | Lending | Deposit | Policy |
+|---|---|---|---|
+| Belize | Central Bank of Belize | Central Bank of Belize | Central Bank of Belize |
+| Costa Rica | Central Bank of Costa Rica | ⚠️ **Central Bank of Bolivia** | Central Bank of Costa Rica |
+| El Salvador | Reserve Bank Central of the Salvador | " | " |
+| Guatemala | Bank of Guatemala | " | " |
+| Honduras | Central Bank of Honduras | " | ⚠️ *empty* |
+| Nicaragua | Central Bank of Nicaragua | " | " |
+| Panama | ⚠️ `(Translation in progress ...)` | " | — |
+
+Three defects visible in one table, all stored exactly as published: Costa
+Rica's misattribution, [below](#857-attributes-costa-rica-to-the-central-bank-of-bolivia);
+Honduras's null `source_id` on the policy rate, which REIM stores as an empty
+string rather than inventing an attribution, exactly as the CPI section
+records for its 363 unattributed rows; and Panama's untranslated organization
+name, the same `descripcion_ingles` class as the period members.
+
+#### The annual and quarterly members are means of their months, not restatements of one
+
+Dimension 3981 carries seventeen members — twelve months, four quarters and an
+annual figure. The [monetary section](#only-the-monthly-member-is-stored)
+stores only the twelve months because the other five are exact **restatements**:
+a year's closing stock *is* December's. **That reasoning is false here, and the
+opposite one is true.**
+
+| Test | 856 | 857 | 1206 |
+|---|---|---|---|
+| quarter equals its closing month | 46 / 695 | 316 / 681 | 291 / 466 |
+| quarter ≈ mean of its three months (±0.05) | **693 / 693** | 611 / 676 | **460 / 460** |
+| annual ≈ mean of its twelve months (±0.05) | **202 / 202** | 191 / 199 | **122 / 122** |
+
+These are rates, so CEPAL averages them rather than taking a period end. On the
+lending rate the identity is exact in every cell where it can be tested: 693 of
+693 quarters and 202 of 202 annual figures.
+
+**The decision is the same and the reason is the opposite.** Only the twelve
+monthly members become observations. Storing a mean beside the twelve values it
+was computed from would be REIM publishing a **derived figure as if it were
+published**, which `ROADMAP.md` reserves for v0.8.0 and its transparency
+discipline. The connector docstring says which of the two reasons applies,
+because a future reader who assumes the monetary one would draw the wrong
+conclusion about what the discarded members contain.
+
+857 is the untidy one: 65 of its quarters and 8 of its annual figures match
+neither identity. They are discarded with the rest, so nothing REIM stores
+depends on them.
+
+#### Panama has no monetary policy rate, and CEPAL publishes sixteen zeros anyway
+
+Panama's entire presence in indicator 1206 is **16 rows, every value the string
+`'0'`, every `source_id` null**, all inside 2022 — the twelve months, `Anual`,
+and three of the four quarters, with `Trimestre 3` missing.
+
+Panama is dollarised and has no central bank. There is no policy rate for
+anyone to publish. Sixteen uniformly zero, wholly unattributed cells in a
+single year are an artifact of CEPAL's table, not a measurement.
+
+**REIM stores none of them.** Panama is excluded from `policy_rate_monthly`
+only; it keeps its lending and deposit series, which are real, attributed and
+286 and 253 observations long. The exclusion is a named constant with the
+reason beside it and it is encoded in the connector's `EXPECTED_COUNTRIES`, so
+if CEPAL ever publishes real Panamanian data here the
+`cepalstat_rates_expected_countries` check fails rather than the data being
+silently dropped.
+
+This is a deliberate departure from *store what is published* and the only one
+in this family. The alternative would put `Panama: 0.00%` into every `/compare`
+response covering 2022, beside six real policy rates, with the caveat reachable
+only through the notes.
+
+**Nicaragua's two zeros are a different thing and are stored.**
+
+| 2010-02 | 2010-03 | 2010-04 | 2010-05 |
+|---|---|---|---|
+| 2.92 | **0** | **0** | 1.92 |
+
+Those sit inside a real, fully attributed 165-month series from the Central
+Bank of Nicaragua. That is the [El Salvador corrupt-cell
+situation](#el-salvador-has-one-corrupt-cell-which-is-a-different-thing) from
+the CPI work: one or two bad cells inside a live series are stored, pinned by a
+test and documented — not deleted. It is also the only reason `allow_zero` is
+true on the policy rate and false on the other two, whose minima are 5.02 and
+0.5.
+
+#### CEPAL says outright that each country measures a different instrument
+
+`calculation_methodology` reads, identically on all three indicators:
+
+> According to the definition from each country.
+
+and the `definition` field spells that out. On the lending rate, for the seven:
+
+| Country | What CEPAL says its "lending rate" is |
+|---|---|
+| Costa Rica, Guatemala, Honduras | weighted average for lending rate in local currency |
+| El Salvador | basic lending rate for up to one year |
+| Nicaragua | weighted average of short-term lending rates in local currency |
+| Panama | interest rate on one-year trade credit |
+| Belize | weighted average rate for personal and business loans, residential and other construction loans |
+
+On the policy rate the divergence is wider still. Belize's "monetary policy
+rate" is **the Central Bank's own lending rate**, El Salvador's is a
+stock-exchange repo yield over 1–7 days, Nicaragua's is the yield on 180-day
+central bank bonds, and Costa Rica's is the rate on its central bank's
+local-currency operations. **CEPAL's definition string names no instrument at
+all for Guatemala, Honduras or Panama** on that indicator; those three rates
+are published without a stated definition.
+
+The consequence is a comparability problem REIM's existing machinery could not
+express. `assess_comparability` turns on **unit and currency only**, and all
+three series are `percent per annum` with no currency and one publisher, so
+`/compare` would have reported `comparable: true` and named nothing — correct
+on the axes it checks and misleading about levels.
+
+`IndicatorDefinition` therefore gained one field,
+`methodology_varies_by_country`, declared true on all three. `/compare` now
+answers:
+
+```json
+"comparable": true,
+"comparability_notes": [
+  "The publisher defines this indicator differently in each country, so levels are not comparable; movements over time are."
+]
+```
+
+**`comparable` stays `true` deliberately.** The flag's documented meaning is
+unit and currency agreement, and this endpoint's rule is that comparability is
+*declared, never enforced* — it states caveats and never refuses. Flipping the
+flag would also widen what `comparable` means for every existing caller and
+would misreport a legitimate use: comparing how Guatemala's and Honduras's
+lending rates **moved** is sound, and only their levels are not.
+
+**Belize's lending rate and its policy rate are not duplicates**, despite both
+definitions naming a lending rate: 429 shared months, **zero identical values**.
+
+#### `Belice` is inside the English definition string, and 857 calls Guatemala's deposit rate a lending rate
+
+Belize's entry in indicator 856's `definition` is keyed **`Belice`** — the
+Spanish spelling, inside a string served under `lang=en`. A reader searching
+that text for "Belize" finds nothing, which is how the row was first missed.
+Same untranslated-string class as dimension 3981's members and Panama's
+organization name; it is worth expecting anywhere in a CEPALSTAT payload rather
+than treating each occurrence as a surprise.
+
+Indicator 857 carries a defect of its own. Guatemala's **deposit** rate is
+described there as the "weighted average of the system **lending** rates in
+local currency". The data is a deposit rate: it sits below Guatemala's lending
+series in **all 357 shared months**, by **7.34 to 12.17 points**. This is a
+wrong word in CEPAL's prose, not a wrong series. It is recorded — in this file
+and in the indicator's own description — and not corrected.
+
+#### 857 attributes Costa Rica to the Central Bank of Bolivia
+
+Every one of Costa Rica's 320 deposit-rate rows carries `source_id` `CBBO`,
+the **Central Bank of Bolivia**, where indicators 856 and 1206 both say `CBCR`
+for the same country. It is a CEPAL attribution error, on one indicator only.
+
+**REIM stores it as published.** The project does not silently repair a
+publisher's provenance: a consumer reading `raw_metadata.cepalstat_source`
+gets the string CEPAL served, and the discrepancy is stated here and pinned by
+a unit test. If CEPAL corrects it, that test fails and this paragraph is known
+to have stopped being true.
+
+#### The declared decimals are wrong for the lending rate
+
+| Indicator | `decimals` declares | Actually published, in what REIM stored |
+|---|---|---|
+| 856 | **0** | 2 decimals in 2,065 of 2,490 cells, 1 in 391, 0 in 34 |
+| 857 | 1 | 1 in 2,205 of 2,453, 0 in 248 |
+| 1206 | 2 | 2 in 641, 1 in 227, 0 in 753 |
+
+857 and 1206 declare their maximum honestly. **856 declares zero decimals and
+publishes two in five cells out of six.** This is the third CEPALSTAT family
+whose declared precision contradicts its own payload, after the exchange rate's
+[declared two, published one](#declared-two-decimals-published-one).
+
+Values are stored **exactly as published**, with no rounding to any declared
+figure in either direction. A test pins two-decimal lending cells against the
+declared `decimals: 0`, so an attempt to "tidy" them fails loudly.
+
+#### Percentage change is useless on two of the three, so the tripwire counts points
+
+`max_period_change_pct` is **null on the deposit and policy rates** — the same
+call [`ni_cpi_inflation_monthly` already makes](#why-max_period_change_pct-is-null-and-what-replaces-it),
+and for a related but distinct reason. These series sit near zero, where a
+percentage change is unbounded and says nothing:
+
+| Series | Move | In percent | In points |
+|---|---|---|---|
+| Nicaragua, deposit, 2018-03 | 0.5 → 1.7 | **+240%** | 1.2 |
+| El Salvador, policy, 2012-12 | 1.47 → 4.87 | **+231%** | 3.4 |
+
+Both are ordinary monetary policy. Across all calendar-adjacent pairs, 79
+deposit moves and 85 policy moves exceed 25%, and essentially all of them are
+real. A threshold that tolerates those detects nothing at all.
+
+**`cepalstat_rates_step` measures percentage *points* instead**, at `warning`,
+and fires beyond **8 points**. That number comes from the data: the largest
+absolute adjacent move anywhere in the family is **7 points**, Belize's policy
+rate stepping 11 → 18 in March 2004 and back 18 → 11 in January 2011 — real,
+discrete central bank decisions. The check compares **calendar-adjacent months
+only**, the rule `cepalstat_cpi_known_splices` already establishes: comparing
+across a gap manufactures a break that is really an absence, and Nicaragua's
+policy rate has 61 of them.
+
+`max_period_change_pct` survives on the lending rate alone, at 60. Nicaragua's
+largest real move there is **+45.1%** in 2011-12 (9.09 → 13.19), so 60 clears
+the data and still reports a discontinuity.
+
+The visible consequence on a run: `period_change` reports **skipped**, not
+passed, for the deposit and policy rates. That is the rule being absent by
+decision, not a check that failed to run.
+
+#### The family is maintained but not extended, which is why freshness is 450 days
+
+The newest monthly cell on all three indicators is **2025-10** — not for
+Central America, but across **every country in the payload**: 32 or 33 of
+dimension 208's 145 members publish anything at all, and none of them has a
+November or December 2025. Meanwhile `last_update` reads **Aug 27 2026** for
+856 and 857 and **Aug 31 2026** for 1206.
+
+CEPAL touched these tables about two weeks before this work began and did not
+add a month. This is not a Central American lag and not an abandoned table: it
+is the same ~11-month publication lag this file already records for
+[`exchange_rate_nominal_monthly`](#cepal--monthly-nominal-exchange-rate).
+
+So `freshness_max_age_days` is **450**, the value the exchange rate already
+uses at the identical lag. On the first run the measured ages were **344 days**
+for the lending and policy rates and **374** for the deposit rate, whose
+Belizean, Costa Rican and Honduran series end 2025-08.
+
+A threshold at the monthly cadence a reader would expect — 90 days, say — would
+warn on **all twenty country-series on every single run**. That is not the
+Honduras and Belize precedent recorded elsewhere in this file: those work
+because the threshold fits the publication cycle and one laggard breaks it. A
+threshold that always fires reports nothing.
+
+#### The first run, in full
+
+Recorded so a later reader can tell a regression from a known state.
+
+```text
+$ python -m reim.cli pipeline run cepalstat_rates_monthly
+✓ cepalstat_rates_monthly  success  extracted=6564 inserted=6564
+                                    updated=0 unchanged=0 rejected=0 (61232 ms)
+```
+
+**6,564 observations, none rejected**, in 61.2 s over four requests.
+
+**The three connector checks**, all as predicted by the design:
+`cepalstat_rates_expected_countries` (completeness, `critical`) **passed** —
+20 country-series, seven on each of the lending and deposit rates and six on
+the policy rate; `cepalstat_rates_spread` (consistency, `critical`) **passed**
+— **zero inversions across all 2,453 months** in which a country publishes
+both a lending and a deposit rate; `cepalstat_rates_step` (validity,
+`warning`) **passed** — no calendar-adjacent move beyond 8 points.
+
+The spread is the strongest invariant in the family. A bank charging less than
+it pays is not a rounding artifact, so this is enforceable rather than
+advisory — the analogue of the monetary family's `M1 ≤ M2 ≤ M3` nesting, but
+exact and needing no tolerance:
+
+| Country | Shared months | Narrowest spread | Widest |
+|---|---|---|---|
+| El Salvador | 369 | 1.18 | 6.66 |
+| Nicaragua | 321 | 3.04 | 15.73 |
+| Costa Rica | 320 | 3.22 | 14.60 |
+| Panama | 253 | 3.74 | 6.95 |
+| Belize | 428 | 6.94 | 11.32 |
+| Guatemala | 357 | 7.34 | 12.17 |
+| Honduras | 405 | 9.50 | 18.84 |
+
+**One check reported at `warning`**, and it is the expected one.
+`cepalstat_monthly_continuity` (completeness, `warning`) reports **94 missing
+months**: Panama's deposit rate is short **33** and Nicaragua's policy rate
+**61**. Both are absences in the source. Interpolating them would be
+imputation, which REIM does not do; the same call was made for Belize on the
+CPI and for Honduras on the monetary aggregates.
+
+The standard battery passes on all three indicators — `dataset_not_empty` at
+2,490 / 2,453 / 1,621, `country_attribution` at 7 / 7 / **6**,
+`no_duplicate_periods` at zero, `value_range`, `value_present`,
+`value_numeric_finite`, `period_validity`, `period_length`,
+`expected_frequency` and `single_source_per_batch`. `freshness` passes at
+344 / 374 / 344 days against 450. `period_change` passes on the lending rate
+and is **skipped** on the other two, and `temporal_monotonicity` is skipped on
+all three; both are rules deliberately left null rather than checks that
+failed. `quality report --days 1` exits 0: nothing at `error` or worse was
+recorded.
+
 ## Reachable, not ingested
 
 Indicator families that a source REIM **already reads** publishes, and REIM
 does not yet store. Listed so the next increment starts from a measurement
 rather than a search.
 
-### CEPALSTAT — three families beyond the five REIM reads
+### CEPALSTAT — two families beyond the eight REIM reads
 
 Found on 2026-09-06 by walking `GET /cepalstat/api/v1/thematic-tree?lang=es&theme_id=N`.
-The regional CPI, indicator 365, was on this list until the same day and is now
-[ingested](#cepal--monthly-consumer-price-index).
+Three entries have left this list since. The regional CPI, indicator 365, was
+on it until the same day and is now
+[ingested](#cepal--monthly-consumer-price-index); the two interest rates, 856
+and 1206, together with 857 named below them, left it on 2026-09-08 and are now
+[ingested as one family](#cepal--monthly-interest-rates).
 The theme ids are worth recording because nothing maps an area to its
 indicators: **6** is `BADECON`, **9** is `BADEPAG` (balance of payments) and
 **24** is `COYUNTURA` (short-term indicators). `GET /themes?lang=es` returns
@@ -1398,13 +1762,17 @@ trimestral".
 
 | CEPAL id | Published name | Dimensions, read from `/dimensions?lang=es` | Shape it reuses |
 |---|---|---|---|
-| 856 | Tasa de interés activa nominal | `País(145) × Periodo__ind mon(17) × Años(201)` | `cepalstat_monetary.py` exactly |
-| 1206 | Tasa de política monetaria | `País(145) × Periodo__ind mon(17) × Años(201)` | `cepalstat_monetary.py` exactly |
 | 547 | Balanza de pagos trimestral | `País(145) × Trimestres(4) × Rubro(66) × Años(201)` | `cepalstat_debt.py` — four dimensions |
 | 361 | Valores Corrientes (theme 9) | `Países(38) × Años(34) × Cuentas(55)` | none — see the warning below |
 
-Indicator **857**, "Tasa de interés pasiva nominal", appears in the same tree
-node as 856 and 1206. Its dimensions were **not** fetched.
+The three interest rates were on this table until 2026-09-08 and the shape
+recorded for them held: `País(145) × Periodo__ind mon(17) × Años(201)`,
+`cepalstat_monetary.py` exactly. What that shape did **not** predict is
+everything the [interest-rate section](#cepal--monthly-interest-rates) now
+records — that the annual and quarterly members are means rather than
+restatements, that Panama's policy rate is sixteen unattributed zeros, and that
+CEPAL defines each country's rate differently. Which is the point of the
+paragraph below.
 
 **What was measured is the shape and nothing else.** No data response was
 requested for any of these. Coverage for the seven Central American countries,
