@@ -38,6 +38,13 @@ class IndicatorDefinition:
     #: indices and ratios, which are expressed *per* a currency rather than
     #: *in* it — see the currency-conversion design, decision D5.
     currency_convertible: bool = False
+    #: Whether the publisher defines this indicator differently in each
+    #: country, so that levels may not be read against each other even when
+    #: the unit and the currency match. CEPAL's interest rates declare exactly
+    #: this in their own ``calculation_methodology`` field: "According to the
+    #: definition from each country." ``/compare`` states it as a note and
+    #: still returns the series — see the interest-rates design, decision D6.
+    methodology_varies_by_country: bool = False
     is_active: bool = True
 
 
@@ -567,6 +574,73 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         unit="index",
         value_type=ValueType.INDEX,
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=365&lang=en",
+    ),
+    IndicatorDefinition(
+        code="lending_rate_nominal_monthly",
+        name="Nominal lending rate (monthly)",
+        description=(
+            "Monthly nominal lending rate for the seven Central American "
+            "countries, compiled by ECLAC from each country's own central "
+            "bank. CEPAL defines the rate differently in each country: a "
+            "weighted average in local currency for Costa Rica, Guatemala and "
+            "Honduras; the basic lending rate for up to one year in El "
+            "Salvador; a weighted average of short-term rates in Nicaragua; "
+            "the rate on one-year trade credit in Panama; and a weighted "
+            "average over personal, business, residential and other "
+            "construction loans in Belize. Levels are therefore not "
+            "comparable across countries, only their movements."
+        ),
+        category=IndicatorCategory.FINANCIAL,
+        frequency=Frequency.MONTHLY,
+        unit="percent per annum",
+        value_type=ValueType.PERCENT,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=856&lang=en",
+        methodology_varies_by_country=True,
+    ),
+    IndicatorDefinition(
+        code="deposit_rate_nominal_monthly",
+        name="Nominal deposit rate (monthly)",
+        description=(
+            "Monthly nominal deposit rate for the seven Central American "
+            "countries, compiled by ECLAC from each country's own central "
+            "bank. CEPAL defines the rate differently in each country: the "
+            "average local-currency deposit rate in Costa Rica, a 180-day "
+            "saving rate in El Salvador, a weighted average of term deposit "
+            "rates in Honduras, 30-day local-currency passive rates in "
+            "Nicaragua, six-month deposits in Panama, and a weighted average "
+            "in Belize. Levels are therefore not comparable across countries, "
+            "only their movements. CEPAL's own definition text calls "
+            "Guatemala's series a lending rate; the data is a deposit rate, "
+            "below lending_rate_nominal_monthly in all 357 shared months."
+        ),
+        category=IndicatorCategory.FINANCIAL,
+        frequency=Frequency.MONTHLY,
+        unit="percent per annum",
+        value_type=ValueType.PERCENT,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=857&lang=en",
+        methodology_varies_by_country=True,
+    ),
+    IndicatorDefinition(
+        code="policy_rate_monthly",
+        name="Monetary policy rate (monthly)",
+        description=(
+            "Monthly monetary policy rate for six Central American countries, "
+            "compiled by ECLAC. CEPAL defines the rate differently in each: "
+            "the yield on 180-day central bank bonds in Nicaragua, a "
+            "stock-exchange repo yield over 1-7 days in El Salvador, the rate "
+            "on local-currency central bank operations in Costa Rica, and the "
+            "Central Bank's own lending rate in Belize. Levels are therefore "
+            "not comparable across countries, only their movements. Panama is "
+            "absent: it is dollarised and has no central bank, and CEPAL's "
+            "twelve zero-valued, unattributed 2022 cells for it are an "
+            "artifact REIM does not store."
+        ),
+        category=IndicatorCategory.FINANCIAL,
+        frequency=Frequency.MONTHLY,
+        unit="percent per annum",
+        value_type=ValueType.PERCENT,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=1206&lang=en",
+        methodology_varies_by_country=True,
     ),
 )
 

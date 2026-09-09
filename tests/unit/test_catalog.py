@@ -520,3 +520,30 @@ def test_the_cpi_rules_set_no_change_ceiling() -> None:
     assert rule.max_value is None
     assert rule.min_value == 0
     assert rule.allow_zero is False
+
+
+def test_interest_rates_are_registered_and_declare_varying_methodology() -> None:
+    """The three CEPAL rates share a unit and declare CEPAL's per-country methods."""
+    codes = (
+        "lending_rate_nominal_monthly",
+        "deposit_rate_nominal_monthly",
+        "policy_rate_monthly",
+    )
+    for code in codes:
+        definition = INDICATORS_BY_CODE[code]
+        assert definition.category is IndicatorCategory.FINANCIAL
+        assert definition.frequency is Frequency.MONTHLY
+        assert definition.unit == "percent per annum"
+        assert definition.value_type is ValueType.PERCENT
+        assert definition.currency_convertible is False
+        assert definition.methodology_varies_by_country is True
+
+
+def test_methodology_varies_by_country_defaults_to_false() -> None:
+    """Only the three CEPAL rates declare it; nothing else changed meaning."""
+    declaring = {i.code for i in INDICATORS if i.methodology_varies_by_country}
+    assert declaring == {
+        "lending_rate_nominal_monthly",
+        "deposit_rate_nominal_monthly",
+        "policy_rate_monthly",
+    }
