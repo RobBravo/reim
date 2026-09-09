@@ -20,6 +20,7 @@ from reim.domain.pipelines.models import NormalizedObservation, QualityResult, R
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.connectors.regional.cepalstat_rates import (
     CENTRAL_AMERICA,
+    EXPECTED_COUNTRIES,
     CepalstatRatesConnector,
 )
 from tests.conftest import REPO_ROOT
@@ -325,13 +326,42 @@ def test_step_ignores_a_move_across_a_gap() -> None:
 
 
 def test_expected_countries_reports_a_gain_as_loudly_as_a_loss() -> None:
-    """Panama appearing in the policy rate is news, not a silent improvement."""
+    """Panama appearing in the policy rate is news, not a silent improvement.
+
+    Every series starts with its full expected coverage so the one gain is
+    the only problem, rather than being buried behind fourteen spurious
+    "lost" entries from series the test never populated.
+    """
+    complete = [
+        _observation(code, iso3, "2020-01", Decimal("5"))
+        for code, expected in EXPECTED_COUNTRIES.items()
+        for iso3 in expected
+    ]
     with_panama = [
-        _observation("policy_rate_monthly", iso3, "2020-01", Decimal("5"))
-        for iso3 in CENTRAL_AMERICA
+        *complete,
+        _observation("policy_rate_monthly", "PAN", "2020-01", Decimal("5")),
     ]
     result = results_of(with_panama)["cepalstat_rates_expected_countries"]
 
     assert result.status is CheckStatus.FAILED
     assert result.severity is CheckSeverity.CRITICAL
     assert "policy_rate_monthly gained PAN" in result.message
+
+
+def test_expected_countries_reports_a_loss_too() -> None:
+    """The other direction the check's docstring claims: a country missing."""
+    complete = [
+        _observation(code, iso3, "2020-01", Decimal("5"))
+        for code, expected in EXPECTED_COUNTRIES.items()
+        for iso3 in expected
+    ]
+    missing_honduras = [
+        obs
+        for obs in complete
+        if not (obs.indicator_code == "lending_rate_nominal_monthly" and obs.country_iso3 == "HND")
+    ]
+    result = results_of(missing_honduras)["cepalstat_rates_expected_countries"]
+
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.CRITICAL
+    assert "lending_rate_nominal_monthly lost HND" in result.message

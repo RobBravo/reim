@@ -376,14 +376,11 @@ class CepalstatRatesConnector(CepalstatConnector):
                 actual_value=str(sum(len(v) for v in seen.values())),
             )
 
-        # Not truncated, unlike the other checks: this family holds at most
-        # twenty country-series pairs in total, so every change fits in one
-        # message and a gain is never buried behind a run of losses.
         return QualityResult.failure(
             "cepalstat_rates_expected_countries",
             CheckType.COMPLETENESS,
             CheckSeverity.CRITICAL,
-            f"{len(problems)} change(s) in country coverage: {', '.join(problems)}",
+            f"{len(problems)} change(s) in country coverage: {', '.join(problems[:5])}",
             expected_value=str(sum(len(v) for v in EXPECTED_COUNTRIES.values())),
             actual_value=str(sum(len(v) for v in seen.values())),
         )
