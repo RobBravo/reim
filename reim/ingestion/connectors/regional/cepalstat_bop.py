@@ -242,12 +242,13 @@ class CepalstatBopConnector(CepalstatConnector):
         return observations
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
-        """No-op: ``BaseConnector.validate`` is abstract with no default.
+        """Not yet implemented; Task 5 adds this family's quality battery.
 
-        This override only makes the class instantiable. Task 5 replaces it
-        with the real CEPALSTAT-specific checks.
+        Raises rather than returning an empty list: an empty battery would let a
+        run in this window store every observation with nothing checked and still
+        report success.
         """
-        return []
+        raise NotImplementedError  # Task 5
 
     def _quarter_of(self, row: Any) -> int:
         """Resolve a row's quarter number.
