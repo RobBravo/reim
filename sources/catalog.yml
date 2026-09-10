@@ -593,3 +593,51 @@ sources:
     license: cepal_terms_of_use
     official: true
     enabled: true
+
+  - key: cepalstat_bop_quarterly
+    name: Central American quarterly balance of payments
+    description: >-
+      Quarterly balance of payments for the seven Central American countries,
+      from CEPALSTAT: the six headline balances, four sub-balances and fifteen
+      components, in current dollars. CEPAL declares the IMF's fifth Balance of
+      Payments Manual while six of the seven countries carry a footnote citing
+      the sixth; the figures are consistent across both. Reserve assets here is
+      the quarterly flow, not the stock, and current transfers is not
+      remittances.
+    organization: CEPAL
+    category: external_sector
+    access_type: http_api
+    frequency: quarterly
+    format: json
+    base_url: https://api-cepalstat.cepal.org/cepalstat/api/v1
+    documentation_url: https://statistics.cepal.org/portal/cepalstat/
+    connector: reim.ingestion.connectors.regional.cepalstat_bop
+    indicators:
+      - bop_current_account_quarterly
+      - bop_capital_account_quarterly
+      - bop_financial_account_quarterly
+      - bop_errors_omissions_quarterly
+      - bop_global_balance_quarterly
+      - bop_reserves_related_quarterly
+      - bop_balance_goods_quarterly
+      - bop_balance_goods_services_quarterly
+      - bop_balance_income_quarterly
+      - bop_balance_current_transfers_quarterly
+      - bop_exports_goods_fob_quarterly
+      - bop_imports_goods_fob_quarterly
+      - bop_services_credit_quarterly
+      - bop_services_debit_quarterly
+      - bop_income_credit_quarterly
+      - bop_income_debit_quarterly
+      - bop_current_transfers_credit_quarterly
+      - bop_current_transfers_debit_quarterly
+      - bop_direct_investment_abroad_quarterly
+      - bop_direct_investment_inward_quarterly
+      - bop_portfolio_investment_assets_quarterly
+      - bop_portfolio_investment_liabilities_quarterly
+      - bop_other_investment_assets_quarterly
+      - bop_other_investment_liabilities_quarterly
+      - bop_reserve_assets_quarterly
+    license: cepal_terms_of_use
+    official: true
+    enabled: true

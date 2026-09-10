@@ -437,3 +437,96 @@ indicators:
     # 1,621 measured across six countries; Nicaragua's 61 interior gaps could
     # widen, so this sits further below the measurement than its two siblings.
     min_observations: 1550
+
+  bop_current_account_quarterly: &balance_of_payments
+    min_value: null
+    max_value: null
+    # A balance of payments has no natural bound in either direction, and
+    # 9,924 of 19,582 measured values are negative with 594 exactly zero:
+    # a deficit is a negative number and an absent flow is a real zero.
+    allow_negative: true
+    allow_zero: true
+    # Deliberately null on all twenty-five. These series cross zero, where a
+    # percentage change is unbounded and meaningless as a tripwire — the same
+    # call ni_cpi_inflation_monthly already makes.
+    max_period_change_pct: null
+    monotonic_increasing: false
+    # Costa Rica, El Salvador, Honduras and Panama end 2026-Q1, 162 days old on
+    # 2026-09-09; Belize, Guatemala and Nicaragua end 2025-Q4 at 252. 550
+    # clears CEPAL's quarterly cycle with headroom and still catches a family
+    # that has stopped being extended.
+    freshness_max_age_days: 550
+    # 19,582 measured across the twenty-five series.
+    min_observations: 19000
+
+  bop_capital_account_quarterly:
+    <<: *balance_of_payments
+
+  bop_financial_account_quarterly:
+    <<: *balance_of_payments
+
+  bop_errors_omissions_quarterly:
+    <<: *balance_of_payments
+
+  bop_global_balance_quarterly:
+    <<: *balance_of_payments
+
+  bop_reserves_related_quarterly:
+    <<: *balance_of_payments
+
+  bop_balance_goods_quarterly:
+    <<: *balance_of_payments
+
+  bop_balance_goods_services_quarterly:
+    <<: *balance_of_payments
+
+  bop_balance_income_quarterly:
+    <<: *balance_of_payments
+
+  bop_balance_current_transfers_quarterly:
+    <<: *balance_of_payments
+
+  bop_exports_goods_fob_quarterly:
+    <<: *balance_of_payments
+
+  bop_imports_goods_fob_quarterly:
+    <<: *balance_of_payments
+
+  bop_services_credit_quarterly:
+    <<: *balance_of_payments
+
+  bop_services_debit_quarterly:
+    <<: *balance_of_payments
+
+  bop_income_credit_quarterly:
+    <<: *balance_of_payments
+
+  bop_income_debit_quarterly:
+    <<: *balance_of_payments
+
+  bop_current_transfers_credit_quarterly:
+    <<: *balance_of_payments
+
+  bop_current_transfers_debit_quarterly:
+    <<: *balance_of_payments
+
+  bop_direct_investment_abroad_quarterly:
+    <<: *balance_of_payments
+
+  bop_direct_investment_inward_quarterly:
+    <<: *balance_of_payments
+
+  bop_portfolio_investment_assets_quarterly:
+    <<: *balance_of_payments
+
+  bop_portfolio_investment_liabilities_quarterly:
+    <<: *balance_of_payments
+
+  bop_other_investment_assets_quarterly:
+    <<: *balance_of_payments
+
+  bop_other_investment_liabilities_quarterly:
+    <<: *balance_of_payments
+
+  bop_reserve_assets_quarterly:
+    <<: *balance_of_payments

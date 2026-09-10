@@ -658,3 +658,26 @@ def test_the_two_balance_of_payments_traps_are_stated_in_their_descriptions() ->
 
     transfers = INDICATORS_BY_CODE["bop_current_transfers_credit_quarterly"].description
     assert "not remittances" in transfers.lower()
+
+
+def test_every_balance_of_payments_indicator_has_a_quality_rule(
+    quality_rules: QualityRuleSet,
+) -> None:
+    """One cube, one set of thresholds, each derived from a measurement."""
+    for code in BOP_CODES:
+        rule = quality_rules.for_indicator(code)
+        assert rule is not quality_rules.defaults, f"{code} fell through to the defaults"
+        # 9,924 of 19,582 values are negative and 594 are zero. A deficit is a
+        # negative number and an absent flow is a real zero.
+        assert rule.allow_negative is True
+        assert rule.allow_zero is True
+        assert rule.min_value is None
+        assert rule.max_value is None
+        # These series cross zero, so a percentage change of them is unbounded
+        # and meaningless as a tripwire.
+        assert rule.max_period_change_pct is None
+        assert rule.monotonic_increasing is False
+        # Four countries end 2026-Q1 (162 days old on 2026-09-09); the rest end
+        # 2025-Q4 at 252. 550 clears CEPAL's quarterly cycle with headroom.
+        assert rule.freshness_max_age_days == 550
+        assert rule.min_observations == 19000
