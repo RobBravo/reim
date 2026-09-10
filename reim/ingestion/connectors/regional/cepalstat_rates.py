@@ -71,17 +71,36 @@ DIMENSIONS_INDICATOR = 856
 UNIT = "percent per annum"
 
 #: Panama is dollarised, has no central bank and therefore no policy rate.
-#: CEPAL's sixteen zero-valued, unattributed 2022 rows are an artifact.
+#: CEPAL nonetheless publishes sixteen 2022 rows for it on indicator 1206,
+#: every one zero-valued and wholly unattributed.
 NO_POLICY_RATE = frozenset({"PAN"})
 
 
 @dataclass(frozen=True, slots=True)
 class SeriesSpec:
-    """One CEPAL indicator id, the REIM code it feeds, and who it excludes."""
+    """One CEPAL indicator id, the REIM code it feeds, and its known artifacts."""
 
     cepal_id: int
     indicator_code: str
-    excluded_countries: frozenset[str] = frozenset()
+    #: Countries whose rows in this series may be a published artifact rather
+    #: than a measurement. Membership alone discards nothing — see
+    #: ``is_artifact``.
+    artifact_countries: frozenset[str] = frozenset()
+
+    def is_artifact(self, iso3: str, value: Decimal, source_id: object) -> bool:
+        """Whether this row is a known artifact rather than a measurement.
+
+        The rule keys on **what the row looks like**, never on the country
+        alone. Keying on Panama would silently discard a real Panamanian policy
+        rate if CEPAL ever published one, and no check could report it: a row
+        dropped before it becomes an observation is invisible to
+        ``cepalstat_rates_expected_countries``, which only ever sees the
+        observations ``transform`` produced. Conditioning on the signature —
+        zero, with no attribution at all — means a row that is not zero, or
+        that cites a source, flows through and trips that check exactly as
+        ``docs/sources.md`` says it will.
+        """
+        return iso3 in self.artifact_countries and value == 0 and source_id is None
 
 
 SERIES: tuple[SeriesSpec, ...] = (
@@ -206,17 +225,20 @@ class CepalstatRatesConnector(CepalstatConnector):
         sources = {source["id"]: source["organization_name"] for source in body["sources"]}
         credits = [entry["description"] for entry in body["credits"] if entry["id"] != 0]
 
-        wanted = CENTRAL_AMERICA - spec.excluded_countries
         observations: list[NormalizedObservation] = []
         for row in body["data"]:
             iso3 = row.get("iso3")
-            if iso3 not in wanted:
+            if iso3 not in CENTRAL_AMERICA:
                 continue
             month = self._month_of_period_dimension(row, months, spec.cepal_id)
             if month is None:
                 continue
             year = self._label_of(row, years, YEARS_DIMENSION, "year", spec.cepal_id)
             value = self._value_of(row, spec.cepal_id)
+            # Discarded after parsing, not before: the test is the row's own
+            # shape, and a row that fails it must reach the coverage check.
+            if spec.is_artifact(str(iso3), value, row.get("source_id")):
+                continue
             label = f"{year}-{month:02d}"
             observations.append(
                 NormalizedObservation(
@@ -252,7 +274,9 @@ class CepalstatRatesConnector(CepalstatConnector):
         return [
             self._check_spread(observations),
             self._check_step(observations),
-            self._check_expected_countries(observations),
+            self._check_country_coverage(
+                observations, EXPECTED_COUNTRIES, "cepalstat_rates_expected_countries"
+            ),
             self._check_monthly_continuity(observations),
         ]
 
@@ -345,42 +369,4 @@ class CepalstatRatesConnector(CepalstatConnector):
             f"{len(breaks)} move(s) beyond {MAX_STEP_POINTS} points: {shown}{suffix}",
             expected_value=f"<= {MAX_STEP_POINTS} points",
             actual_value=str(len(breaks)),
-        )
-
-    def _check_expected_countries(self, observations: list[NormalizedObservation]) -> QualityResult:
-        """Each series has its own country set; Panama is absent from one.
-
-        An expectation rather than a floor, so that a country arriving is
-        reported as loudly as one disappearing. Panama appearing in the policy
-        rate would mean CEPAL had replaced its zero placeholder with something,
-        which is worth a human reading it.
-        """
-        seen: dict[str, set[str]] = {spec.indicator_code: set() for spec in SERIES}
-        for obs in observations:
-            if obs.indicator_code in seen:
-                seen[obs.indicator_code].add(obs.country_iso3)
-
-        problems: list[str] = []
-        for code, expected in EXPECTED_COUNTRIES.items():
-            for iso3 in sorted(expected - seen[code]):
-                problems.append(f"{code} lost {iso3}")
-            for iso3 in sorted(seen[code] - expected):
-                problems.append(f"{code} gained {iso3}")
-
-        if not problems:
-            return QualityResult.passed(
-                "cepalstat_rates_expected_countries",
-                CheckType.COMPLETENESS,
-                "Every series carries exactly the countries it is expected to",
-                expected_value=str(sum(len(v) for v in EXPECTED_COUNTRIES.values())),
-                actual_value=str(sum(len(v) for v in seen.values())),
-            )
-
-        return QualityResult.failure(
-            "cepalstat_rates_expected_countries",
-            CheckType.COMPLETENESS,
-            CheckSeverity.CRITICAL,
-            f"{len(problems)} change(s) in country coverage: {', '.join(problems[:5])}",
-            expected_value=str(sum(len(v) for v in EXPECTED_COUNTRIES.values())),
-            actual_value=str(sum(len(v) for v in seen.values())),
         )

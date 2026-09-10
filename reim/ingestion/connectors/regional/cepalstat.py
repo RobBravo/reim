@@ -45,6 +45,7 @@ transforms was rejected in design and stays rejected.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
 
@@ -233,6 +234,69 @@ class CepalstatConnector(BaseConnector):
             )
             raise TransformationError(msg, source_key=self.source.key)
         return months[member]
+
+    def _check_country_coverage(
+        self,
+        observations: list[NormalizedObservation],
+        expected: Mapping[str, frozenset[str]],
+        check_name: str,
+    ) -> QualityResult:
+        """Each series carries exactly the countries it is expected to.
+
+        An expectation rather than a floor, so that a country **arriving** is
+        reported as loudly as one disappearing: a new country means the
+        publisher changed something, which is worth a human reading.
+
+        Named for what it does rather than reusing ``_check_expected_countries``,
+        which two sibling connectors already define for a single-indicator
+        family with a different signature. Reusing that name here would have
+        those subclasses silently shadow this method.
+
+        This only works if the connector's ``transform`` lets unexpected
+        countries through. A row filtered out before it becomes an observation
+        is invisible here, so a family that excludes a country must condition
+        that exclusion on something other than the country itself — see
+        ``cepalstat_rates.SeriesSpec.is_artifact``.
+
+        Args:
+            observations: Everything ``transform`` produced, all series.
+            expected: The country set each indicator code should carry.
+            check_name: The result's name. Passed rather than derived, because
+                the shipped names do not follow one pattern and changing them
+                would break continuity with runs already recorded.
+        """
+        seen: dict[str, set[str]] = {code: set() for code in expected}
+        for obs in observations:
+            if obs.indicator_code in seen:
+                seen[obs.indicator_code].add(obs.country_iso3)
+
+        problems: list[str] = []
+        for code, countries in expected.items():
+            for iso3 in sorted(countries - seen[code]):
+                problems.append(f"{code} lost {iso3}")
+            for iso3 in sorted(seen[code] - countries):
+                problems.append(f"{code} gained {iso3}")
+
+        total_expected = str(sum(len(v) for v in expected.values()))
+        total_seen = str(sum(len(v) for v in seen.values()))
+
+        if not problems:
+            return QualityResult.passed(
+                check_name,
+                CheckType.COMPLETENESS,
+                "Every series carries exactly the countries it is expected to",
+                expected_value=total_expected,
+                actual_value=total_seen,
+            )
+
+        return QualityResult.failure(
+            check_name,
+            CheckType.COMPLETENESS,
+            CheckSeverity.CRITICAL,
+            f"{len(problems)} change(s) in country coverage: {', '.join(problems[:5])}",
+            expected_value=total_expected,
+            actual_value=total_seen,
+        )
 
     def _check_monthly_continuity(self, observations: list[NormalizedObservation]) -> QualityResult:
         """Holes inside each country's own span, per indicator.

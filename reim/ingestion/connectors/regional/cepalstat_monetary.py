@@ -233,7 +233,9 @@ class CepalstatMonetaryConnector(CepalstatConnector):
 
         return [
             self._check_nesting(by_key),
-            self._check_expected_countries(observations),
+            self._check_country_coverage(
+                observations, EXPECTED_COUNTRIES, "cepalstat_monetary_expected_countries"
+            ),
             self._check_monthly_continuity(observations),
         ]
 
@@ -281,40 +283,4 @@ class CepalstatMonetaryConnector(CepalstatConnector):
             f"{len(broken)} cell(s) break the M1 <= M2 <= M3 ordering: {shown}{suffix}",
             expected_value="0 beyond tolerance",
             actual_value=str(len(broken)),
-        )
-
-    def _check_expected_countries(self, observations: list[NormalizedObservation]) -> QualityResult:
-        """Each series has its own country set; Belize and El Salvador differ.
-
-        An expectation rather than a floor, so that a country arriving is
-        reported as loudly as one disappearing.
-        """
-        seen: dict[str, set[str]] = {spec.indicator_code: set() for spec in SERIES}
-        for obs in observations:
-            if obs.indicator_code in seen:
-                seen[obs.indicator_code].add(obs.country_iso3)
-
-        problems: list[str] = []
-        for code, expected in EXPECTED_COUNTRIES.items():
-            for iso3 in sorted(expected - seen[code]):
-                problems.append(f"{code} lost {iso3}")
-            for iso3 in sorted(seen[code] - expected):
-                problems.append(f"{code} gained {iso3}")
-
-        if not problems:
-            return QualityResult.passed(
-                "cepalstat_monetary_expected_countries",
-                CheckType.COMPLETENESS,
-                "Every series carries exactly the countries it is expected to",
-                expected_value=str(sum(len(v) for v in EXPECTED_COUNTRIES.values())),
-                actual_value=str(sum(len(v) for v in seen.values())),
-            )
-
-        return QualityResult.failure(
-            "cepalstat_monetary_expected_countries",
-            CheckType.COMPLETENESS,
-            CheckSeverity.CRITICAL,
-            f"{len(problems)} change(s) in country coverage: {', '.join(problems[:5])}",
-            expected_value=str(sum(len(v) for v in EXPECTED_COUNTRIES.values())),
-            actual_value=str(sum(len(v) for v in seen.values())),
         )

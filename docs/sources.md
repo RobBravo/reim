@@ -1503,11 +1503,23 @@ single year are an artifact of CEPAL's table, not a measurement.
 
 **REIM stores none of them.** Panama is excluded from `policy_rate_monthly`
 only; it keeps its lending and deposit series, which are real, attributed and
-286 and 253 observations long. The exclusion is a named constant with the
-reason beside it and it is encoded in the connector's `EXPECTED_COUNTRIES`, so
-if CEPAL ever publishes real Panamanian data here the
-`cepalstat_rates_expected_countries` check fails rather than the data being
-silently dropped.
+286 and 253 observations long.
+
+**The exclusion keys on the row's shape, not on the country.** A row is
+discarded only when it matches the artifact's signature — a zero value *and* no
+attribution at all — so a Panamanian row that is non-zero, or that cites a
+source, flows through untouched and trips
+`cepalstat_rates_expected_countries` at `critical`. Panama's absence is also
+encoded in `EXPECTED_COUNTRIES`, which is what makes that check fire.
+
+This distinction is load-bearing and was got wrong first. Filtering on the
+country alone reads as equivalent and is not: a row dropped inside `transform`
+never becomes an observation, and every check only ever sees the observations
+`transform` produced. Under that version real Panamanian data would have been
+discarded silently and permanently, with nothing to report it — while this file
+claimed the opposite. A test now pins the guarantee by rewriting the recorded
+Panamanian rows into plausible measurements and asserting they survive and fail
+the check.
 
 This is a deliberate departure from *store what is published* and the only one
 in this family. The alternative would put `Panama: 0.00%` into every `/compare`

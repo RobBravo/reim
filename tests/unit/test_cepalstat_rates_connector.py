@@ -5,6 +5,7 @@ Every payload replayed here is a real recording; see `tests/fixtures/README.md`.
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -365,3 +366,61 @@ def test_expected_countries_reports_a_loss_too() -> None:
     assert result.status is CheckStatus.FAILED
     assert result.severity is CheckSeverity.CRITICAL
     assert "lending_rate_nominal_monthly lost HND" in result.message
+
+
+def _with_real_panamanian_policy_rate(policy_json: str) -> str:
+    """Return indicator 1206's payload with every Panamanian row made real.
+
+    CEPAL's Panamanian rows are all zero and wholly unattributed. This rewrites
+    every one of them into what a genuine measurement would look like — a
+    non-zero value carrying an attribution — leaving every other country
+    untouched. Twelve of the sixteen are monthly members; the annual and
+    quarterly four are dropped for the same reason they are for every country.
+    """
+    body = json.loads(policy_json)
+    panamanian = [row for row in body["body"]["data"] if row["iso3"] == "PAN"]
+    assert panamanian, "fixture holds no Panamanian rows in indicator 1206"
+    for row in panamanian:
+        row["value"] = "5.5"
+        row["source_id"] = 16196
+    return json.dumps(body)
+
+
+def test_a_real_panamanian_policy_rate_survives_and_trips_the_coverage_check(
+    cepalstat_rates_856_json: str,
+    cepalstat_rates_857_json: str,
+    cepalstat_rates_1206_json: str,
+    cepalstat_dimensions_856_json: str,
+) -> None:
+    """The exclusion keys on the artifact's shape, never on Panama itself.
+
+    `docs/sources.md` promises that if CEPAL ever publishes real Panamanian
+    data here, `cepalstat_rates_expected_countries` fails rather than the data
+    being silently dropped. Keying the exclusion on the country cannot deliver
+    that: a row filtered before it becomes an observation is invisible to every
+    check. So the drop is conditioned on the artifact's signature — zero, and
+    no attribution at all — and anything else flows through.
+    """
+    raw = build_raw(
+        {
+            856: cepalstat_rates_856_json,
+            857: cepalstat_rates_857_json,
+            1206: _with_real_panamanian_policy_rate(cepalstat_rates_1206_json),
+        },
+        cepalstat_dimensions_856_json,
+    )
+    connector = build_connector()
+    observations = connector.transform(raw)
+
+    panama = [
+        obs
+        for obs in observations
+        if obs.indicator_code == "policy_rate_monthly" and obs.country_iso3 == "PAN"
+    ]
+    assert len(panama) == 12, "real Panamanian policy rates must not be discarded"
+    assert {obs.value_numeric for obs in panama} == {Decimal("5.5")}
+
+    result = results_of(observations)["cepalstat_rates_expected_countries"]
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.CRITICAL
+    assert "policy_rate_monthly gained PAN" in result.message
