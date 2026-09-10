@@ -53,7 +53,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from reim.core.constants import Frequency
+from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import TransformationError
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
@@ -138,6 +138,21 @@ ITEM_NAMES: dict[int, str] = {
     1313: "Other investment liabilities",
     1326: "Reserve assets",
 }
+
+
+#: Values are stored in whole dollars, so the spec's 0.5-million tolerance is
+#: 500,000 in stored units. Verified against the fixture: every non-exception
+#: residual falls below this, while Panama's two exceptions sit one and two
+#: orders of magnitude above it (9.1 and 14.1 million).
+IDENTITY_TOLERANCE = Decimal("0.5") * MILLIONS
+
+#: Measured 2026-09-09: the only two country-quarters where the global balance
+#: does not equal I + II + III + IV, by -9.1 and +14.1 million. Encoded rather
+#: than guessed, so a third break is reported instead of silently allowed.
+GLOBAL_BALANCE_EXCEPTIONS = frozenset({("PAN", "2004-Q3"), ("PAN", "2021-Q4")})
+
+#: Every one of the 25 stored series is expected to carry all seven countries.
+EXPECTED_COUNTRIES: dict[str, frozenset[str]] = dict.fromkeys(ITEMS.values(), CENTRAL_AMERICA)
 
 
 class CepalstatBopConnector(CepalstatConnector):
@@ -242,13 +257,129 @@ class CepalstatBopConnector(CepalstatConnector):
         return observations
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
-        """Not yet implemented; Task 5 adds this family's quality battery.
+        """The balance of payments' own accounting identities, plus coverage.
 
-        Raises rather than returning an empty list: an empty battery would let a
-        run in this window store every observation with nothing checked and still
-        report success.
+        A balance of payments is an accounting system: its components must
+        reconcile. Four identity checks assert that; the fifth checks that
+        every one of the 25 series still carries all seven countries.
+
+        There is no continuity check here: the base class's
+        ``_check_monthly_continuity`` splits ``period.label`` on ``-``, which
+        raises on a quarterly label like ``2024-Q1``, and every country's
+        quarterly span is complete, so a quarterly equivalent would have
+        nothing to find. ``min_observations`` covers a collapse.
         """
-        raise NotImplementedError  # Task 5
+        return [
+            self._check_identity(
+                observations,
+                "cepalstat_bop_current_account",
+                "bop_current_account_quarterly",
+                (
+                    "bop_balance_goods_services_quarterly",
+                    "bop_balance_income_quarterly",
+                    "bop_balance_current_transfers_quarterly",
+                ),
+                CheckSeverity.ERROR,
+            ),
+            self._check_identity(
+                observations,
+                "cepalstat_bop_goods",
+                "bop_balance_goods_quarterly",
+                ("bop_exports_goods_fob_quarterly", "bop_imports_goods_fob_quarterly"),
+                CheckSeverity.ERROR,
+            ),
+            self._check_identity(
+                observations,
+                "cepalstat_bop_goods_services",
+                "bop_balance_goods_services_quarterly",
+                (
+                    "bop_balance_goods_quarterly",
+                    "bop_services_credit_quarterly",
+                    "bop_services_debit_quarterly",
+                ),
+                CheckSeverity.ERROR,
+            ),
+            self._check_identity(
+                observations,
+                "cepalstat_bop_global_balance",
+                "bop_global_balance_quarterly",
+                (
+                    "bop_current_account_quarterly",
+                    "bop_capital_account_quarterly",
+                    "bop_financial_account_quarterly",
+                    "bop_errors_omissions_quarterly",
+                ),
+                CheckSeverity.WARNING,
+                exceptions=GLOBAL_BALANCE_EXCEPTIONS,
+            ),
+            self._check_country_coverage(
+                observations, EXPECTED_COUNTRIES, "cepalstat_bop_expected_countries"
+            ),
+        ]
+
+    def _check_identity(
+        self,
+        observations: list[NormalizedObservation],
+        check_name: str,
+        target_code: str,
+        part_codes: tuple[str, ...],
+        severity: CheckSeverity,
+        exceptions: frozenset[tuple[str, str]] = frozenset(),
+    ) -> QualityResult:
+        """One accounting identity: does ``target`` equal the sum of ``parts``?
+
+        Indexed by ``(country, period, indicator_code)`` so a country-quarter
+        is only checked once every code involved is present — a country that
+        does not yet report the financial account, say, is skipped rather
+        than compared against a missing value. Pairs in ``exceptions`` are
+        skipped before comparison, so they never appear in a failure message.
+
+        Reports the first five breaks with their residuals, so a run that
+        breaks in many places still names enough of them to start from.
+        """
+        codes = {target_code, *part_codes}
+        by_key: dict[tuple[str, str, str], Decimal] = {}
+        for obs in observations:
+            if obs.indicator_code in codes and obs.value_numeric is not None:
+                by_key[(obs.country_iso3, obs.period.label, obs.indicator_code)] = obs.value_numeric
+
+        country_quarters = sorted(
+            {(country, label) for country, label, code in by_key if code == target_code}
+        )
+
+        checked = 0
+        breaks: list[str] = []
+        for country, label in country_quarters:
+            if (country, label) in exceptions:
+                continue
+            raw_parts = [by_key.get((country, label, code)) for code in part_codes]
+            if any(part is None for part in raw_parts):
+                continue
+            parts = [part for part in raw_parts if part is not None]
+            target = by_key[(country, label, target_code)]
+            residual = target - sum(parts, start=Decimal(0))
+            checked += 1
+            if abs(residual) > IDENTITY_TOLERANCE:
+                breaks.append(f"{country} {label} (residual {residual:,.2f})")
+
+        if not breaks:
+            return QualityResult.passed(
+                check_name,
+                CheckType.CONSISTENCY,
+                f"Identity holds in all {checked} checkable country-quarter(s)",
+                expected_value=str(checked),
+                actual_value=str(checked),
+            )
+
+        return QualityResult.failure(
+            check_name,
+            CheckType.CONSISTENCY,
+            severity,
+            f"{len(breaks)} of {checked} checkable country-quarter(s) break the "
+            f"identity: {', '.join(breaks[:5])}",
+            expected_value=str(checked),
+            actual_value=str(checked - len(breaks)),
+        )
 
     def _quarter_of(self, row: Any) -> int:
         """Resolve a row's quarter number.

@@ -13,9 +13,9 @@ import httpx
 import pytest
 import respx
 
-from reim.core.constants import Frequency
+from reim.core.constants import CheckSeverity, CheckStatus, Frequency
 from reim.core.exceptions import TransformationError
-from reim.domain.pipelines.models import RawDataset
+from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.connectors.regional.cepalstat_bop import (
     CENTRAL_AMERICA,
@@ -145,3 +145,145 @@ def test_a_renamed_item_member_raises_rather_than_changing_a_series(
 
     with pytest.raises(TransformationError, match="1274"):
         build_connector().transform(build_raw(json.dumps(document)))
+
+
+def results_of(observations: list[NormalizedObservation]) -> dict[str, QualityResult]:
+    return {result.check_name: result for result in build_connector().validate(observations)}
+
+
+def test_all_five_checks_pass_on_the_recording(raw: RawDataset) -> None:
+    """The expected first-run state, from spec section 6.3."""
+    results = results_of(build_connector().transform(raw))
+    assert set(results) == {
+        "cepalstat_bop_current_account",
+        "cepalstat_bop_goods",
+        "cepalstat_bop_goods_services",
+        "cepalstat_bop_global_balance",
+        "cepalstat_bop_expected_countries",
+    }
+    for name, result in results.items():
+        assert result.status is CheckStatus.PASSED, f"{name}: {result.message}"
+
+
+def test_the_current_account_identity_catches_a_constructed_break(raw: RawDataset) -> None:
+    """I = goods and services + income + current transfers, at error severity."""
+    observations = build_connector().transform(raw)
+    assert results_of(observations)["cepalstat_bop_current_account"].status is CheckStatus.PASSED
+
+    broken = [
+        obs
+        for obs in observations
+        if obs.indicator_code == "bop_current_account_quarterly"
+        and (obs.country_iso3, obs.period.label) == ("HND", "2015-Q2")
+    ]
+    assert broken, "fixture must hold HND 2015-Q2 for this test to mean anything"
+    broken[0].value_numeric += Decimal("5000000")
+
+    result = results_of(observations)["cepalstat_bop_current_account"]
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.ERROR
+    assert "HND 2015-Q2" in result.message
+
+
+def test_the_goods_identity_catches_a_constructed_break(raw: RawDataset) -> None:
+    """Balance on goods = exports + imports; imports are stored negative."""
+    observations = build_connector().transform(raw)
+    assert results_of(observations)["cepalstat_bop_goods"].status is CheckStatus.PASSED
+
+    broken = [
+        obs
+        for obs in observations
+        if obs.indicator_code == "bop_balance_goods_quarterly"
+        and (obs.country_iso3, obs.period.label) == ("SLV", "2012-Q3")
+    ]
+    assert broken, "fixture must hold SLV 2012-Q3 for this test to mean anything"
+    broken[0].value_numeric += Decimal("5000000")
+
+    result = results_of(observations)["cepalstat_bop_goods"]
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.ERROR
+    assert "SLV 2012-Q3" in result.message
+
+
+def test_the_goods_and_services_identity_catches_a_constructed_break(raw: RawDataset) -> None:
+    """Goods and services = goods + services credit + services debit."""
+    observations = build_connector().transform(raw)
+    assert results_of(observations)["cepalstat_bop_goods_services"].status is CheckStatus.PASSED
+
+    broken = [
+        obs
+        for obs in observations
+        if obs.indicator_code == "bop_balance_goods_services_quarterly"
+        and (obs.country_iso3, obs.period.label) == ("NIC", "2016-Q4")
+    ]
+    assert broken, "fixture must hold NIC 2016-Q4 for this test to mean anything"
+    broken[0].value_numeric += Decimal("5000000")
+
+    result = results_of(observations)["cepalstat_bop_goods_services"]
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.ERROR
+    assert "NIC 2016-Q4" in result.message
+
+
+def test_the_global_balance_check_allows_only_panamas_two_known_exceptions(
+    raw: RawDataset,
+) -> None:
+    """Panama 2004-Q3 and 2021-Q4 are real and encoded; a third would fire."""
+    observations = build_connector().transform(raw)
+    assert results_of(observations)["cepalstat_bop_global_balance"].status is CheckStatus.PASSED
+
+    broken = [
+        obs
+        for obs in observations
+        if obs.indicator_code == "bop_global_balance_quarterly"
+        and (obs.country_iso3, obs.period.label) == ("CRI", "2010-Q1")
+    ]
+    assert broken, "fixture must hold CRI 2010-Q1 for this test to mean anything"
+    broken[0].value_numeric += Decimal("5000000")
+
+    result = results_of(observations)["cepalstat_bop_global_balance"]
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.WARNING
+    assert "CRI 2010-Q1" in result.message
+    assert "PAN 2004-Q3" not in result.message
+    assert "PAN 2021-Q4" not in result.message
+
+
+def test_cepal_declares_bpm5_while_six_of_seven_countries_carry_the_bpm6_footnote(
+    raw: RawDataset, cepalstat_bop_547_json: str
+) -> None:
+    """CEPAL's own metadata contradicts itself, and Guatemala is the exception.
+
+    ``calculation_methodology`` states the fifth edition of the IMF's Balance
+    of Payments Manual (BPM5); footnote 10138, attached to six of the seven
+    countries' rows, says the sixth (BPM6) was actually used. REIM does not
+    resolve the contradiction — see the module docstring — but documents it,
+    so this pins both texts and the six-of-seven split the same way
+    ``test_costa_rica_keeps_cepals_bolivian_misattribution`` pins the rates
+    connector's CBBO defect: if CEPAL ever reconciles the two statements,
+    this test fails and the documentation gets corrected rather than quietly
+    going stale.
+    """
+    document = json.loads(cepalstat_bop_547_json)
+    body = document["body"]
+    methodology = str(body["metadata"]["calculation_methodology"])
+    assert "fifth edition" in methodology
+    assert "1993" in methodology
+
+    footnotes = {footnote["id"]: footnote["description"] for footnote in body["footnotes"]}
+    assert footnotes[10138] == (
+        "Analytical presentation based on the official figures of the countries "
+        "according to the 6th version of the IMF Balance of Payments Manual."
+    )
+
+    observations = build_connector().transform(build_raw(cepalstat_bop_547_json))
+    notes_by_country: dict[str, set[str]] = {}
+    for obs in observations:
+        notes_by_country.setdefault(obs.country_iso3, set()).update(
+            obs.raw_metadata["cepalstat_notes_ids"]
+        )
+
+    carries_10138 = {iso3 for iso3, notes in notes_by_country.items() if "10138" in notes}
+    assert carries_10138 == CENTRAL_AMERICA - {"GTM"}
+    assert len(carries_10138) == 6
+    assert "10138" not in notes_by_country["GTM"]
