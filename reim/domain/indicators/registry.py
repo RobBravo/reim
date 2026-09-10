@@ -642,6 +642,440 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=1206&lang=en",
         methodology_varies_by_country=True,
     ),
+    IndicatorDefinition(
+        code="bop_current_account_quarterly",
+        name="Current account balance (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. The current account: the sum of "
+            "bop_balance_goods_services_quarterly, bop_balance_income_quarterly and "
+            "bop_balance_current_transfers_quarterly, which foots exactly against this "
+            "figure across all seven countries."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_capital_account_quarterly",
+        name="Capital account balance (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Capital transfers and the acquisition or "
+            "disposal of non-produced, non-financial assets. With the current and "
+            "financial accounts and errors and omissions it sums to "
+            "bop_global_balance_quarterly in 782 of the 784 country-quarters measured; "
+            "Panama's 2004-Q3 and 2021-Q4 are the two exceptions."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_financial_account_quarterly",
+        name="Financial account balance (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Net balance across direct, portfolio and other "
+            "investment — see bop_direct_investment_abroad_quarterly, "
+            "bop_direct_investment_inward_quarterly, "
+            "bop_portfolio_investment_assets_quarterly, "
+            "bop_portfolio_investment_liabilities_quarterly, "
+            "bop_other_investment_assets_quarterly and "
+            "bop_other_investment_liabilities_quarterly for the sub-accounts. Reserve "
+            "assets are excluded from this balance; see bop_reserve_assets_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_errors_omissions_quarterly",
+        name="Errors and omissions (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. The balancing residual between the recorded "
+            "current, capital and financial accounts and the recorded change in "
+            "reserves; not a measured flow in its own right, and its size is a rough "
+            "gauge of how well the other lines were measured that quarter."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_global_balance_quarterly",
+        name="Global balance (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Sum of the current, capital and financial "
+            "accounts plus errors and omissions. Holds exactly for 782 of the 784 "
+            "country-quarters measured; Panama's 2004-Q3 and 2021-Q4 break it. It is "
+            "not the negative of bop_reserves_related_quarterly, as a textbook two-line "
+            "presentation would suggest: that identity held in only 2 of the 784 "
+            "country-quarters measured, so the two are not read as offsetting each "
+            "other here."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_reserves_related_quarterly",
+        name="Reserves and related items (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. The financing counterpart to the global "
+            "balance: reserve assets (bop_reserve_assets_quarterly) plus use of IMF "
+            "credit and loans and exceptional financing. It does not sum to zero "
+            "against bop_global_balance_quarterly in this data; see that indicator's "
+            "description."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_balance_goods_quarterly",
+        name="Balance on goods (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. The merchandise trade balance: the sum of "
+            "bop_exports_goods_fob_quarterly and bop_imports_goods_fob_quarterly, which "
+            "foots exactly against this figure across all seven countries because "
+            "imports are stored with a negative sign."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_balance_goods_services_quarterly",
+        name="Balance on goods and services (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. The sum of bop_balance_goods_quarterly, "
+            "bop_services_credit_quarterly and bop_services_debit_quarterly, which "
+            "foots exactly against this figure across all seven countries. REIM's other "
+            "quarterly services series, exports_services_quarterly and "
+            "imports_services_quarterly, come from SIECA rather than this ECLAC "
+            "compilation and are not interchangeable with the two above."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_balance_income_quarterly",
+        name="Balance on income (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Balance on primary income: the sum of "
+            "bop_income_credit_quarterly and bop_income_debit_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_balance_current_transfers_quarterly",
+        name="Balance on current transfers (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. The sum of "
+            "bop_current_transfers_credit_quarterly and "
+            "bop_current_transfers_debit_quarterly. Like both of its components, this "
+            "is the whole current-transfers account, official transfers included, and "
+            "is not remittances — see bop_current_transfers_credit_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_exports_goods_fob_quarterly",
+        name="Exports of goods, f.o.b. (quarterly, balance of payments)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Exports of goods, free on board. REIM already "
+            "holds exports_goods_monthly, the IMF's monthly merchandise-exports series "
+            "compiled from national customs data on the same free-on-board basis; the "
+            "two overlap and REIM stores both without choosing between them, the same "
+            "rule it applies to Nicaragua's two consumer price indices."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_imports_goods_fob_quarterly",
+        name="Imports of goods, f.o.b. (quarterly, balance of payments)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Imports of goods, free on board, stored with a "
+            "negative sign — bop_balance_goods_quarterly foots exactly as exports plus "
+            "imports only because of that sign. REIM already holds "
+            "imports_goods_monthly, the IMF's monthly merchandise-imports series "
+            "compiled from national customs data, but that series is c.i.f. — cost, "
+            "insurance and freight included — not f.o.b., so the two are not the same "
+            "valuation basis and do not overlap the way the export pair does."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_services_credit_quarterly",
+        name="Services, credit (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Exports of services — the credit side of the "
+            "services account. Sums with bop_services_debit_quarterly and "
+            "bop_balance_goods_quarterly into bop_balance_goods_services_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_services_debit_quarterly",
+        name="Services, debit (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Imports of services — the debit side of the "
+            "services account, stored with a negative sign; see "
+            "bop_services_credit_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_income_credit_quarterly",
+        name="Income, credit (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Primary income received: compensation of "
+            "employees and investment income earned abroad. Sums with "
+            "bop_income_debit_quarterly into bop_balance_income_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_income_debit_quarterly",
+        name="Income, debit (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Primary income paid: compensation of employees "
+            "and investment income paid abroad, stored with a negative sign; see "
+            "bop_income_credit_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_current_transfers_credit_quarterly",
+        name="Current transfers, credit (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. This is the whole current-transfers account, "
+            "official transfers included; it is not remittances, and CEPAL's item "
+            "dimension does not break personal remittances out of it. The World Bank "
+            "series REIM stores annually, BX.TRF.PWKR.CD.DT, is a third definition "
+            "again — personal transfers plus compensation of employees, not this "
+            "account's credit side."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_current_transfers_debit_quarterly",
+        name="Current transfers, debit (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. The debit side of the same whole "
+            "current-transfers account described in "
+            "bop_current_transfers_credit_quarterly, stored with a negative sign: "
+            "outward transfers, official ones included, not remittances paid."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_direct_investment_abroad_quarterly",
+        name="Direct investment abroad (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Net direct investment by residents abroad — "
+            "the assets side of the direct-investment account, paired with "
+            "bop_direct_investment_inward_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_direct_investment_inward_quarterly",
+        name="Direct investment in the reporting economy (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Net direct investment by non-residents in the "
+            "reporting economy — the liabilities side of the direct-investment "
+            "account, paired with bop_direct_investment_abroad_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_portfolio_investment_assets_quarterly",
+        name="Portfolio investment, assets (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Net acquisition of portfolio-investment assets "
+            "by residents abroad: equity and debt securities held, not issued, by the "
+            "reporting economy. Paired with "
+            "bop_portfolio_investment_liabilities_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_portfolio_investment_liabilities_quarterly",
+        name="Portfolio investment, liabilities (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Net incurrence of portfolio-investment "
+            "liabilities: equity and debt securities issued by residents and held "
+            "abroad. Paired with bop_portfolio_investment_assets_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_other_investment_assets_quarterly",
+        name="Other investment, assets (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Net other-investment assets: loans, currency "
+            "and deposits, trade credit and similar claims on non-residents not "
+            "classified as direct or portfolio investment. Paired with "
+            "bop_other_investment_liabilities_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_other_investment_liabilities_quarterly",
+        name="Other investment, liabilities (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. Net other-investment liabilities: loans, "
+            "currency and deposits, trade credit and similar obligations to "
+            "non-residents not classified as direct or portfolio investment. Paired "
+            "with bop_other_investment_assets_quarterly."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
+    IndicatorDefinition(
+        code="bop_reserve_assets_quarterly",
+        name="Reserve assets, balance-of-payments flow (quarterly)",
+        description=(
+            "Quarterly balance of payments compiled by ECLAC; CEPAL declares the IMF's "
+            "fifth Balance of Payments Manual while six of the seven countries carry a "
+            "footnote citing the sixth. This is the balance-of-payments flow in "
+            "reserve assets over the quarter — the change in reserves, not the stock. "
+            "It is not the reserves level ROADMAP.md asks for, which is what "
+            "FI.RES.TOTL.CD and the IMF's IRFCL hold."
+        ),
+        category=IndicatorCategory.EXTERNAL_SECTOR,
+        frequency=Frequency.QUARTERLY,
+        unit="current USD",
+        value_type=ValueType.LEVEL,
+        methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
+    ),
 )
 
 INDICATORS_BY_CODE: dict[str, IndicatorDefinition] = {i.code: i for i in INDICATORS}

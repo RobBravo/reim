@@ -590,3 +590,71 @@ def test_every_rates_indicator_has_a_quality_rule(quality_rules: QualityRuleSet)
     assert rules["lending_rate_nominal_monthly"].min_observations == 2400
     assert rules["deposit_rate_nominal_monthly"].min_observations == 2350
     assert rules["policy_rate_monthly"].min_observations == 1550
+
+
+BOP_CODES = (
+    "bop_current_account_quarterly",
+    "bop_capital_account_quarterly",
+    "bop_financial_account_quarterly",
+    "bop_errors_omissions_quarterly",
+    "bop_global_balance_quarterly",
+    "bop_reserves_related_quarterly",
+    "bop_balance_goods_quarterly",
+    "bop_balance_goods_services_quarterly",
+    "bop_balance_income_quarterly",
+    "bop_balance_current_transfers_quarterly",
+    "bop_exports_goods_fob_quarterly",
+    "bop_imports_goods_fob_quarterly",
+    "bop_services_credit_quarterly",
+    "bop_services_debit_quarterly",
+    "bop_income_credit_quarterly",
+    "bop_income_debit_quarterly",
+    "bop_current_transfers_credit_quarterly",
+    "bop_current_transfers_debit_quarterly",
+    "bop_direct_investment_abroad_quarterly",
+    "bop_direct_investment_inward_quarterly",
+    "bop_portfolio_investment_assets_quarterly",
+    "bop_portfolio_investment_liabilities_quarterly",
+    "bop_other_investment_assets_quarterly",
+    "bop_other_investment_liabilities_quarterly",
+    "bop_reserve_assets_quarterly",
+)
+
+
+def test_the_balance_of_payments_indicators_are_registered() -> None:
+    """Twenty-five quarterly series, one cube, one unit."""
+    assert len(BOP_CODES) == 25
+    for code in BOP_CODES:
+        definition = INDICATORS_BY_CODE[code]
+        assert definition.category is IndicatorCategory.EXTERNAL_SECTOR
+        assert definition.frequency is Frequency.QUARTERLY
+        assert definition.unit == "current USD"
+        assert definition.value_type is ValueType.LEVEL
+        assert definition.currency_convertible is False
+
+
+def test_the_balance_of_payments_does_not_declare_varying_methodology() -> None:
+    """Its metadata disagrees about the IMF manual; its figures do not.
+
+    CEPAL declares BPM5 while six of the seven countries carry a BPM6 footnote,
+    but the sign convention is consistent across all seven and the accounting
+    identities hold everywhere. Declaring the flag would put a caveat on
+    /compare that the measurement contradicts — see decision D5.
+    """
+    for code in BOP_CODES:
+        assert INDICATORS_BY_CODE[code].methodology_varies_by_country is False
+
+
+def test_the_two_balance_of_payments_traps_are_stated_in_their_descriptions() -> None:
+    """Neither closes the roadmap gap its name suggests.
+
+    Reserve assets here is the quarterly *flow*, not the stock the roadmap
+    wants; current transfers is the whole current-transfers account, official
+    transfers included, and is not remittances.
+    """
+    reserves = INDICATORS_BY_CODE["bop_reserve_assets_quarterly"].description
+    assert "flow" in reserves.lower()
+    assert "not the stock" in reserves.lower()
+
+    transfers = INDICATORS_BY_CODE["bop_current_transfers_credit_quarterly"].description
+    assert "not remittances" in transfers.lower()
