@@ -61,7 +61,7 @@ See [ROADMAP.md](./ROADMAP.md).
 
 ### Data available
 
-**22 live pipelines feeding 38 indicators**, every one verified against its
+**23 live pipelines feeding 63 indicators**, every one verified against its
 source. Nothing here is a scrape of an aggregator.
 
 | Source | Countries | Frequency | Series | Coverage |
@@ -77,6 +77,7 @@ source. Nothing here is a scrape of an aggregator.
 | **CEPAL** — CEPALSTAT | **all seven** | **monthly** | nominal exchange rate, local currency per USD, average of the daily rates within the month | 1990-01 onward |
 | **CEPAL** — CEPALSTAT | **all seven** | **monthly** | consumer price index, each country on its own base period | 1980-01 onward |
 | **CEPAL** — CEPALSTAT | **all seven**, six for the policy rate | **monthly** | nominal lending rate, nominal deposit rate and monetary policy rate | 1990-01 onward |
+| **CEPAL** — CEPALSTAT | **all seven** | **quarterly** | balance of payments: the six headline balances, four sub-balances and fifteen components | 1993-Q1 onward |
 | **World Bank** — Indicators API v2 | Nicaragua | annual | exchange rate, inflation, remittances, reserves, exports, imports | 1960 onward |
 
 The BCN, Banguat and INIDE series are **national primary sources** — the
@@ -502,7 +503,7 @@ make test-cov       # with coverage
 make check          # lint + typecheck + catalog + tests (what CI runs)
 ```
 
-493 tests — 377 offline, 112 integration and 4 opt-in live. Integration tests
+725 tests — 596 offline, 122 integration and 7 opt-in live. Integration tests
 skip cleanly when `REIM_TEST_DATABASE_URL` is unset, so `pytest` works on a bare
 checkout.
 
@@ -569,7 +570,7 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   These are different things, and the project's rule is stated in both parts
   rather than as one absolute that its own catalog would contradict. See
   [`docs/sources.md`](./docs/sources.md).
-- **Four sources are rescaled, and all four say so.** SIECA publishes
+- **Five families are rescaled, and all five say so.** SIECA publishes
   services trade in **millions of USD** and CEPAL publishes its GDP totals the
   same way; REIM stores whole USD, multiplying by 10⁶ in `Decimal`. CEPAL's
   monetary aggregates are published in **millions of each country's own
@@ -577,10 +578,13 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   not to dollars. CEPAL's central government debt stock is published in
   **millions of USD** and is rescaled to whole USD the same way, while its
   companion percent-of-GDP ratio is stored **untouched**, exactly as published.
-  CEPAL's two per-inhabitant GDP series are also stored exactly as published.
-  Every rescaled observation keeps the published value, the published unit and
-  the scale applied in `raw_metadata`, so the original figure is recoverable
-  exactly. These four rescalings are the whole of it: nothing in REIM restates
+  All twenty-five balance-of-payments series are published in **millions of
+  USD** and rescaled to whole USD identically — CEPAL declares zero decimals
+  there and publishes up to eighteen, and not one of those digits is rounded
+  away. CEPAL's two per-inhabitant GDP series are also stored exactly as
+  published. Every rescaled observation keeps the published value, the published
+  unit and the scale applied in `raw_metadata`, so the original figure is
+  recoverable exactly. These five rescalings are the whole of it: nothing in REIM restates
   a unit, and no stored figure is ever a converted one. `/compare?convert_to=`
   derives dollars at request time, beside the published figure and never in
   place of it; nothing derived is written to the database.
@@ -607,6 +611,25 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   and CEPAL's sixteen zero-valued, unattributed 2022 cells for it are an
   artifact REIM does not store. Nicaragua's two genuine 2010 zeros, inside a
   real attributed series, are stored. See
+  [`docs/sources.md`](./docs/sources.md).
+- **The balance of payments carries a contradiction in its own metadata, and
+  two items that are not what they look like.** CEPAL declares the IMF's
+  **fifth** Balance of Payments Manual while footnote 10138 cites the **sixth**
+  on every row of six of the seven countries — all but Guatemala. The split is
+  by country, not by year. REIM records it and does **not** declare
+  `methodology_varies_by_country`, because the break that would matter is
+  measurably absent: BPM6 reverses BPM5's financial-account sign convention, and
+  averaging the financial account across every current-account deficit quarter
+  puts Guatemala at **+345.0** inside a range of +34.3 to +677.0 for the other
+  six. The labels disagree; the figures do not. Separately,
+  `bop_reserve_assets_quarterly` is the quarterly **flow** in reserve assets and
+  **not the reserves stock**, and `bop_current_transfers_credit_quarterly` is
+  the whole current-transfers account and **not remittances** — both are
+  documented traps for gaps `ROADMAP.md` still lists as open, and both warnings
+  are in the indicators' own descriptions. Honduras also stops publishing
+  current transfers (debit) at **2023-Q4** while publishing its other
+  twenty-four series through 2026-Q1, so that one series warns on freshness on
+  every run rather than having its threshold widened to hide it. See
   [`docs/sources.md`](./docs/sources.md).
 - **The monetary aggregates are not comparable across countries.** M1, M2 and
   M3 are each in the publishing country's own currency — córdobas, quetzales,

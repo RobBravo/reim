@@ -7,7 +7,7 @@ This file is the honest record behind `sources/catalog.yml`. A source is only
 enabled once its endpoint has been reached and its response shape observed. No
 connector is ever "confirmed working" against invented data.
 
-Last verified: **2026-08-19**.
+Last verified: **2026-09-09**.
 
 ---
 
@@ -1746,20 +1746,551 @@ all three; both are rules deliberately left null rather than checks that
 failed. `quality report --days 1` exits 0: nothing at `error` or worse was
 recorded.
 
+---
+
+### CEPAL — quarterly balance of payments
+
+| | |
+|---|---|
+| **Organization** | Comisión Económica para América Latina y el Caribe (`CEPAL`) |
+| **Host** | `https://api-cepalstat.cepal.org` |
+| **Endpoint** | `GET /cepalstat/api/v1/indicator/547/data?lang=en` — one request |
+| **Protocol** | Same undocumented REST JSON as the GDP section above |
+| **Auth** | None |
+| **Frequency** | Quarterly |
+| **Coverage** | **1993-Q1 … 2026-Q1**, verified — **no interior gap in any country** |
+| **Countries** | All seven, from one request; 23 of 145 dimension members carry data |
+| **Volume** | **20,346,031 bytes and 49–61 s for the fetch alone** — the largest response REIM reads, ten times the consumer price index |
+| **Licence** | ⚠️ **Not open** — CEPAL's terms, quoted in [the GDP section](#licence-not-open-and-the-terms-conflict-with-what-reim-does) above |
+| **Status** | ✅ **Enabled** — 19,582 observations, measured 2026-09-09 |
+
+REIM's **first balance-of-payments data of any kind** and its **second quarterly
+source**, after SIECA's trade in services. Until this landed REIM's external
+sector was merchandise trade from the IMF and annual remittances from the World
+Bank: it could say what a country sold abroad and nothing about how it paid for
+what it bought. It now holds the current, capital and financial accounts.
+
+One request returns **153,295 rows** covering 23 countries and 66 item members.
+**43,078 of them are for the seven** across the 55 items that carry data, and
+**19,582** across the 25 items REIM stores.
+
+| CEPAL item | Published name | REIM indicator | Observations |
+|---|---|---|---|
+| 1274 | `I.  BALANCE ON CURRENT ACCOUNT` | `bop_current_account_quarterly` | 784 |
+| 1275 | `II.  BALANCE ON CAPITAL ACCOUNT` | `bop_capital_account_quarterly` | 784 |
+| 1276 | `III.  BALANCE ON FINANCIAL ACCOUNT` | `bop_financial_account_quarterly` | 784 |
+| 1273 | `IV.  ERRORS AND OMISSIONS` | `bop_errors_omissions_quarterly` | 784 |
+| 1277 | `V.  GLOBAL BALANCE` | `bop_global_balance_quarterly` | 784 |
+| 1278 | `VI.  RESERVES AND RELATED ITEMS` | `bop_reserves_related_quarterly` | 784 |
+| 1282 | Balance on goods | `bop_balance_goods_quarterly` | 784 |
+| 1286 | Balance on goods and services | `bop_balance_goods_services_quarterly` | 784 |
+| 1290 | Balance on income | `bop_balance_income_quarterly` | **781** |
+| 1285 | Balance on current transfers | `bop_balance_current_transfers_quarterly` | 784 |
+| 1279 | Exports of goods, f.o.b. | `bop_exports_goods_fob_quarterly` | 784 |
+| 1281 | Imports of goods, f.o.b. | `bop_imports_goods_fob_quarterly` | 784 |
+| 1291 | Services (credit) | `bop_services_credit_quarterly` | 784 |
+| 1284 | Services (debit) | `bop_services_debit_quarterly` | 784 |
+| 1287 | Income (credit) | `bop_income_credit_quarterly` | **781** |
+| 1289 | Income (debit) | `bop_income_debit_quarterly` | 784 |
+| 1280 | Current transfers (credit) | `bop_current_transfers_credit_quarterly` | **781** |
+| 1283 | Current transfers (debit) | `bop_current_transfers_debit_quarterly` | **775** |
+| 1308 | Direct investment abroad | `bop_direct_investment_abroad_quarterly` | 784 |
+| 1309 | Direct investment in reporting economy | `bop_direct_investment_inward_quarterly` | 784 |
+| 1310 | Portfolio investment assets | `bop_portfolio_investment_assets_quarterly` | 784 |
+| 1311 | Portfolio investment liabilities | `bop_portfolio_investment_liabilities_quarterly` | 784 |
+| 1312 | Other investment assets | `bop_other_investment_assets_quarterly` | 784 |
+| 1313 | Other investment liabilities | `bop_other_investment_liabilities_quarterly` | 784 |
+| 1326 | Reserve assets | `bop_reserve_assets_quarterly` | 784 |
+| | | **Total** | **19,582** |
+
+**Coverage per country**, from the live run of 2026-09-09:
+
+| Country | Span | Quarters | Observations | Interior gaps |
+|---|---|---|---|---|
+| Guatemala | 1993-Q1 … 2025-Q4 | 132 | 3,300 | **none** |
+| Nicaragua | 1993-Q1 … 2025-Q4 | 132 | 3,291 | **none** |
+| Panama | 1998-Q1 … 2026-Q1 | 113 | 2,825 | **none** |
+| Costa Rica | 1999-Q1 … 2026-Q1 | 109 | 2,725 | **none** |
+| El Salvador | 1999-Q1 … 2026-Q1 | 109 | 2,725 | **none** |
+| Belize | 2001-Q1 … 2025-Q4 | 100 | 2,500 | **none** |
+| Honduras | 2004-Q1 … 2026-Q1 | 89 | 2,216 | **none** |
+
+Values are published in **millions of dollars** and stored in **whole dollars**,
+scaled by 1e6 and not rounded, matching the debt and GDP totals so every dollar
+figure in the database means the same thing. The published figure and the scale
+applied both go into `raw_metadata`. Of the 19,582 stored values **9,924 are
+negative** and **594 are exactly zero**, over a range of −9,201.38 to
++6,971.40 million: a deficit is a negative number and an absent flow is a real
+zero, which is why `allow_negative` and `allow_zero` are both true here and one
+or both is false in every other REIM family.
+
+#### Not one interior gap in any of the seven countries
+
+Every country's quarterly span is complete between its own first and last
+quarter — 784 country-quarters with no hole in any of them. **No other family
+REIM reads can say that.** The consumer price index has 162 missing months for
+Belize, the interest rates 94 across two country-series, and the monetary
+aggregates lag Honduras by years.
+
+This is why there is **no continuity check** on this family. The base class's
+`_check_monthly_continuity` is monthly-only in any case — it splits
+`period.label` on `-`, which raises on a quarterly label like `2024-Q1` — but a
+quarterly equivalent is not written here because there would be nothing for it
+to find. If a gap ever appears, `min_observations` falls and the run reports it.
+
+Completeness is not the same as currency, and the two come apart in exactly one
+place: [Honduras stops publishing one of the twenty-five in
+2023](#honduras-stops-publishing-current-transfers-debit-in-2023-and-freshness-reports-it).
+
+#### CEPAL declares the fifth IMF manual and six of the seven countries carry a footnote citing the sixth
+
+`calculation_methodology` reads:
+
+> Balance of payments data is disaggregated according to the analytical
+> components of the **fifth edition** of the Balance of Payments Manual
+> published by the IMF in 1993.
+
+Footnote **10138**, attached to **16,282 of the 19,582 stored rows**, reads:
+
+> Analytical presentation based on the official figures of the countries
+> according to the **6th version** of the IMF Balance of Payments Manual.
+
+The split is **by country, not by year**, and it is total:
+
+| Carries footnote 10138 (BPM6) | Carries no footnote |
+|---|---|
+| Belize (2,500), Costa Rica (2,725), Honduras (2,216), Nicaragua (3,291), Panama (2,825), El Salvador (2,725) — *every* row | **Guatemala (3,300) — every row** |
+
+So the indicator declares BPM5 while six of the seven countries are presented on
+BPM6, and only Guatemala follows what the indicator says.
+
+**This does not make the figures incomparable, and measurement is why we can say
+so.** BPM6 reverses BPM5's sign convention on the financial account, and that
+reversal would be a genuine break. It is not present. Taking every quarter in
+which the current account is in deficit and averaging the financial account over
+them:
+
+| | BLZ | CRI | GTM | HND | NIC | PAN | SLV |
+|---|---|---|---|---|---|---|---|
+| deficit quarters | 87 | 103 | 91 | 72 | 111 | 88 | 101 |
+| mean financial account | +34.3 | +571.0 | **+345.0** | +285.7 | +123.0 | +677.0 | +199.2 |
+
+Guatemala — the one country on the declared manual — sits **inside** the range,
+not opposite it. A current-account deficit pairs with a positive financial
+account in all seven, and the accounting identities below hold for Guatemala
+exactly as for the other six. CEPAL has evidently normalised the presentation
+across the two manuals and left the labels behind.
+
+**So the contradiction is recorded and `methodology_varies_by_country` is
+deliberately not declared.** That flag exists for the [interest
+rates](#cepal-says-outright-that-each-country-measures-a-different-instrument),
+where the publisher states outright that each country measures a *different
+instrument* and levels genuinely cannot be read against each other. Here the
+labels disagree and the figures do not. Setting the flag would attach a caveat
+to every `/compare` response that this file's own measurement contradicts, and
+the flag is worth having only because it is true wherever it appears. Footnote
+10138 is still stored per row in `raw_metadata.cepalstat_notes_ids`, so anyone
+who wants to re-check that judgment can.
+
+#### Four accounting identities hold; the fifth fails only in El Salvador, and only after 2023
+
+A balance of payments is an accounting system, so its components must reconcile.
+Measured across all **784 country-quarters**, tolerance **0.5 million**:
+
+| Identity | Holds | Worst residual |
+|---|---|---|
+| I = goods and services + income + current transfers | **781 / 781** | 0.109 |
+| Balance on goods = exports f.o.b. + imports f.o.b. | **784 / 784** | 0.1 |
+| Balance on goods and services = goods + services credit + services debit | **784 / 784** | 0.001 |
+| V = I + II + III + IV | 782 / 784 | 14.104 |
+| **V + VI = 0** | **773 / 784** | 7.66 |
+
+The first three are exact enough to enforce, and are enforced at `error`. The
+fourth fails on **Panama 2004-Q3 (−9.1)** and **Panama 2021-Q4 (+14.1)** — two
+cells in thirty-three years, allow-listed by name in the connector so that a
+third break is reported rather than silently tolerated.
+
+Imports are published **negative**, which is why the goods identity is a sum
+rather than a difference.
+
+**The fifth is the one worth writing down.** Anyone who knows the BPM5 structure
+expects the global balance to be offset exactly by reserves and related items,
+and it very nearly is: outside El Salvador from 2023 onward the identity holds in
+**771 of 771** country-quarters, with **723 of them exactly zero** and a worst
+residual of **0.02 million**. It is the strongest invariant in the family.
+
+Every one of the eleven failures is **El Salvador, from 2023-Q1**:
+
+| | 2023-Q1 | 2023-Q2 | 2023-Q3 | 2023-Q4 | 2024-Q1 | 2024-Q2 | 2024-Q3 | 2024-Q4 | 2025-Q1 | 2025-Q3 | 2026-Q1 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| V + VI | −2.32 | −5.88 | +3.47 | **−7.66** | −1.54 | −7.01 | −1.41 | −1.10 | +2.23 | −1.73 | +1.10 |
+
+El Salvador's two other quarters in that window pass only just — 2025-Q2 at 0.49
+and 2025-Q4 at 0.36, against a 0.5 tolerance — so the honest reading is that the
+whole of El Salvador's post-2023 tail carries a residual its own history does
+not, and that two of thirteen quarters happen to land inside the threshold.
+Before 2023 El Salvador is as exact as everyone else.
+
+**No check enforces this identity.** It would be the strongest one available and
+it is left unwritten deliberately: it fires on a live country's most recent
+three years, and a check that reports the same eleven cells on every run reports
+nothing, which is the standard this file already applies to the [interest rates'
+freshness threshold](#the-family-is-maintained-but-not-extended-which-is-why-freshness-is-450-days).
+Whether El Salvador's residual is a rounding change at the compiler or a real
+revision is not something this measurement can settle, and guessing is worse
+than recording. A later increment that wants the check should allow-list El
+Salvador from 2023-Q1 by date, the way `cepalstat_cpi_known_splices` excludes
+Nicaragua's pre-1992 span.
+
+The design document for this work stated that `V + VI = 0` held in 2 of 784 and
+missed by up to 6,939 million. That was **`V − VI`**, the wrong sign: it measures
+`2V`, which is large precisely because the identity holds. The correct figure is
+773 of 784. Recorded because the wrong version was written down first and is the
+easier of the two mistakes to make twice.
+
+#### Honduras stops publishing current transfers (debit) in 2023, and freshness reports it
+
+Four of the twenty-five series are short, and they are not scattered gaps — they
+are **truncated tails**, each in one country:
+
+| Series | Rows | Country | Ends | Everywhere else |
+|---|---|---|---|---|
+| `bop_current_transfers_debit_quarterly` | 775 | **Honduras** | **2023-Q4** | 2026-Q1 |
+| `bop_balance_income_quarterly` | 781 | Nicaragua | 2025-Q1 | 2025-Q4 |
+| `bop_income_credit_quarterly` | 781 | Nicaragua | 2025-Q1 | 2025-Q4 |
+| `bop_current_transfers_credit_quarterly` | 781 | Nicaragua | 2025-Q1 | 2025-Q4 |
+
+Honduras publishes every other one of its twenty-five series through 2026-Q1 and
+this one through 2023-Q4: **nine quarters missing from the end of one series in
+one country**, at **984 days old** against a `freshness_max_age_days` of 550.
+So `freshness` reports **failed at `warning`** on
+`bop_current_transfers_debit_quarterly` on every run, and passes on the other
+twenty-four.
+
+**That is the correct output and the threshold is not moved to absorb it.**
+Widening 550 far enough to cover 984 days would have to clear nearly three years
+of silence, at which point the check could no longer tell a quarterly source
+that has stopped from one that is merely between releases — the [interest
+rates](#the-family-is-maintained-but-not-extended-which-is-why-freshness-is-450-days)
+record the same reasoning from the other direction. The same call was already
+made for Belize on the CPI's continuity and for Honduras on the monetary
+aggregates' freshness. The run still succeeds; a `warning` is recorded, not
+suppressed.
+
+Nicaragua's three are 528 days old and pass, **22 days inside the threshold**.
+That margin is thin enough to state: if CEPAL does not extend those three series
+in its next quarterly release, they join Honduras at `warning`, and that will be
+the source having stopped rather than a regression in REIM.
+
+#### The declared decimals are wrong by up to eighteen places
+
+`decimals` declares **0**. The payload publishes up to **18**:
+
+| Decimals | 0 | 1 | 2 | 3–7 | 8 | 9–12 | 13 | 14–18 |
+|---|---|---|---|---|---|---|---|---|
+| Cells | 1,433 | 7,155 | 1,780 | 2,862 | 3,271 | 1,307 | 1,351 | 524 |
+
+The worst cell is Belize's portfolio investment assets at
+`-0.000167288535687117`, and the largest value in the family carries eight:
+Panama's imports at `-9201.38034153`. These are millions of dollars, where the
+*second* decimal is already a hundred dollars — so this is floating-point noise
+in the producer's own pipeline, not precision.
+
+This is the third CEPALSTAT family whose declared precision contradicts its own
+payload, after the exchange rate ([declares two, publishes
+one](#declared-two-decimals-published-one)) and the lending rate ([declares
+zero, publishes two](#the-declared-decimals-are-wrong-for-the-lending-rate)) —
+and by a wide margin the worst.
+
+**Values are stored exactly as published**, with no rounding in either
+direction. REIM has never altered a published value and does not start here; the
+noise is CEPAL's and is recorded as CEPAL's. A test pins a thirteen-decimal cell
+against the declared `decimals: 0`, so an attempt to tidy them fails loudly.
+
+#### There is no server-side filtering, and two parameter forms return the whole cube while appearing to work
+
+Three forms were probed on 2026-09-09, and again on the first run:
+
+| Request | Answer |
+|---|---|
+| `?members=208:241` | **500**, 181 bytes |
+| `?dim_208=241` | **200**, 20,346,043 bytes |
+| `?filters=208:241` | **200**, 20,346,047 bytes |
+| *no parameter* | 200, 20,346,031 bytes |
+
+`?members=` fails loudly, which is the harmless failure. **The other two are the
+dangerous ones**: the parameter is ignored rather than rejected, and the caller
+receives the entire 20.3 MB cube with a 200 and a dozen extra bytes of echoed
+query string. A future reader who assumes the filter worked would be silently
+reading all 145 countries while believing they had asked for one.
+
+So the connector downloads 20.3 MB, decodes it, and discards **87%** of it on
+every run. There is no window to request narrower and no pagination to walk.
+That is acceptable at quarterly cadence and is stated here so nobody looks for
+the optimisation twice.
+
+#### Four countries cite more than one publisher, and the footnotes block is populated for the first time
+
+Every other CEPALSTAT family cites one publisher per country. This one cites
+several for the same country, and REIM stores each row's own `source_id` as
+published:
+
+| Country | Cited, with rows |
+|---|---|
+| Nicaragua | Central Bank of Nicaragua 1,076 · ECLAC 915 · IMF 1,300 |
+| Belize | ECLAC 1,200 · IMF 1,300 |
+| Guatemala | Bank of Guatemala 2,200 · IMF 1,100 |
+| Costa Rica | Central Bank of Costa Rica 2,305 · ECLAC 420 |
+| Honduras | Central Bank of Honduras 2,216 |
+| Panama | Office of the Comptroller of the Republic of Panama 2,825 |
+| El Salvador | Reserve Bank Central of the Salvador 2,725 |
+
+A country's series can therefore legitimately carry more than one attribution
+across its span — the older years from the IMF's own database, the recent ones
+from the national compiler. Nothing in REIM picks one; the string CEPAL served
+for that row is what
+`raw_metadata.cepalstat_source` holds.
+
+This is also the **first family whose `footnotes` block carries anything**: five
+notes, of which only 10138 appears on stored rows.
+
+| id | Description |
+|---|---|
+| 5527 | `Data base IMF` |
+| 5528 | `adjusted data` |
+| 4538 | `Excludes components that have been classified in the categories of group VI.` |
+| 9526 | `Corresponds to the sum of the capital account, financial account and errors and omissions` |
+| 10138 | `Analytical presentation based on the official figures of the countries according to the 6th version of the IMF Balance of Payments Manual.` |
+
+Two of CEPAL's English item names are misspelled — `Invesment income (credit)`
+and `Invesment income (debit)` — as are `Others services (credit)` and the four
+`Other investment ...: Others sectors` members. None is stored, but they are the
+same class of defect as [`Belice` inside an English definition
+string](#belice-is-inside-the-english-definition-string-and-857-calls-guatemalas-deposit-rate-a-lending-rate)
+and are worth expecting anywhere in a CEPALSTAT payload.
+
+#### 25 of the 55 items with data are stored, and here are the other 30
+
+The item dimension has **66 members**. **55 carry data** for the seven and
+**11 are empty**. Storing all 55 would mean 43,078 observations and 55 new
+indicators, more than doubling a registry that held 38 before this work. Most of
+the excess is deep sectoral detail or a recombination of what is already stored.
+
+**The 30 items with data that REIM does not store**, so a later increment starts
+from this measurement rather than a search:
+
+| id | Published name | Rows |
+|---|---|---|
+| 1292 | Transportation (credit) | 784 |
+| 1293 | Travel (credit) | 784 |
+| 1294 | `Others services (credit)` | 784 |
+| 1295 | Travel (debit) | 784 |
+| 1296 | Other services (debit) | 784 |
+| 1297 | Transportation (debit) | 784 |
+| 1298 | Employees compensation (credit) | 781 |
+| 1299 | `Invesment income (credit)` | 781 |
+| 1300 | Direct investment income (credit) | 781 |
+| 1301 | Portfolio investment income (credit) | 781 |
+| 1302 | Other investment income (credit) | 784 |
+| 1303 | Employees compensation (debit) | 784 |
+| 1304 | `Invesment income (debit)` | 784 |
+| 1305 | Direct investment income (debit) | 780 |
+| 1306 | Portfolio investment income (debit) | 780 |
+| 1307 | Other investment income (debit) | 780 |
+| 1314 | Equity securities (assets) | 784 |
+| 1315 | Debt securities (assets) | 784 |
+| 1316 | Equity securities (liabilities) | 784 |
+| 1317 | Debt securities (liabilities) | 784 |
+| 1318 | Other investment assets: Monetary authorities | 784 |
+| 1319 | Other investment assets: General government | 784 |
+| 1320 | Other investment assets: Banks | 784 |
+| 1321 | `Other investment assets: Others sectors` | 784 |
+| 1322 | Other investment liabilities: Monetary authorities | 784 |
+| 1323 | Other investment liabilities: General government | 784 |
+| 1324 | Other investment liabilities: Banks | 784 |
+| 1325 | `Other investment liabilities: Others sectors` | 784 |
+| 1327 | Use of IMF credit and loans | 784 |
+| 1328 | Exceptional financing | 784 |
+
+Three of those are worth a second look by whoever picks this up. **1298 and 1303,
+employees compensation**, are half of the World Bank's remittances definition and
+would let REIM state what the [current-transfers
+trap](#two-items-must-not-be-read-as-the-roadmap-gaps-they-resemble) below only
+warns about. **1327, use of IMF credit and loans**, is a fiscal-external series
+REIM holds nothing like.
+
+**The 11 members that carry no data at all** for the seven are 26018–26025 and
+26763–26765: *Balance of direct investment*, *Balance on services*, *Balance on
+capital and financial accounts, including errors and omissions*, *Use of IMF
+credit and loans and exceptional financing*, *Net non-autonomous capital
+inflows*, *Net capital inflows*, *Net autonomous capital inflows*, *Net resource
+transfers*, *Exports of goods and services*, *Imports of goods and services* and
+*Effect of terms of trade of goods and services*. Their ids sit in a different
+numeric block from the other 55, which is what an added-later analytical layer
+looks like.
+
+#### Two items must not be read as the roadmap gaps they resemble
+
+`ROADMAP.md` lists monthly **remittances** and monthly **reserves** as open gaps.
+This file [recorded both traps on
+2026-09-06](#two-traps-on-indicator-547-recorded-before-anyone-reads-it-as-a-solution),
+before anyone read indicator 547 as a solution to either. Reading it has not
+changed them, and both warnings now also live in the indicator descriptions,
+where a reader meets them at the point of use:
+
+* **`bop_reserve_assets_quarterly` is a flow, not a stock.** It is the
+  balance-of-payments *movement* in reserve assets over the quarter. The roadmap
+  wants the reserves *level*, which is what `FI.RES.TOTL.CD` and the IMF's
+  `IRFCL` hold. Labelling this as reserves would close that gap falsely.
+* **`bop_current_transfers_credit_quarterly` is not remittances.** It is the
+  whole current-transfers account, official transfers included, and none of the
+  66 members breaks personal remittances out. The World Bank series REIM already
+  stores annually, `BX.TRF.PWKR.CD.DT`, is personal transfers plus compensation
+  of employees — a third definition again.
+
+**Both gaps remain open**, and this section is the measurement that says so.
+
+Two of the stored items also overlap the IMF's monthly merchandise trade:
+`bop_exports_goods_fob_quarterly` and `bop_imports_goods_fob_quarterly` against
+`exports_goods_monthly` and `imports_goods_monthly`, on a different methodology
+and a different cadence. **Both are stored and REIM chooses between neither**,
+the rule it already applies to [Nicaragua's two consumer price
+indices](#nicaragua-now-has-two-consumer-price-indices-and-they-disagree).
+Keeping them is also what makes the goods identities above checkable at all.
+
+#### `max_period_change_pct` is null on all twenty-five, and `period_change` therefore reports skipped
+
+These series **cross zero** — 9,924 negative values and 594 zeros — and a
+percentage change across zero is unbounded and says nothing. The rule is null on
+every one of the twenty-five, the same call
+[`ni_cpi_inflation_monthly`](#why-max_period_change_pct-is-null-and-what-replaces-it)
+already makes for the same reason.
+
+Nothing replaces it. The interest rates could measure percentage *points*
+instead because a rate has a natural scale; a balance of payments does not, and
+a threshold in millions of dollars that suits Panama would be meaningless for
+Belize, whose whole current account is smaller than Panama's rounding. The four
+accounting identities do the work a step check would do, and they do it better:
+they test the data against itself rather than against a number someone chose.
+
+The visible consequence on a run is that `period_change` reports **skipped** on
+all twenty-five, and `temporal_monotonicity` likewise. Both are rules
+deliberately left null, not checks that failed to run.
+
+#### The first run, in full
+
+Recorded so a later reader can tell a regression from a known state.
+
+```text
+$ python -m reim.cli pipeline run cepalstat_bop_quarterly
+✓ cepalstat_bop_quarterly  success  extracted=19582 inserted=19582
+                                    updated=0 unchanged=0 rejected=0 (40495 ms)
+```
+
+**19,582 observations, none rejected**, in 40.5 s — of which the fetch alone was
+5 s on that attempt and 49–61 s on three others the same day. The variance is
+CEPAL's; 20.3 MB is far more than any other REIM pipeline moves, and a run of
+two minutes is not a hang.
+
+**The five connector checks**, all as the design predicted:
+
+| Check | Type | Severity | Result |
+|---|---|---|---|
+| `cepalstat_bop_current_account` | consistency | `error` | **passed** — 781 / 781 |
+| `cepalstat_bop_goods` | consistency | `error` | **passed** — 784 / 784 |
+| `cepalstat_bop_goods_services` | consistency | `error` | **passed** — 784 / 784 |
+| `cepalstat_bop_global_balance` | consistency | `warning` | **passed** — 782 / 784, Panama's two exceptions allow-listed |
+| `cepalstat_bop_expected_countries` | completeness | `critical` | **passed** — 175 country-series, seven on each of the twenty-five |
+
+**One check reported at `warning`** and it is a finding about the source:
+`freshness` **failed on `bop_current_transfers_debit_quarterly`** at 984 days
+against 550, because [Honduras stops publishing that one series in
+2023](#honduras-stops-publishing-current-transfers-debit-in-2023-and-freshness-reports-it).
+It passed on the other twenty-four, at 253 days for twenty-one of them and 528
+for Nicaragua's three short series.
+
+The standard battery passes on all twenty-five — `dataset_not_empty` at 775 to
+784, `country_attribution` at 7, `no_duplicate_periods` at zero, `value_range`,
+`value_present`, `value_numeric_finite`, `period_validity`, `period_length` at
+92 days, `expected_frequency` at quarterly and `single_source_per_batch`.
+`period_change` and `temporal_monotonicity` are **skipped** on all twenty-five,
+both by decision. `quality report --days 1` exits 0: nothing at `error` or worse
+was recorded, and the one `warning` is the Honduras freshness result above.
+
+`/compare` answers as the [BPM decision](#cepal-declares-the-fifth-imf-manual-and-six-of-the-seven-countries-carry-a-footnote-citing-the-sixth)
+intended — `comparable: true` with **no** methodology note, because this family
+deliberately does not declare the flag:
+
+```text
+$ curl -s 'localhost:8000/api/v1/compare?indicator=bop_current_account_quarterly
+           &country=NIC&country=GTM&country=CRI&limit=3'
+
+"comparable": true,
+"comparability_notes": [],
+"series": [ NIC 132 obs 1993-Q1..2025-Q4, GTM 132 obs 1993-Q1..2025-Q4,
+            CRI 109 obs 1999-Q1..2026-Q1 ]
+"data": [ { "period_label": "1993-Q1",
+            "values": { "NIC": "-237800000.0", "GTM": "-135400000.0",
+                        "CRI": null } }, ... ]
+```
+
+Costa Rica's `null` in 1993 is the rectangular matrix stating a gap rather than
+letting a reader infer one: Costa Rica's series starts in 1999 and the row says
+so. All three are `current USD` from one publisher, which is what `comparable`
+turns on.
+
+#### The first run also found a defect in REIM, not in CEPAL
+
+The run above is the second. **The first stored nothing**, and the reason was
+REIM's own:
+
+```text
+✗ cepalstat_bop_quarterly  failed  extracted=19582 inserted=0 (5078 ms)
+    critical_quality_failure: 25 critical quality check(s) failed: dataset_not_empty
+```
+
+`min_observations` was set to **19000** — the family total — in a field the
+runner evaluates **per indicator**. The runner groups a batch by
+`indicator_code` and runs the standard battery on each group, so every one of
+the twenty-five series was asked to produce 19,000 observations on its own when
+the largest holds 784. All twenty-five failed `dataset_not_empty` at `critical`,
+which aborts the load and rolls the transaction back. The extract was perfect
+and the pipeline could never have stored a row.
+
+Every other entry in `quality_rules.yml` is per-indicator — 3,400 for the CPI's
+single series, 2,400 and 2,350 and 1,550 for the three interest rates — so this
+was a units error rather than a judgment, and the comment above it said as much
+without anyone noticing: *"19,582 measured across the twenty-five series."*
+
+The floor is now **750**: it clears the shortest real series, Honduras-shortened
+`bop_current_transfers_debit_quarterly` at 775, by 25, and still fires if any one
+country disappears, which would cost between 89 and 132 rows. **No other
+threshold was touched**, and in particular the freshness rule that reports
+Honduras was left exactly where the design put it.
+
+Recorded because the tests did not catch it: they exercised the connector's own
+`validate` and the rule file's contents, and nothing ran the standard battery the
+way the runner does. A rule that makes a pipeline unable to run is worth a test
+of its own.
+
+
 ## Reachable, not ingested
 
 Indicator families that a source REIM **already reads** publishes, and REIM
 does not yet store. Listed so the next increment starts from a measurement
 rather than a search.
 
-### CEPALSTAT — two families beyond the eight REIM reads
+### CEPALSTAT — one family beyond the nine REIM reads
 
 Found on 2026-09-06 by walking `GET /cepalstat/api/v1/thematic-tree?lang=es&theme_id=N`.
-Three entries have left this list since. The regional CPI, indicator 365, was
-on it until the same day and is now
+Four entries have left this list since. The regional CPI, indicator 365, was on
+it until the same day and is now
 [ingested](#cepal--monthly-consumer-price-index); the two interest rates, 856
 and 1206, together with 857 named below them, left it on 2026-09-08 and are now
-[ingested as one family](#cepal--monthly-interest-rates).
+[ingested as one family](#cepal--monthly-interest-rates); the quarterly balance
+of payments, indicator 547, left it on 2026-09-09 and is now
+[ingested as twenty-five series](#cepal--quarterly-balance-of-payments).
+That leaves **indicator 361 alone on this list**.
 The theme ids are worth recording because nothing maps an area to its
 indicators: **6** is `BADECON`, **9** is `BADEPAG` (balance of payments) and
 **24** is `COYUNTURA` (short-term indicators). `GET /themes?lang=es` returns
@@ -1770,30 +2301,45 @@ usually sits in a *dimension member*, not in the title — the same property tha
 made the public debt slice hard to name. A search for "remesas" or "reservas"
 across themes 6, 9 and 24 returns nothing; both concepts are members of a
 66-value `Rubro` dimension inside an indicator called "Balanza de pagos
-trimestral".
+trimestral", which is indicator 547 and is now read.
 
 | CEPAL id | Published name | Dimensions, read from `/dimensions?lang=es` | Shape it reuses |
 |---|---|---|---|
-| 547 | Balanza de pagos trimestral | `País(145) × Trimestres(4) × Rubro(66) × Años(201)` | `cepalstat_debt.py` — four dimensions |
 | 361 | Valores Corrientes (theme 9) | `Países(38) × Años(34) × Cuentas(55)` | none — see the warning below |
 
-The three interest rates were on this table until 2026-09-08 and the shape
-recorded for them held: `País(145) × Periodo__ind mon(17) × Años(201)`,
-`cepalstat_monetary.py` exactly. What that shape did **not** predict is
-everything the [interest-rate section](#cepal--monthly-interest-rates) now
-records — that the annual and quarterly members are means rather than
-restatements, that Panama's policy rate is sixteen unattributed zeros, and that
-CEPAL defines each country's rate differently. Which is the point of the
-paragraph below.
+The three interest rates were on this table until 2026-09-08, and the balance of
+payments until 2026-09-09. The shape recorded for each held: `País(145) ×
+Periodo__ind mon(17) × Años(201)` was `cepalstat_monetary.py` exactly, and
+`País(145) × Trimestres(4) × Rubro(66) × Años(201)` was `cepalstat_debt.py`'s
+four dimensions exactly.
+
+**What the shape did not predict, in either case, is everything that mattered.**
+The [interest-rate section](#cepal--monthly-interest-rates) records that the
+annual and quarterly members are means rather than restatements, that Panama's
+policy rate is sixteen unattributed zeros, and that CEPAL defines each country's
+rate differently. The [balance-of-payments
+section](#cepal--quarterly-balance-of-payments) records that the metadata
+declares one IMF manual while six of the seven countries carry a footnote citing
+another, that the response is 20.3 MB with no server-side filtering, that the
+declared decimals are wrong by eighteen places, and that a country stops
+publishing one series in 2023. A dimension listing tells you how to address the
+data and nothing about what is in it. Which is the point of the paragraph below.
 
 **What was measured is the shape and nothing else.** No data response was
-requested for any of these. Coverage for the seven Central American countries,
-each country's span, the published units and decimals, and the response size
-are all **unknown** and must be measured before any of them is designed. The
-exchange-rate work is the precedent for why: its data response contradicted two
-assumptions that its dimensions alone would have left standing.
+requested for 361. Coverage for the seven Central American countries, each
+country's span, the published units and decimals, and the response size are all
+**unknown** and must be measured before it is designed. The exchange-rate work
+is the precedent for why: its data response contradicted two assumptions that
+its dimensions alone would have left standing.
 
 #### Two traps on indicator 547, recorded before anyone reads it as a solution
+
+Written on 2026-09-06, when 547 was still on the list above. **Reading it on
+2026-09-09 did not change either trap**, so both are restated in the
+[balance-of-payments section](#two-items-must-not-be-read-as-the-roadmap-gaps-they-resemble)
+and in the two indicators' own descriptions. This entry stays where it is because
+it is the record of the traps having been identified before the data was read,
+not after.
 
 `ROADMAP.md` lists monthly **remittances** and monthly **reserves** as open
 gaps. Indicator 547 carries `Rubro` members named "Transferencias corrientes
@@ -1811,10 +2357,10 @@ asking for**:
   wants the reserves *level*, which is what `FI.RES.TOTL.CD` and the IMF's
   `IRFCL` hold.
 
-Ingesting 547 would be worthwhile — it would be REIM's first balance-of-payments
+Ingesting 547 was worthwhile and is done: it is REIM's first balance-of-payments
 data and its second quarterly source. Labelling either member as remittances or
-as reserves would not be, and would be the kind of quiet redefinition this file
-exists to prevent.
+as reserves would not have been, and would be the kind of quiet redefinition this
+file exists to prevent. **Both roadmap gaps are still open.**
 
 **Indicator 361 uses a different dimension vocabulary entirely** — country
 dimension `1` with 38 members rather than `208` with 145, years dimension `40`

@@ -64,16 +64,21 @@ aggregator rather than the Nicaraguan publisher itself.
   - **remittances** — still absent. Nicaragua reports none to the IMF (0
     observations, against 183 for Costa Rica), and CEPALSTAT's monetary family
     does not carry them. CEPALSTAT's **quarterly balance of payments**
-    (indicator 547) carries a "Transferencias corrientes" line, and it is
-    **not** remittances: it is the whole current-transfers account, official
-    transfers included, with no sub-item breaking personal remittances out.
-    SECMCA, behind a credentialed account, remains the only route named so
-    far. See `docs/sources.md`.
+    (indicator 547) **is now read**, and it does **not** close this gap:
+    `bop_current_transfers_credit_quarterly` is the whole current-transfers
+    account, official transfers included, and none of the 66 item members breaks
+    personal remittances out. Reading it did establish where a partial answer
+    might come from — items 1298 and 1303, *employees compensation*, are one
+    half of the World Bank's definition and are measured but unstored. SECMCA,
+    behind a credentialed account, remains the only route to the whole concept
+    named so far. See `docs/sources.md`.
   - **reserves** — the IMF has 1,740 monthly observations, but its indicator
     codes cannot be named from anything its API exposes. CEPALSTAT's quarterly
-    balance of payments carries an "Activos de reserva" line, which is the
-    *flow* over the quarter and not the *stock* this item wants. See
-    `docs/sources.md` for the unblocking step and for both traps.
+    balance of payments **is now read**, and it does **not** close this gap
+    either: `bop_reserve_assets_quarterly` is the *flow* over the quarter and
+    not the *stock* this item wants. The 784 observations are stored and the
+    warning is in the indicator's own description. See `docs/sources.md` for
+    the unblocking step and for both traps.
 
   This also retired the planned **XLSX ingestion support** in the connector
   toolkit. It was listed only to read these bulletins, and nothing else in the
@@ -85,17 +90,18 @@ aggregator rather than the Nicaraguan publisher itself.
   rows, in columns the connector already walked past. See `docs/sources.md`.
 - ~~**Monthly frequency exercised end to end**~~ ✅ **done**, and daily with it,
   which this item had not even anticipated. **Quarterly is now exercised too**,
-  by SIECA's services trade in v0.3.0 — not by the SECMCA or IMF
-  balance-of-payments candidates this line named. The catalog holds 8 annual,
-  11 monthly, 2 daily and 1 quarterly. **Weekly, semiannual and irregular remain
-  unexercised** — `Frequency` defines all three and the period model parses
+  by SIECA's services trade in v0.3.0 — and, since 2026-09-09, by CEPALSTAT's
+  quarterly balance of payments, which is one of the two IMF
+  balance-of-payments candidates this line named arriving by a third route. The
+  catalog holds 8 annual, 11 monthly, 2 daily and 2 quarterly. **Weekly,
+  semiannual and irregular remain unexercised** — `Frequency` defines all three and the period model parses
   `YYYY-Wnn` and `YYYY-Hn`, but no source REIM reads publishes at those
   cadences.
 
 ## v0.3.0 — Central America
 
-This release is nine independent pieces, not one increment. Eight are done,
-and the ninth — the national central banks — has its first country.
+This release is ten independent pieces, not one increment. Nine are done,
+and the tenth — the national central banks — has its first country.
 
 - ~~**Regional merchandise trade**~~ ✅ **done** — REIM's first data for more
   than one country: 7,848 monthly observations for Nicaragua, Guatemala, El
@@ -211,6 +217,39 @@ and the ninth — the national central banks — has its first country.
   attributes Costa Rica to the **Central Bank of Bolivia**, describes
   Guatemala's deposit rate as a lending rate, and indicator 856 declares zero
   decimals while publishing two in five cells out of six. See `docs/sources.md`.
+- ~~**CEPALSTAT quarterly balance of payments**~~ ✅ **done** — REIM's **first
+  balance-of-payments data of any kind** and its **second quarterly source**:
+  **19,582 observations** across 25 indicators, all seven countries, quarterly
+  from 1993-Q1, from one request. Until this landed REIM's external sector was
+  merchandise trade and annual remittances — it could say what a country sold
+  abroad and nothing about how it paid for what it bought. It now holds the
+  current, capital and financial accounts, four sub-balances and fifteen
+  components. Four countries reach **2026-Q1**, and **not one of the seven has
+  an interior gap**, which no other family REIM reads can say.
+
+  Four things measuring settled. The metadata **contradicts itself about the
+  IMF manual**: `calculation_methodology` declares the fifth edition while
+  footnote 10138 cites the sixth on every row of six countries — all but
+  Guatemala, a split by country and not by year. It is recorded and
+  `methodology_varies_by_country` is **deliberately not declared**, because
+  BPM6's reversal of the financial-account sign convention is measurably absent:
+  averaging the financial account over every current-account deficit quarter
+  gives Guatemala **+345.0** against a range of +34.3 to +677.0 for the other
+  six. The labels disagree; the figures do not. **Four accounting identities
+  hold** — 781/781, 784/784, 784/784, and 782/784 with Panama's 2004-Q3 and
+  2021-Q4 allow-listed by name — and `V + VI = 0` holds in 773 of 784, every
+  failure El Salvador from 2023-Q1. **There is no server-side filtering**:
+  `?members=` answers 500 while `?dim_208=` and `?filters=` answer 200 with the
+  full 20.3 MB and ignore the parameter, which is the more dangerous of the two
+  failures. And **Honduras stops publishing one of the twenty-five in 2023-Q4**,
+  so `freshness` warns at 984 days against 550 on every run, reported rather
+  than accommodated.
+
+  CEPAL declares **zero decimals and publishes up to eighteen**, the worst of
+  three CEPALSTAT families whose declared precision contradicts its payload;
+  values are stored exactly as published. **25 of the 55 items with data are
+  stored** and the other 30 are named in `docs/sources.md` so a later increment
+  starts from a measurement. See `docs/sources.md`.
 
 ## v0.4.0 — Making the data visible
 
