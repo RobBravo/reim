@@ -214,6 +214,17 @@ and the ninth — the national central banks — has its first country.
 
 ## v0.4.0 — Making the data visible
 
+- **Make `methodology_varies_by_country` machine-readable.** The flag exists on
+  every indicator and three declare it, but it is read in exactly one place —
+  `assess_comparability` — and reaches a client only as free text inside
+  `comparability_notes`. It appears nowhere in the indicator schema, so a client
+  fetching indicator metadata cannot discover it at all. A consumer that reads
+  `comparable: true` and not the prose is misled about precisely the three
+  series whose own descriptions say levels are not comparable. `/compare` should
+  carry a structured field beside the boolean, and the indicator schema should
+  expose the flag. Deliberately *not* solved by flipping `comparable`, which
+  turns on unit and currency and would change meaning for every existing caller
+  — see decision D6 in the interest-rates design.
 - **Web dashboard.** Read-only, server-rendered or a small SPA over the existing
   API. Time series, country comparison, source and freshness transparency.
   Every chart links back to the source URL for the underlying figure.
