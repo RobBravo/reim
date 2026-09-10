@@ -632,7 +632,7 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
             "Central Bank's own lending rate in Belize. Levels are therefore "
             "not comparable across countries, only their movements. Panama is "
             "absent: it is dollarised and has no central bank, and CEPAL's "
-            "twelve zero-valued, unattributed 2022 cells for it are an "
+            "twelve monthly zero-valued, unattributed 2022 cells for it are an "
             "artifact REIM does not store."
         ),
         category=IndicatorCategory.FINANCIAL,
