@@ -454,10 +454,19 @@ indicators:
     # Costa Rica, El Salvador, Honduras and Panama end 2026-Q1, 162 days old on
     # 2026-09-09; Belize, Guatemala and Nicaragua end 2025-Q4 at 252. 550
     # clears CEPAL's quarterly cycle with headroom and still catches a family
-    # that has stopped being extended.
+    # that has stopped being extended. It does not clear everything: Honduras
+    # stops publishing current transfers (debit) at 2023-Q4, so that one series
+    # warns at 984 days on every run. That is a truncated tail in CEPAL's cube,
+    # reported rather than accommodated.
     freshness_max_age_days: 550
-    # 19,582 measured across the twenty-five series.
-    min_observations: 19000
+    # Per *indicator*, not per family. The 19,582 measured rows are spread
+    # across the twenty-five series: 21 of them carry 784 country-quarters and
+    # the four short ones carry 775 to 781. An earlier value of 19000 was the
+    # family total in a per-series field, and it failed `dataset_not_empty` at
+    # critical on all twenty-five, so the first live run stored nothing. 750
+    # clears the smallest real series by 25 and still fires if any one country
+    # disappears, which would cost 89 to 132 rows.
+    min_observations: 750
 
   bop_capital_account_quarterly:
     <<: *balance_of_payments

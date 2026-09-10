@@ -677,7 +677,14 @@ def test_every_balance_of_payments_indicator_has_a_quality_rule(
         # and meaningless as a tripwire.
         assert rule.max_period_change_pct is None
         assert rule.monotonic_increasing is False
-        # Four countries end 2026-Q1 (162 days old on 2026-09-09); the rest end
-        # 2025-Q4 at 252. 550 clears CEPAL's quarterly cycle with headroom.
+        # Four countries end 2026-Q1 and the rest 2025-Q4, 253 days old on the
+        # first live run. 550 clears CEPAL's quarterly cycle; Honduras's
+        # current transfers (debit) stops in 2023-Q4 and warns at 984 days,
+        # which is a truncated tail in the source and not a threshold to widen.
         assert rule.freshness_max_age_days == 550
-        assert rule.min_observations == 19000
+        # Per indicator, not per family: 21 of the 25 series carry 784
+        # country-quarters and the shortest carries 775. A family total here
+        # fails dataset_not_empty at critical on every series and stores
+        # nothing, which is what the first live run found.
+        assert rule.min_observations == 750
+        assert rule.min_observations < 775
