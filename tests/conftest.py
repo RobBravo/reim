@@ -252,6 +252,12 @@ def cepalstat_dimensions_856_json() -> str:
     )
 
 
+@pytest.fixture(scope="session")
+def cepalstat_bop_547_json() -> str:
+    """CEPALSTAT indicator 547, quarterly balance of payments (stored gzipped)."""
+    return gzip.decompress((FIXTURES / "cepalstat_bop_547.json.gz").read_bytes()).decode("utf-8")
+
+
 @pytest.fixture
 def inide_source(catalog: SourceCatalog) -> SourceEntry:
     """Catalog entry for the INIDE monthly CPI source."""

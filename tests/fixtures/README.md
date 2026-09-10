@@ -38,9 +38,10 @@ never calls an official source.
 | `cepalstat_rates_857.json.gz` | Same endpoint, indicator `857` — nominal deposit rate (1.80 MB → 82 KB). The only place the lending-above-deposit invariant can be asserted, and the only place CEPAL's `CBBO` misattribution of Costa Rica is visible. | 2026-09-08 |
 | `cepalstat_rates_1206.json.gz` | Same endpoint, indicator `1206` — monetary policy rate (1.38 MB → 59 KB). Holds Panama's sixteen uniformly zero, wholly unattributed 2022 rows, Nicaragua's two genuine 2010 zeros, and the 345 rows whose `source_id` is null. | 2026-09-08 |
 | `cepalstat_dimensions_856.json.gz` | `GET .../indicator/856/dimensions?lang=es`, byte-for-byte, gzipped (28 KB → 4 KB). Recorded in Spanish because `lang=en` returns all seventeen period members as the untranslated string `descripcion_ingles`. Dimension 3981's member table was measured identical across 856, 857 and 1206, so the rates connector fetches it once. | 2026-09-08 |
+| `cepalstat_bop_547.json.gz` | `GET https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/547/data?lang=en`, **trimmed** to the seven Central American countries plus Mexico and then gzipped (20.3 MB → 0.53 MB; the untrimmed response gzips to 1.74 MB, more than this whole directory weighs). Only the `data` array is filtered — the `dimensions`, `metadata`, `sources` and `footnotes` blocks are byte-for-byte, so all 145 country members and all 66 item members are the real ones. **Mexico is kept on purpose**: without a country that must be discarded, the connector's country filter would have nothing to prove. The 41 item members REIM does not store do the same job for the item filter. | 2026-09-09 |
 
 The CEPALSTAT API needs no User-Agent override and no TLS accommodation; these
-eighteen were recorded with REIM's own identifier. `body.credits[0].description` is
+nineteen were recorded with REIM's own identifier. `body.credits[0].description` is
 CEPAL's own fetch date and differs between recordings — nothing asserts it, and
 `raw_metadata` stores only the citation elements that follow it.
 
