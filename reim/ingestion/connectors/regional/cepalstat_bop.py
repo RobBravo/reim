@@ -273,7 +273,7 @@ class CepalstatBopConnector(CepalstatConnector):
         """The balance of payments' own accounting identities, plus coverage.
 
         A balance of payments is an accounting system: its components must
-        reconcile. Four identity checks assert that; the fifth checks that
+        reconcile. Five identity checks assert that; the sixth checks that
         every one of the 25 series still carries all seven countries.
 
         There is no continuity check here: the base class's
