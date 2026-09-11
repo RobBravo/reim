@@ -185,6 +185,34 @@ def test_the_current_account_identity_catches_a_constructed_break(raw: RawDatase
     assert "HND 2015-Q2" in result.message
 
 
+def test_a_vanished_part_series_warns_instead_of_passing_over_nothing(
+    raw: RawDataset,
+) -> None:
+    """``checked == 0`` must not read as the identity holding.
+
+    If ``bop_balance_income_quarterly`` vanished entirely, the current
+    account identity — one of its parts — would otherwise report green
+    over zero country-quarters. It is not a hole:
+    ``cepalstat_bop_expected_countries`` fires critical for the same
+    disappearance. But a run report that says an identity "holds" over
+    nothing is misleading regardless.
+    """
+    observations = build_connector().transform(raw)
+    without_income = [
+        obs for obs in observations if obs.indicator_code != "bop_balance_income_quarterly"
+    ]
+
+    results = results_of(without_income)
+
+    current_account = results["cepalstat_bop_current_account"]
+    assert current_account.status is CheckStatus.FAILED
+    assert current_account.severity is CheckSeverity.WARNING
+    assert "could not be evaluated" in current_account.message
+
+    assert results["cepalstat_bop_expected_countries"].status is CheckStatus.FAILED
+    assert results["cepalstat_bop_expected_countries"].severity is CheckSeverity.CRITICAL
+
+
 def test_the_goods_identity_catches_a_constructed_break(raw: RawDataset) -> None:
     """Balance on goods = exports + imports; imports are stored negative."""
     observations = build_connector().transform(raw)

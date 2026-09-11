@@ -363,6 +363,17 @@ class CepalstatBopConnector(CepalstatConnector):
             if abs(residual) > IDENTITY_TOLERANCE:
                 breaks.append(f"{country} {label} (residual {residual:,.2f})")
 
+        if checked == 0:
+            return QualityResult.failure(
+                check_name,
+                CheckType.CONSISTENCY,
+                CheckSeverity.WARNING,
+                "Identity could not be evaluated: no country-quarter carried "
+                f"both {target_code} and all of {', '.join(part_codes)}",
+                expected_value="0",
+                actual_value="0",
+            )
+
         if not breaks:
             return QualityResult.passed(
                 check_name,
