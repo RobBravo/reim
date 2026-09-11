@@ -133,8 +133,8 @@ def test_a_renamed_item_member_raises_rather_than_changing_a_series(
     """Rows are filtered by member id, which is silent when CEPAL relabels one.
 
     The filter would keep matching and REIM would store a different series under
-    the same indicator code, which is exactly the failure `cepalstat_debt.py`'s
-    `_assert_selected_members` exists to prevent.
+    the same indicator code, which is exactly the failure the base class's
+    `_assert_member_names` exists to prevent.
     """
     document = json.loads(cepalstat_bop_547_json)
     for dimension in document["body"]["dimensions"]:
