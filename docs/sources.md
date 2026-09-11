@@ -1931,16 +1931,27 @@ whole of El Salvador's post-2023 tail carries a residual its own history does
 not, and that two of thirteen quarters happen to land inside the threshold.
 Before 2023 El Salvador is as exact as everyone else.
 
-**No check enforces this identity.** It would be the strongest one available and
-it is left unwritten deliberately: it fires on a live country's most recent
-three years, and a check that reports the same eleven cells on every run reports
-nothing, which is the standard this file already applies to the [interest rates'
-freshness threshold](#the-family-is-maintained-but-not-extended-which-is-why-freshness-is-450-days).
-Whether El Salvador's residual is a rounding change at the compiler or a real
-revision is not something this measurement can settle, and guessing is worse
-than recording. A later increment that wants the check should allow-list El
-Salvador from 2023-Q1 by date, the way `cepalstat_cpi_known_splices` excludes
-Nicaragua's pre-1992 span.
+**`cepalstat_bop_reserves_identity` enforces this, at `warning`, with El
+Salvador cut from 2023-Q1 by date.** The check was deferred once and then
+written, and the reason for the delay is worth keeping: the identity looked
+worthless while the design document claimed it held in 2 of 784, and only became
+obviously the family's strongest once that figure was found to be `V − VI`.
+
+The cut is a **date, not a list of cells**, which is the same call
+`cepalstat_cpi_known_splices` makes for Nicaragua's pre-1992 span. Enumerating
+the eleven would add a twelfth every quarter El Salvador publishes, and a check
+that reports the same cells on every run reports nothing — the standard this
+file applies to the [interest rates' freshness
+threshold](#the-family-is-maintained-but-not-extended-which-is-why-freshness-is-450-days).
+Listing cells would also claim a precision the pattern does not have: the two
+quarters that pass inside the span pass on magnitude, not because the compiler
+reconciles again.
+
+**The cut is not a blank cheque for El Salvador.** A break *before* 2023-Q1
+still fails, and a test constructs one to prove it. Whether the post-2023
+residual is a rounding change at the compiler or a real revision is still not
+something this measurement can settle; what the check now says is narrower and
+true — that every other country-quarter REIM holds reconciles exactly.
 
 The design document for this work stated that `V + VI = 0` held in 2 of 784 and
 missed by up to 6,939 million. That was **`V − VI`**, the wrong sign: it measures
@@ -2218,7 +2229,10 @@ $ python -m reim.cli pipeline run cepalstat_bop_quarterly
 CEPAL's; 20.3 MB is far more than any other REIM pipeline moves, and a run of
 two minutes is not a hang.
 
-**The five connector checks**, all as the design predicted:
+**The five connector checks that existed on the day**, all as the design
+predicted. `cepalstat_bop_reserves_identity` was added afterwards and is not in
+this table because it did not run here — the table records what this run
+produced, not what the connector checks today:
 
 | Check | Type | Severity | Result |
 |---|---|---|---|
