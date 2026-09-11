@@ -145,10 +145,15 @@ ignore_errors = true
 minversion = "8.0"
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-ra --strict-markers"
+# `-m "not live"` is what makes the `live` marker below actually opt-in.
+# Without it a bare `pytest` runs those tests, and CI's `pytest --cov` did:
+# every run called real official sources, against CONTRIBUTING.md's rule that
+# "no test may call a live official source". Run them deliberately with
+# `pytest -m live`, or use `scripts/smoke_test_sources.py`.
+addopts = "-ra --strict-markers -m 'not live'"
 markers = [
     "integration: requires a live PostgreSQL database (REIM_TEST_DATABASE_URL)",
-    "live: performs real network calls against official sources (opt-in)",
+    "live: real network calls to official sources; deselected by default, run with -m live",
 ]
 filterwarnings = ["error::DeprecationWarning:reim.*"]
 
