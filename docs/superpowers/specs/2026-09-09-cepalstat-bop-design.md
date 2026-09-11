@@ -170,6 +170,24 @@ The first three are exact enough to enforce. The fourth fails only on **Panama
 2004-Q3 (−9.1)** and **Panama 2021-Q4 (+14.1)** — two cells in thirty-three
 years, encoded rather than guessed.
 
+> ### ⚠️ Correction, 2026-09-10: the fifth row above is wrong
+>
+> **`V + VI = 0` holds in 773 of 784 country-quarters**, not 2. The measurement
+> behind the `2 / 784` computed `|V − VI|`, which equals `2V` *precisely
+> because* the identity holds — so a near-total pass was read as a near-total
+> failure, and the 6,939 million "worst residual" is just twice the largest
+> global balance.
+>
+> The eleven real exceptions are all **El Salvador, 2023-Q1 onward**; worst
+> residual 7.66 million. Outside that span it is 771/771, with 723 country-
+> quarters landing on exactly zero.
+>
+> Found by the implementer during the live run and verified independently. The
+> row and the paragraph below are left standing because `docs/sources.md` cites
+> this document as having got it wrong, and a silently corrected source would
+> make that citation unintelligible. **`docs/sources.md` holds the authoritative
+> figure.**
+
 **The fifth is the one worth writing down.** Anyone who knows the BPM5 structure
 expects the global balance to be offset exactly by reserves and related items,
 and it is not: it holds in 2 of 784 country-quarters and misses by up to 6,939
