@@ -151,14 +151,21 @@ def results_of(observations: list[NormalizedObservation]) -> dict[str, QualityRe
     return {result.check_name: result for result in build_connector().validate(observations)}
 
 
-def test_all_five_checks_pass_on_the_recording(raw: RawDataset) -> None:
-    """The expected first-run state, from spec section 6.3."""
+def test_all_six_checks_pass_on_the_recording(raw: RawDataset) -> None:
+    """The expected first-run state.
+
+    Spec section 6.3 named five; the reserves identity was added afterwards,
+    once the design document's claim that `V + VI = 0` almost never holds was
+    found to be a measurement error and the identity turned out to be the
+    family's strongest.
+    """
     results = results_of(build_connector().transform(raw))
     assert set(results) == {
         "cepalstat_bop_current_account",
         "cepalstat_bop_goods",
         "cepalstat_bop_goods_services",
         "cepalstat_bop_global_balance",
+        "cepalstat_bop_reserves_identity",
         "cepalstat_bop_expected_countries",
     }
     for name, result in results.items():
@@ -315,3 +322,45 @@ def test_cepal_declares_bpm5_while_six_of_seven_countries_carry_the_bpm6_footnot
     assert carries_10138 == CENTRAL_AMERICA - {"GTM"}
     assert len(carries_10138) == 6
     assert "10138" not in notes_by_country["GTM"]
+
+
+def test_reserves_identity_holds_outside_el_salvadors_span(raw: RawDataset) -> None:
+    """V + VI = 0 is the family's strongest invariant, once one span is cut.
+
+    Reserves and related items *offset* the global balance rather than compose
+    it, so this is the one identity whose parts carry a negative sign. It holds
+    in 771 of 771 checkable country-quarters outside El Salvador from 2023-Q1,
+    with 723 landing on exactly zero.
+    """
+    result = results_of(build_connector().transform(raw))["cepalstat_bop_reserves_identity"]
+
+    assert result.status is CheckStatus.PASSED
+    assert "771" in result.message
+
+
+def test_el_salvador_is_cut_by_date_and_only_from_2023_q1(raw: RawDataset) -> None:
+    """The cut is a date, not a blank cheque for the country.
+
+    El Salvador stopped reconciling the two at 2023-Q1 and has not resumed, so
+    enumerating cells would mean a new warning every quarter forever. But a
+    break *before* that quarter is a new fact and must still be reported.
+    """
+    observations = build_connector().transform(raw)
+
+    # 2022-Q4 reconciles to 0.01 million today; push it far past the tolerance.
+    earlier = [
+        obs
+        for obs in observations
+        if obs.indicator_code == "bop_global_balance_quarterly"
+        and (obs.country_iso3, obs.period.label) == ("SLV", "2022-Q4")
+    ]
+    assert earlier, "fixture must hold SLV 2022-Q4 for this test to mean anything"
+    earlier[0].value_numeric += Decimal("5000000")
+
+    result = results_of(observations)["cepalstat_bop_reserves_identity"]
+    assert result.status is CheckStatus.FAILED
+    assert result.severity is CheckSeverity.WARNING
+    assert "SLV 2022-Q4" in result.message
+    # Nothing from the excluded span may surface, however it is broken.
+    assert "SLV 2023-" not in result.message
+    assert "SLV 2024-" not in result.message

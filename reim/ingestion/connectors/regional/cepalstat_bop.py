@@ -49,6 +49,7 @@ the same thing.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -151,6 +152,17 @@ IDENTITY_TOLERANCE = Decimal("0.5") * MILLIONS
 #: does not equal I + II + III + IV, by -9.1 and +14.1 million. Encoded rather
 #: than guessed, so a third break is reported instead of silently allowed.
 GLOBAL_BALANCE_EXCEPTIONS = frozenset({("PAN", "2004-Q3"), ("PAN", "2021-Q4")})
+
+#: El Salvador stopped reconciling the global balance against reserves and
+#: related items at 2023-Q1 and has not resumed. Cut by date rather than
+#: enumerated, for three measured reasons: the divergence runs continuously
+#: from that quarter to the end of the series, every quarter El Salvador
+#: publishes from here adds one more break, and two quarters inside the span
+#: (2025-Q2 at 0.49 and 2025-Q4 at -0.36 million) fall under the tolerance by
+#: accident of magnitude rather than because the compiler reconciles again --
+#: so a list of cells would claim a precision the pattern does not have.
+#: Before the cut the same country reconciles to 0.01 million or better.
+RESERVES_IDENTITY_BREAKS_FROM: Mapping[str, str] = {"SLV": "2023-Q1"}
 
 #: Every one of the 25 stored series is expected to carry all seven countries.
 EXPECTED_COUNTRIES: dict[str, frozenset[str]] = dict.fromkeys(ITEMS.values(), CENTRAL_AMERICA)
@@ -313,6 +325,15 @@ class CepalstatBopConnector(CepalstatConnector):
                 CheckSeverity.WARNING,
                 exceptions=GLOBAL_BALANCE_EXCEPTIONS,
             ),
+            self._check_identity(
+                observations,
+                "cepalstat_bop_reserves_identity",
+                "bop_global_balance_quarterly",
+                ("bop_reserves_related_quarterly",),
+                CheckSeverity.WARNING,
+                sign=-1,
+                excluded_from=RESERVES_IDENTITY_BREAKS_FROM,
+            ),
             self._check_country_coverage(
                 observations, EXPECTED_COUNTRIES, "cepalstat_bop_expected_countries"
             ),
@@ -326,6 +347,8 @@ class CepalstatBopConnector(CepalstatConnector):
         part_codes: tuple[str, ...],
         severity: CheckSeverity,
         exceptions: frozenset[tuple[str, str]] = frozenset(),
+        sign: int = 1,
+        excluded_from: Mapping[str, str] | None = None,
     ) -> QualityResult:
         """One accounting identity: does ``target`` equal the sum of ``parts``?
 
@@ -337,6 +360,28 @@ class CepalstatBopConnector(CepalstatConnector):
 
         Reports the first five breaks with their residuals, so a run that
         breaks in many places still names enough of them to start from.
+
+        Args:
+            observations: Everything ``transform`` produced, all series.
+            check_name: The result's name, passed rather than derived.
+            target_code: The indicator the identity is stated about.
+            part_codes: The indicators the target is compared against.
+            severity: Severity of a failure, once one is found.
+            exceptions: ``(country, period)`` pairs skipped before comparison,
+                for breaks measured once and known to be real.
+            sign: ``-1`` when the parts **offset** the target rather than
+                compose it, which is how reserves and related items stand
+                against the global balance: that identity is ``V + VI = 0``,
+                not ``V = VI``. Measuring it as a difference is how this
+                repository's own design document came to report a 773-of-784
+                pass as a 2-of-784 failure, since ``V`` minus ``VI`` is ``2V``
+                precisely *because* the identity holds.
+            excluded_from: Country to the first period label at which that
+                country stops being checked, inclusive. For a divergence that
+                starts and persists, a date is the honest cut: enumerating
+                cells would add a break every period the publisher issues, and
+                a list of cells implies a precision the pattern does not have.
+                A break *before* the cut is still reported.
         """
         codes = {target_code, *part_codes}
         by_key: dict[tuple[str, str, str], Decimal] = {}
@@ -350,15 +395,19 @@ class CepalstatBopConnector(CepalstatConnector):
 
         checked = 0
         breaks: list[str] = []
+        cuts = excluded_from or {}
         for country, label in country_quarters:
             if (country, label) in exceptions:
+                continue
+            cut = cuts.get(country)
+            if cut is not None and label >= cut:
                 continue
             raw_parts = [by_key.get((country, label, code)) for code in part_codes]
             if any(part is None for part in raw_parts):
                 continue
             parts = [part for part in raw_parts if part is not None]
             target = by_key[(country, label, target_code)]
-            residual = target - sum(parts, start=Decimal(0))
+            residual = target - sign * sum(parts, start=Decimal(0))
             checked += 1
             if abs(residual) > IDENTITY_TOLERANCE:
                 breaks.append(f"{country} {label} (residual {residual:,.2f})")
