@@ -80,8 +80,9 @@ MILLIONS = Decimal("1000000")
 CENTRAL_AMERICA = frozenset({"NIC", "GTM", "SLV", "HND", "CRI", "PAN", "BLZ"})
 
 #: The 25 item members REIM stores, of 66. Selected by id and asserted by name
-#: in ``_assert_selected_items``: filtering by id is silent when CEPAL relabels
-#: a member, and the series would change meaning under an unchanged code.
+#: via the base class's ``_assert_member_names``: filtering by id is silent
+#: when CEPAL relabels a member, and the series would change meaning under an
+#: unchanged code.
 ITEMS: dict[int, str] = {
     1274: "bop_current_account_quarterly",
     1275: "bop_capital_account_quarterly",
@@ -210,7 +211,7 @@ class CepalstatBopConnector(CepalstatConnector):
             raise TransformationError(msg, source_key=self.source.key)
 
         body = self._decode(str(payload["data"]), CEPAL_ID)["body"]
-        self._assert_selected_items(body)
+        self._assert_member_names(body, ITEM_DIMENSION, "item", ITEM_NAMES, CEPAL_ID)
         years = self._members_of(body, YEARS_DIMENSION, "years", CEPAL_ID)
         published_unit = str(body["metadata"]["unit"])
         sources = {source["id"]: source["organization_name"] for source in body["sources"]}
@@ -396,26 +397,3 @@ class CepalstatBopConnector(CepalstatConnector):
             )
             raise TransformationError(msg, source_key=self.source.key)
         return quarter
-
-    def _assert_selected_items(self, body: Any) -> None:
-        """Confirm each of the 25 selected item ids still means what it meant.
-
-        Rows are filtered by member id, which is silent when CEPAL relabels a
-        member: the filter would keep matching and REIM would store a
-        different series under the same indicator code. Reading the names
-        back turns that into a message that says which id changed.
-
-        Raises:
-            TransformationError: The item dimension is absent or a selected
-                member has been renamed.
-        """
-        members = self._members_of(body, ITEM_DIMENSION, "item", CEPAL_ID)
-        for item_id, expected in ITEM_NAMES.items():
-            actual = members.get(item_id)
-            if actual != expected:
-                msg = (
-                    f"CEPALSTAT item member {item_id} for indicator {CEPAL_ID} is now "
-                    f"{actual!r}, not {expected!r}; the stored series would change "
-                    f"meaning silently"
-                )
-                raise TransformationError(msg, source_key=self.source.key)

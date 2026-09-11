@@ -153,6 +153,36 @@ class CepalstatConnector(BaseConnector):
         msg = f"CEPALSTAT returned no {name} dimension for indicator {cepal_id}"
         raise TransformationError(msg, source_key=self.source.key)
 
+    def _assert_member_names(
+        self,
+        body: Any,
+        dimension_id: int,
+        name: str,
+        expected: Mapping[int, str],
+        cepal_id: int,
+    ) -> None:
+        """Confirm each selected member id in ``expected`` still carries its name.
+
+        Rows are filtered by member id, which is silent when CEPAL relabels a
+        member: the filter keeps matching and REIM stores a different series
+        under the same indicator code. Reading the dimension's member table
+        back turns that into a message naming the first id that changed.
+
+        Raises:
+            TransformationError: The dimension is absent, or a member in
+                ``expected`` no longer carries the name it meant.
+        """
+        members = self._members_of(body, dimension_id, name, cepal_id)
+        for member_id, expected_name in expected.items():
+            actual = members.get(member_id)
+            if actual != expected_name:
+                msg = (
+                    f"CEPALSTAT {name} member {member_id} for indicator {cepal_id} "
+                    f"is now {actual!r}, not {expected_name!r}; the stored series "
+                    f"would change meaning silently"
+                )
+                raise TransformationError(msg, source_key=self.source.key)
+
     def _label_of(
         self, row: Any, labels: dict[int, str], dimension_id: int, name: str, cepal_id: int
     ) -> str:

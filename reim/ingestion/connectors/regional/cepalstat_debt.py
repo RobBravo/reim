@@ -36,7 +36,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
 
 from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import TransformationError
@@ -162,7 +161,23 @@ class CepalstatDebtConnector(CepalstatConnector):
     ) -> list[NormalizedObservation]:
         """Turn one indicator's payload into its Central American observations."""
         body = self._decode(text, spec.cepal_id)["body"]
-        self._assert_selected_members(body, spec.cepal_id)
+        # Two calls, not one two-entry map: the two selected members live in
+        # different dimensions, and `_assert_member_names` reads one
+        # dimension's member table per call.
+        self._assert_member_names(
+            body,
+            INSTITUTIONAL_COVERAGE,
+            "institutional coverage",
+            {CENTRAL_GOVERNMENT: CENTRAL_GOVERNMENT_NAME},
+            spec.cepal_id,
+        )
+        self._assert_member_names(
+            body,
+            DEBT_CLASSIFICATION,
+            "debt classification",
+            {TOTAL_BY_RESIDENCE: TOTAL_BY_RESIDENCE_NAME},
+            spec.cepal_id,
+        )
         years = self._members_of(body, YEARS_DIMENSION, "years", spec.cepal_id)
         published_unit = str(body["metadata"]["unit"])
         sources = {source["id"]: source["description"] for source in body["sources"]}
@@ -309,39 +324,3 @@ class CepalstatDebtConnector(CepalstatConnector):
             expected_value=str(expected),
             actual_value=str(present),
         )
-
-    def _assert_selected_members(self, body: Any, cepal_id: int) -> None:
-        """Confirm the two ids REIM selects still mean what they meant.
-
-        Rows are filtered by member id, which is silent when CEPAL relabels a
-        member: the filter would keep matching and REIM would store a different
-        series under the same indicator code. Reading the names back turns that
-        into a message that says what changed.
-
-        Raises:
-            TransformationError: A dimension is absent or a selected member has
-                been renamed.
-        """
-        for dimension_id, name, member_id, expected in (
-            (
-                INSTITUTIONAL_COVERAGE,
-                "institutional coverage",
-                CENTRAL_GOVERNMENT,
-                CENTRAL_GOVERNMENT_NAME,
-            ),
-            (
-                DEBT_CLASSIFICATION,
-                "debt classification",
-                TOTAL_BY_RESIDENCE,
-                TOTAL_BY_RESIDENCE_NAME,
-            ),
-        ):
-            members = self._members_of(body, dimension_id, name, cepal_id)
-            actual = members.get(member_id)
-            if actual != expected:
-                msg = (
-                    f"CEPALSTAT {name} member {member_id} for indicator {cepal_id} "
-                    f"is now {actual!r}, not {expected!r}; the stored series would "
-                    f"change meaning silently"
-                )
-                raise TransformationError(msg, source_key=self.source.key)
