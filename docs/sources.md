@@ -1982,30 +1982,56 @@ That margin is thin enough to state: if CEPAL does not extend those three series
 in its next quarterly release, they join Honduras at `warning`, and that will be
 the source having stopped rather than a regression in REIM.
 
-#### The declared decimals are wrong by up to eighteen places
+#### The declared decimals are wrong by up to twenty-two places
 
-`decimals` declares **0**. The payload publishes up to **18**:
+`decimals` declares **0**. The payload publishes up to **22**:
 
-| Decimals | 0 | 1 | 2 | 3–7 | 8 | 9–12 | 13 | 14–18 |
-|---|---|---|---|---|---|---|---|---|
-| Cells | 1,433 | 7,155 | 1,780 | 2,862 | 3,271 | 1,307 | 1,351 | 524 |
+| Decimals | 0 | 1 | 2 | 3–7 | 8 | 9–12 | 13 | 14–18 | 19 | 22 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Cells | 1,433 | 7,155 | 1,780 | 2,862 | 3,271 | 1,205 | 1,351 | 513 | 11 | **1** |
 
-The worst cell is Belize's portfolio investment assets at
-`-0.000167288535687117`, and the largest value in the family carries eight:
-Panama's imports at `-9201.38034153`. These are millions of dollars, where the
-*second* decimal is already a hundred dollars — so this is floating-point noise
-in the producer's own pipeline, not precision.
+**Sixteen cells are published in scientific notation**, which is what puts the
+tail there — fifteen of Belize's portfolio investment assets around `e-05`, and
+one cell of Panama's that is worth naming on its own:
+
+| Country | Period | Item | Published |
+|---|---|---|---|
+| **Panama** | **1998-Q3** | Portfolio investment liabilities | **`8.881784e-16`** |
+
+Twenty-two decimal places, and **not one of them is a measurement**. That figure
+is 2⁻⁵⁰ to seven significant digits — `8.881784197...e-16` is the exact value —
+which is the residue left behind when a float64 subtraction that should have
+produced zero does not quite. CEPAL meant zero here and published arithmetic
+debris instead. The unit is *millions of dollars*, so the number asserts a
+portfolio investment liability of about **0.0000000009 dollars**.
+
+The rest of the family is the same phenomenon in milder form: the largest value
+anywhere carries eight decimals (Panama's imports at `-9201.38034153`) in a unit
+where the *second* decimal is already a hundred dollars. None of this is
+precision; all of it is noise from the producer's own pipeline.
 
 This is the third CEPALSTAT family whose declared precision contradicts its own
 payload, after the exchange rate ([declares two, publishes
 one](#declared-two-decimals-published-one)) and the lending rate ([declares
 zero, publishes two](#the-declared-decimals-are-wrong-for-the-lending-rate)) —
-and by a wide margin the worst.
+and by a wide margin the worst. It is also the **second** CEPALSTAT series to
+publish a value in scientific notation: the [consumer price
+index](#cepal--monthly-consumer-price-index) gives Nicaragua's 1980s floor as
+`2E-9`. There, the notation carries a real figure that a redenominated index
+genuinely reaches; here it carries nothing at all. Worth expecting the notation
+in any CEPALSTAT payload, and worth reading the value before assuming which of
+the two kinds it is.
 
 **Values are stored exactly as published**, with no rounding in either
-direction. REIM has never altered a published value and does not start here; the
-noise is CEPAL's and is recorded as CEPAL's. A test pins a thirteen-decimal cell
-against the declared `decimals: 0`, so an attempt to tidy them fails loudly.
+direction — including that one. Scaled by 1e6 into whole dollars it becomes
+`8.881784E-10`: a **non-zero stored figure where the publisher meant zero**.
+That is the correct outcome and it is still worth stating plainly. REIM does not
+clean up a publisher's arithmetic, because a value silently rewritten to zero
+could never afterwards be told from a zero CEPAL actually published, and the
+project has never altered a published figure. A reader who meets that cell in a
+sum or a chart should know it is debris, which is why it is named here. A test
+pins a thirteen-decimal cell against the declared `decimals: 0`, so an attempt
+to tidy the family fails loudly.
 
 #### There is no server-side filtering, and two parameter forms return the whole cube while appearing to work
 
@@ -2321,7 +2347,7 @@ rate differently. The [balance-of-payments
 section](#cepal--quarterly-balance-of-payments) records that the metadata
 declares one IMF manual while six of the seven countries carry a footnote citing
 another, that the response is 20.3 MB with no server-side filtering, that the
-declared decimals are wrong by eighteen places, and that a country stops
+declared decimals are wrong by twenty-two places, and that a country stops
 publishing one series in 2023. A dimension listing tells you how to address the
 data and nothing about what is in it. Which is the point of the paragraph below.
 

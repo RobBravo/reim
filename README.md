@@ -580,8 +580,9 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   companion percent-of-GDP ratio is stored **untouched**, exactly as published.
   All twenty-five balance-of-payments series are published in **millions of
   USD** and rescaled to whole USD identically — CEPAL declares zero decimals
-  there and publishes up to eighteen, and not one of those digits is rounded
-  away. CEPAL's two per-inhabitant GDP series are also stored exactly as
+  there and publishes up to **twenty-two**, and not one of those digits is
+  rounded away, including the `8.881784e-16` that is a float64 residue rather
+  than a figure. CEPAL's two per-inhabitant GDP series are also stored exactly as
   published. Every rescaled observation keeps the published value, the published
   unit and the scale applied in `raw_metadata`, so the original figure is
   recoverable exactly. These five rescalings are the whole of it: nothing in REIM restates

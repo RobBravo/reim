@@ -245,9 +245,11 @@ and the tenth — the national central banks — has its first country.
   so `freshness` warns at 984 days against 550 on every run, reported rather
   than accommodated.
 
-  CEPAL declares **zero decimals and publishes up to eighteen**, the worst of
-  three CEPALSTAT families whose declared precision contradicts its payload;
-  values are stored exactly as published. **25 of the 55 items with data are
+  CEPAL declares **zero decimals and publishes up to twenty-two**, the worst of
+  three CEPALSTAT families whose declared precision contradicts its payload —
+  Panama 1998-Q3 carries `8.881784e-16`, which is 2⁻⁵⁰ and a float64 residue
+  where the publisher meant zero. Values are stored exactly as published,
+  that one included. **25 of the 55 items with data are
   stored** and the other 30 are named in `docs/sources.md` so a later increment
   starts from a measurement. See `docs/sources.md`.
 
