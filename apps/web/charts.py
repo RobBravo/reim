@@ -247,15 +247,34 @@ def series_path(
     drawn over a gap invents a value REIM does not have, and to the eye it is
     indistinguishable from data. Not filling gaps is the project's oldest
     promise; here it is a drawing rule.
+
+    A subpath consisting of only ``M`` cannot be stroked at all (SVG 1.1
+    S11.4) — an isolated observation, surrounded by gaps or sitting alone at
+    an end of the series, would render as nothing, contradicting the table
+    beneath it. So every subpath that never draws an ``L`` is closed with one
+    back to its own coordinate; with ``stroke-linecap: round`` that renders as
+    a dot rather than leaving the point invisible.
     """
     commands: list[str] = []
-    pen_is_down = False
+    subpath_open = False
+    subpath_has_line = False
+    last_x = last_y = 0.0
     for x_value, y_value in points:
         if y_value is None:
-            pen_is_down = False
+            if subpath_open and not subpath_has_line:
+                commands.append(f"L {last_x} {last_y}")
+            subpath_open = False
+            subpath_has_line = False
             continue
         x_pixel = round(x_scale.to_pixel(x_value), 2)
         y_pixel = round(y_scale.to_pixel(y_value), 2)
-        commands.append(f"{'L' if pen_is_down else 'M'} {x_pixel} {y_pixel}")
-        pen_is_down = True
+        if subpath_open:
+            commands.append(f"L {x_pixel} {y_pixel}")
+            subpath_has_line = True
+        else:
+            commands.append(f"M {x_pixel} {y_pixel}")
+            subpath_open = True
+        last_x, last_y = x_pixel, y_pixel
+    if subpath_open and not subpath_has_line:
+        commands.append(f"L {last_x} {last_y}")
     return " ".join(commands)

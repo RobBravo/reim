@@ -9,6 +9,7 @@ rather than inferred from a rendered page.
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -152,6 +153,25 @@ def test_a_path_of_nothing_is_empty() -> None:
     assert series_path([], scale, scale) == ""
 
 
+#: Matches one drawing command and its coordinates, e.g. ``"M 12.5 -3.0"``.
+_COMMAND_RE = re.compile(r"([ML]) (-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)")
+
+
+def _subpaths(path: str) -> list[list[tuple[str, float, float]]]:
+    """Split a path's commands into subpaths, each starting at its own ``M``.
+
+    Used to prove structural properties — how many strokeable pieces a path
+    has, whether two pieces share a coordinate — without ever asserting a
+    coordinate's actual value.
+    """
+    subpaths: list[list[tuple[str, float, float]]] = []
+    for command, x_text, y_text in _COMMAND_RE.findall(path):
+        if command == "M":
+            subpaths.append([])
+        subpaths[-1].append((command, float(x_text), float(y_text)))
+    return subpaths
+
+
 def test_a_gap_breaks_the_line_instead_of_being_bridged() -> None:
     """The whole reason this function exists.
 
@@ -165,7 +185,38 @@ def test_a_gap_breaks_the_line_instead_of_being_bridged() -> None:
     path = series_path([(0.0, 1.0), (1.0, None), (2.0, 3.0)], x_scale, y_scale)
 
     assert path.count("M") == 2, f"the gap did not break the line: {path}"
-    assert path.count("L") == 0
+    # Each isolated point now draws its own renderable dot (an "M" with
+    # nothing after it cannot be stroked at all), so "no L anywhere" is no
+    # longer the right proof that the gap was not bridged. What must still
+    # hold: the two points never share a subpath — that would mean one
+    # stroke spanning the gap.
+    subpaths = _subpaths(path)
+    assert len(subpaths) == 2
+    first_coords = {(x, y) for _, x, y in subpaths[0]}
+    second_coords = {(x, y) for _, x, y in subpaths[1]}
+    assert first_coords.isdisjoint(second_coords), f"the gap was bridged: {path}"
+
+
+def test_a_gap_after_a_run_does_not_bridge_into_the_point_beyond_it() -> None:
+    """A run of values, then a gap, then a further value: still two subpaths.
+
+    Distinct from the case above, where both sides of the gap are single
+    points: here the first side is already a multi-point run with its own
+    "L", so this proves the gap still splits a *run* from what follows it,
+    rather than being bridged into it.
+    """
+    x_scale = Scale(domain_min=0.0, domain_max=3.0, pixel_min=0.0, pixel_max=300.0)
+    y_scale = Scale(domain_min=0.0, domain_max=10.0, pixel_min=100.0, pixel_max=0.0)
+
+    path = series_path([(0.0, 1.0), (1.0, 2.0), (2.0, None), (3.0, 3.0)], x_scale, y_scale)
+
+    assert path.count("M") == 2
+    subpaths = _subpaths(path)
+    assert len(subpaths) == 2
+    assert len(subpaths[0]) == 2, "the run before the gap is one strokeable piece"
+    first_coords = {(x, y) for _, x, y in subpaths[0]}
+    second_coords = {(x, y) for _, x, y in subpaths[1]}
+    assert first_coords.isdisjoint(second_coords), f"the gap was bridged: {path}"
 
 
 def test_a_run_of_values_is_one_stroke() -> None:
@@ -205,10 +256,18 @@ def test_a_chart_of_gaps_only_is_no_chart() -> None:
 
 
 def test_a_single_period_still_draws_its_point() -> None:
-    """One observation is data; an empty chart would say it is not."""
+    """One observation is data; an empty chart would say it is not.
+
+    A subpath consisting of only "M" cannot be stroked at all (SVG 1.1
+    S11.4), so counting "M" is not proof the point renders — the isolated
+    point must be closed with an "L" back to its own coordinate.
+    """
     rows = [SeriesRow(date(2020, 1, 1), "2020", {"NIC": Decimal("4")})]
 
     chart: Chart | None = build_chart(rows, ["NIC"])
 
     assert chart is not None
-    assert chart.paths["NIC"].count("M") == 1
+    commands = chart.paths["NIC"].split()
+    assert commands[0] == "M"
+    assert commands[3] == "L"
+    assert commands[1:3] == commands[4:6], "the L must return to the M's own coordinate"
