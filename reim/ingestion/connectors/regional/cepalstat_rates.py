@@ -49,6 +49,7 @@ from itertools import pairwise
 
 from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import TransformationError
+from reim.domain.countries.registry import CENTRAL_AMERICA
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
     NormalizedObservation,
@@ -60,8 +61,6 @@ from reim.ingestion.connectors.regional.cepalstat import (
     CepalstatConnector,
 )
 from reim.ingestion.http import ensure_ok, fetch, http_client
-
-CENTRAL_AMERICA = frozenset({"NIC", "GTM", "SLV", "HND", "CRI", "PAN", "BLZ"})
 
 #: Whose dimensions response is fetched. Any of the three would serve; 856 is
 #: named so the request is deterministic and the fixture has one origin.

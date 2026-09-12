@@ -35,7 +35,7 @@ from decimal import Decimal
 
 from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import TransformationError
-from reim.domain.countries.registry import COUNTRIES_BY_ISO3
+from reim.domain.countries.registry import CENTRAL_AMERICA, COUNTRIES_BY_ISO3
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
     NormalizedObservation,
@@ -43,15 +43,11 @@ from reim.domain.pipelines.models import (
     RawDataset,
 )
 from reim.ingestion.connectors.regional.cepalstat import (
+    MILLIONS,
     YEARS_DIMENSION,
     CepalstatConnector,
 )
 from reim.ingestion.http import ensure_ok, fetch, http_client
-
-#: Published in millions of local currency, stored in whole units.
-MILLIONS = Decimal("1000000")
-
-CENTRAL_AMERICA = frozenset({"NIC", "GTM", "SLV", "HND", "CRI", "PAN", "BLZ"})
 
 
 @dataclass(frozen=True, slots=True)

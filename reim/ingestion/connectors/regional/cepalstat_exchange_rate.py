@@ -48,6 +48,7 @@ from typing import Any
 
 from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import TransformationError
+from reim.domain.countries.registry import CENTRAL_AMERICA
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
     NormalizedObservation,
@@ -69,7 +70,6 @@ CEPAL_ID = 2179
 #: The REIM indicator this feeds.
 INDICATOR_CODE = "exchange_rate_nominal_monthly"
 
-CENTRAL_AMERICA = frozenset({"NIC", "GTM", "SLV", "HND", "CRI", "PAN", "BLZ"})
 
 #: The currency each country's rate is **quoted in**, which is not what
 #: ``reim.domain.countries.registry`` answers. El Salvador is the case that
@@ -259,38 +259,14 @@ class CepalstatExchangeRateConnector(CepalstatConnector):
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
         """Assert CEPALSTAT-specific expectations beyond the standard battery."""
         return [
-            self._check_expected_countries(observations),
+            self._check_country_coverage(
+                observations,
+                {INDICATOR_CODE: CENTRAL_AMERICA},
+                "cepalstat_fx_expected_countries",
+            ),
             self._check_pegs_hold(observations),
             self._check_monthly_continuity(observations),
         ]
-
-    def _check_expected_countries(self, observations: list[NormalizedObservation]) -> QualityResult:
-        """All seven, every run.
-
-        An expectation rather than a floor, so that a country arriving is
-        reported as loudly as one disappearing.
-        """
-        seen = {obs.country_iso3 for obs in observations}
-        problems = [f"lost {iso3}" for iso3 in sorted(CENTRAL_AMERICA - seen)]
-        problems += [f"gained {iso3}" for iso3 in sorted(seen - CENTRAL_AMERICA)]
-
-        if not problems:
-            return QualityResult.passed(
-                "cepalstat_fx_expected_countries",
-                CheckType.COMPLETENESS,
-                f"All {len(CENTRAL_AMERICA)} countries returned rates",
-                expected_value=str(len(CENTRAL_AMERICA)),
-                actual_value=str(len(seen)),
-            )
-
-        return QualityResult.failure(
-            "cepalstat_fx_expected_countries",
-            CheckType.COMPLETENESS,
-            CheckSeverity.CRITICAL,
-            f"{len(problems)} change(s) in country coverage: {', '.join(problems[:5])}",
-            expected_value=str(len(CENTRAL_AMERICA)),
-            actual_value=str(len(seen)),
-        )
 
     def _check_pegs_hold(self, observations: list[NormalizedObservation]) -> QualityResult:
         """Panama near 1 and Belize near 2, from the month the recording verified.

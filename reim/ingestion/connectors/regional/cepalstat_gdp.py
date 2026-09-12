@@ -28,6 +28,7 @@ from typing import ClassVar
 
 from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import TransformationError
+from reim.domain.countries.registry import CENTRAL_AMERICA
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import (
     NormalizedObservation,
@@ -35,19 +36,11 @@ from reim.domain.pipelines.models import (
     RawDataset,
 )
 from reim.ingestion.connectors.regional.cepalstat import (
+    MILLIONS,
     YEARS_DIMENSION,
     CepalstatConnector,
 )
 from reim.ingestion.http import ensure_ok, fetch, http_client
-
-#: Figures for the totals are published in millions of USD and stored in whole
-#: USD, matching the IMF and SIECA series so ``/compare`` can align them.
-MILLIONS = Decimal("1000000")
-
-#: The seven countries REIM covers. Everything else in the response — 26 other
-#: countries and 3 regional aggregates, the latter arriving with ``iso3: null``
-#: — falls out of this membership test. REIM has no code for a region.
-CENTRAL_AMERICA = frozenset({"NIC", "GTM", "SLV", "HND", "CRI", "PAN", "BLZ"})
 
 
 @dataclass(frozen=True, slots=True)

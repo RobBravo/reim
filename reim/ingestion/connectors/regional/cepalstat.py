@@ -60,6 +60,13 @@ from reim.ingestion.base import BaseConnector
 COUNTRY_DIMENSION = 208
 YEARS_DIMENSION = 29117
 
+#: CEPAL publishes monetary amounts in millions; REIM stores whole units, so
+#: every dollar figure in the database means the same thing whichever family
+#: it came from. Four of this base class's connectors apply it. SIECA keeps
+#: its own: it does not read CEPALSTAT, and importing this from here to save a
+#: line would be a dependency that says something untrue about the source.
+MILLIONS = Decimal("1000000")
+
 #: The period-within-year dimension. Belongs to the dimension rather than to
 #: any family: the monetary aggregates and the interest rates both carry it,
 #: with the same seventeen members and the same ids.

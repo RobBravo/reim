@@ -39,9 +39,11 @@ from decimal import Decimal
 
 from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import TransformationError
+from reim.domain.countries.registry import CENTRAL_AMERICA
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
 from reim.ingestion.connectors.regional.cepalstat import (
+    MILLIONS,
     YEARS_DIMENSION,
     CepalstatConnector,
 )
@@ -56,12 +58,6 @@ CENTRAL_GOVERNMENT = 10692
 CENTRAL_GOVERNMENT_NAME = "Central government"
 TOTAL_BY_RESIDENCE = 10609
 TOTAL_BY_RESIDENCE_NAME = "Total public debt (classification by residence)"
-
-#: Published in millions of dollars, stored in whole dollars, matching the GDP
-#: totals so the two line up.
-MILLIONS = Decimal("1000000")
-
-CENTRAL_AMERICA = frozenset({"NIC", "GTM", "SLV", "HND", "CRI", "PAN", "BLZ"})
 
 
 @dataclass(frozen=True, slots=True)

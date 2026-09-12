@@ -99,3 +99,18 @@ COUNTRIES: tuple[CountryDefinition, ...] = (
 
 COUNTRIES_BY_ISO2: dict[str, CountryDefinition] = {c.iso2: c for c in COUNTRIES}
 COUNTRIES_BY_ISO3: dict[str, CountryDefinition] = {c.iso3: c for c in COUNTRIES}
+
+#: The seven countries REIM covers, as ISO3 codes. Every regional connector
+#: filters its source's whole matrix down to this set, and each of them used to
+#: restate it: seven byte-identical copies of the same frozenset, one per
+#: connector, which is seven places to forget when the region changes.
+#:
+#: Derived from ``COUNTRIES`` rather than written out, so adding a country to
+#: the registry admits it everywhere at once instead of leaving an eighth copy
+#: to find. It lives here, not in a connector's base class, because it is
+#: REIM's country scope rather than any one publisher's protocol — connectors
+#: that read SIECA or the IMF need it on the same terms as those that read
+#: CEPALSTAT.
+CENTRAL_AMERICA: frozenset[str] = frozenset(
+    country.iso3 for country in COUNTRIES if country.region == REGION_CENTRAL_AMERICA
+)

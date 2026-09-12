@@ -56,9 +56,11 @@ from typing import Any
 
 from reim.core.constants import CheckSeverity, CheckType, Frequency
 from reim.core.exceptions import TransformationError
+from reim.domain.countries.registry import CENTRAL_AMERICA
 from reim.domain.observations.periods import parse_period
 from reim.domain.pipelines.models import NormalizedObservation, QualityResult, RawDataset
 from reim.ingestion.connectors.regional.cepalstat import (
+    MILLIONS,
     YEARS_DIMENSION,
     CepalstatConnector,
 )
@@ -74,11 +76,6 @@ ITEM_DIMENSION = 1272
 #: monthly families' period dimension.
 QUARTERS: dict[int, int] = {511: 1, 512: 2, 513: 3, 514: 4}
 
-#: Published in millions of dollars, stored in whole dollars, matching the debt
-#: and GDP totals so every dollar figure in the database means the same thing.
-MILLIONS = Decimal("1000000")
-
-CENTRAL_AMERICA = frozenset({"NIC", "GTM", "SLV", "HND", "CRI", "PAN", "BLZ"})
 
 #: The 25 item members REIM stores, of 66. Selected by id and asserted by name
 #: via the base class's ``_assert_member_names``: filtering by id is silent
