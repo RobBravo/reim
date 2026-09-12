@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Run not found · REIM{% endblock %}
+
+{% block content %}
+<section class="run-detail">
+  <h2>Run not found</h2>
+  {#
+    The identifier is echoed back because the commonest way to land here is a
+    truncated or mistyped link, and the reader cannot check that against what
+    they meant unless they can see it.
+  #}
+  <p>No pipeline run is recorded with the identifier <code>{{ run_id }}</code>.</p>
+  <p><a href="/runs">Back to the run history</a></p>
+</section>
+{% endblock %}

@@ -204,3 +204,119 @@ def test_a_failing_check_is_named_counted_and_dated(client: TestClient, session:
     assert "error" in body
     assert "banguat_exchange_rate" in body or "Banco de Guatemala" in body
     assert "no failed checks" not in body.lower()
+
+
+def test_a_malformed_run_id_gets_a_page_not_a_json_envelope() -> None:
+    """FastAPI would answer 422 JSON; a browser can do nothing with that."""
+    client = TestClient(create_app())
+
+    response = client.get("/runs/not-a-uuid")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("text/html")
+    assert "not-a-uuid" in response.text
+
+
+@requires_db
+def test_an_unknown_run_gets_the_same_page(client: TestClient) -> None:
+    unknown = uuid.uuid4()
+
+    response = client.get(f"/runs/{unknown}")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("text/html")
+
+
+@requires_db
+def test_a_run_detail_shows_all_five_counters(client: TestClient, session: Session) -> None:
+    """Extracted and unchanged appear nowhere else in the web surface.
+
+    ``extracted`` against the other four is how a reader sees rows going
+    missing, which is precisely what the overview's three counters hide.
+    """
+    run = _add_run(
+        session,
+        records_extracted=100,
+        records_inserted=60,
+        records_updated=20,
+        records_unchanged=15,
+        records_rejected=5,
+    )
+
+    body = client.get(f"/runs/{run.id}").text
+
+    for count in ("100", "60", "20", "15", "5"):
+        assert count in body
+
+
+@requires_db
+def test_a_failed_run_shows_its_error(client: TestClient, session: Session) -> None:
+    run = _add_run(
+        session,
+        status=PipelineStatus.FAILED,
+        error_type="ConnectorTimeout",
+        error_message="Banguat did not answer within 30s",
+    )
+
+    body = client.get(f"/runs/{run.id}").text
+
+    assert "ConnectorTimeout" in body
+    assert "Banguat did not answer within 30s" in body
+
+
+@requires_db
+def test_a_successful_run_shows_no_error_block(client: TestClient, session: Session) -> None:
+    run = _add_run(session, status=PipelineStatus.SUCCESS)
+
+    body = client.get(f"/runs/{run.id}").text
+
+    assert "Error" not in body
+
+
+@requires_db
+def test_run_metadata_is_shown_when_the_connector_recorded_any(
+    client: TestClient, session: Session
+) -> None:
+    run = _add_run(session, run_metadata={"connector_key": "banguat_exchange_rate"})
+
+    body = client.get(f"/runs/{run.id}").text
+
+    assert "connector_key" in body
+    assert "banguat_exchange_rate" in body
+
+
+@requires_db
+def test_the_checks_a_run_produced_are_listed(client: TestClient, session: Session) -> None:
+    run = _add_run(session)
+    session.add(
+        DataQualityCheck(
+            id=uuid.uuid4(),
+            pipeline_run_id=run.id,
+            check_name="value_within_range",
+            check_type=CheckType.VALIDITY,
+            status=CheckStatus.FAILED,
+            severity=CheckSeverity.ERROR,
+            indicator_code="gt_exchange_rate_official_daily",
+            period_label="2026-09-01",
+            expected_value="<= 8.0",
+            actual_value="41.7",
+            created_at=datetime.now(UTC),
+        )
+    )
+    session.flush()
+
+    body = client.get(f"/runs/{run.id}").text
+
+    assert "value_within_range" in body
+    assert "gt_exchange_rate_official_daily" in body
+    assert "41.7" in body
+
+
+@requires_db
+def test_a_run_with_no_checks_says_so(client: TestClient, session: Session) -> None:
+    """An empty table reads as a broken page; the words read as a fact."""
+    run = _add_run(session)
+
+    body = client.get(f"/runs/{run.id}").text
+
+    assert "recorded no quality checks" in body.lower()

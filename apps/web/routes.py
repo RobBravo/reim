@@ -15,6 +15,7 @@ templates, which is what keeps the two surfaces from drifting apart.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -29,7 +30,13 @@ from apps.api.dependencies import SessionDep
 from reim.core.exceptions import CatalogError
 from reim.domain.sources.catalog import SourceEntry, get_catalog
 from reim.repositories import pipeline_runs as run_repo
-from reim.schemas.pipelines import FailedCheckGroup, PipelineRunRead, PipelineSummary
+from reim.schemas.pipelines import (
+    FailedCheckGroup,
+    PipelineRunDetail,
+    PipelineRunRead,
+    PipelineSummary,
+    QualityCheckRead,
+)
 from reim.services.status import build_pipeline_summaries
 
 TEMPLATES_DIRECTORY = Path(__file__).resolve().parent / "templates"
@@ -244,4 +251,50 @@ def runs(request: Request, session: SessionDep) -> HTMLResponse:
             "history_limit": RUN_HISTORY_LIMIT,
             "window_days": TRENDS_WINDOW_DAYS,
         },
+    )
+
+
+@router.get("/runs/{run_id}", response_class=HTMLResponse)
+def run_detail(request: Request, session: SessionDep, run_id: str) -> HTMLResponse:
+    """One run in full: every counter, its error, its metadata, its checks.
+
+    ``run_id`` is a ``str`` and parsed here rather than annotated ``uuid.UUID``
+    on purpose. A ``UUID`` annotation hands validation to FastAPI, whose
+    ``RequestValidationError`` handler returns a JSON envelope — correct for
+    the API, useless to a browser. Both a malformed identifier and an unknown
+    run are the same thing to a reader ("that run is not here"), so both get
+    the same HTML page with status 404.
+
+    The view never raises ``ResourceNotFoundError`` the way
+    ``apps/api/routers/pipelines.py`` does, because every handler in
+    ``apps/api/errors.py`` answers in JSON unconditionally. Teaching those
+    handlers to negotiate content would make every API error path carry a
+    branch that exists for two view functions.
+    """
+    try:
+        identifier = uuid.UUID(run_id)
+    except ValueError:
+        return _run_not_found(request, run_id)
+
+    try:
+        run = run_repo.get_run(session, identifier)
+    except SQLAlchemyError:
+        return templates.TemplateResponse(request, "run_detail.html", {"run": None})
+
+    if run is None:
+        return _run_not_found(request, run_id)
+
+    detail = PipelineRunDetail.model_validate(run)
+    detail.quality_checks = [QualityCheckRead.model_validate(check) for check in run.quality_checks]
+    return templates.TemplateResponse(
+        request,
+        "run_detail.html",
+        {"run": detail, "source_name": source_name_for(detail.pipeline_key)},
+    )
+
+
+def _run_not_found(request: Request, run_id: str) -> HTMLResponse:
+    """The 404 page, for a malformed identifier and an unknown run alike."""
+    return templates.TemplateResponse(
+        request, "run_not_found.html", {"run_id": run_id}, status_code=404
     )

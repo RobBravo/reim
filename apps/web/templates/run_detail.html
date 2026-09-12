@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Run · REIM{% endblock %}
+
+{% block content %}
+<section class="run-detail">
+  {% if run is none %}
+  <h2>Pipeline run</h2>
+  <p class="notice" role="status">This run cannot be read: the database is not responding.</p>
+  {% else %}
+  <h2>{{ source_name }}</h2>
+  <dl class="run-facts">
+    <dt>Status</dt><dd class="status-{{ run.status.value }}">{{ run.status.value }}</dd>
+    <dt>Started</dt><dd>{{ run.started_at | freshness }}</dd>
+    <dt>Finished</dt><dd>{% if run.finished_at %}{{ run.finished_at | freshness }}{% else %}Still running{% endif %}</dd>
+    <dt>Duration</dt><dd>{{ run.duration_ms | duration }}</dd>
+    <dt>Connector version</dt><dd>{{ run.connector_version or "—" }}</dd>
+    <dt>Pipeline version</dt><dd>{{ run.pipeline_version or "—" }}</dd>
+    <dt>Pipeline key</dt><dd><code>{{ run.pipeline_key }}</code></dd>
+  </dl>
+
+  {#
+    All five counters, unlike the overview's three. Extracted against the sum
+    of the other four is how a reader sees that rows went missing between the
+    source and the database — the one arithmetic this page exists to allow.
+  #}
+  <h3>Records</h3>
+  <div class="table-wrapper">
+    <table class="counters-table">
+      <caption>What the run did with the rows it fetched</caption>
+      <thead>
+        <tr>
+          <th scope="col">Extracted</th>
+          <th scope="col">Inserted</th>
+          <th scope="col">Updated</th>
+          <th scope="col">Unchanged</th>
+          <th scope="col">Rejected</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{ run.records_extracted }}</td>
+          <td>{{ run.records_inserted }}</td>
+          <td>{{ run.records_updated }}</td>
+          <td>{{ run.records_unchanged }}</td>
+          <td>{{ run.records_rejected }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% if run.error_type or run.error_message %}
+  <h3>Error</h3>
+  <p class="notice"><strong>{{ run.error_type }}</strong> &mdash; {{ run.error_message }}</p>
+  {% endif %}
+
+  {% if run.run_metadata %}
+  {# Where connectors leave run-specific context; absent for a run that recorded none. #}
+  <h3>Run metadata</h3>
+  <dl class="run-facts">
+    {% for key, value in run.run_metadata.items() %}
+    <dt>{{ key }}</dt><dd>{{ value }}</dd>
+    {% endfor %}
+  </dl>
+  {% endif %}
+
+  <h3>Quality checks</h3>
+  {% if run.quality_checks %}
+  <div class="table-wrapper">
+    <table class="checks-table">
+      <caption>{{ run.quality_checks | length }} check(s) recorded by this run</caption>
+      <thead>
+        <tr>
+          <th scope="col">Check</th>
+          <th scope="col">Type</th>
+          <th scope="col">Result</th>
+          <th scope="col">Severity</th>
+          <th scope="col">Indicator</th>
+          <th scope="col">Period</th>
+          <th scope="col">Expected</th>
+          <th scope="col">Actual</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for check in run.quality_checks %}
+        <tr>
+          <td>{{ check.check_name }}</td>
+          <td>{{ check.check_type.value }}</td>
+          <td class="status-{{ check.status.value }}">{{ check.status.value }}</td>
+          <td class="severity-{{ check.severity.value }}">{{ check.severity.value }}</td>
+          <td>{{ check.indicator_code or "—" }}</td>
+          <td>{{ check.period_label or "—" }}</td>
+          <td>{{ check.expected_value or "—" }}</td>
+          <td>{{ check.actual_value or "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  {# Stated, not left blank: an empty section reads as a failed render. #}
+  <p class="muted">This run recorded no quality checks.</p>
+  {% endif %}
+
+  <p><a href="/runs">Back to the run history</a></p>
+  {% endif %}
+</section>
+{% endblock %}
