@@ -381,3 +381,18 @@ def test_a_country_that_changes_unit_is_named_but_not_charted(
     # Two countries hold data (NIC and GTM); GTM is undrawable, so one fewer
     # <svg> than countries-with-data is drawn.
     assert body.count("<svg") == 1
+
+
+def test_the_nav_links_to_the_series_page() -> None:
+    """A link is its ``href``: there is no rendered content that proves a nav
+    item actually points at ``/series`` rather than merely saying "Series".
+
+    Checked on all three pages the nav appears on, so a template change that
+    drops or mistypes the link on any one of them is caught, not only on the
+    page it happens to be added to first.
+    """
+    client = TestClient(create_app())
+
+    for path in ("/", "/runs", "/series"):
+        body = client.get(path).text
+        assert 'href="/series"' in body, f"{path} is missing the Series nav link"
