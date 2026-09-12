@@ -203,3 +203,100 @@ tbody tr:hover {
 .run-facts dd {
   margin: 0;
 }
+
+.series-form {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  align-items: start;
+  gap: 0.75rem 1rem;
+  margin: 0 0 1.5rem;
+  max-width: 32rem;
+}
+
+.series-form label {
+  padding-top: 0.4rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.series-form button {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.series-chart-figure {
+  margin: 0 0 0.75rem;
+}
+
+.series-chart {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.chart-gridline {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.chart-tick-label,
+.chart-axis-label {
+  fill: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.chart-line {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.series-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.series-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 2px;
+}
+
+.series-panels-note {
+  margin: 0 0 0.75rem;
+}
+
+.series-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+  margin: 0 0 1.5rem;
+}
+
+.series-panels .series-chart-figure {
+  margin: 0;
+}
+
+.series-chart-heading {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.series-undrawable-notes {
+  margin: 0 0 1.5rem;
+  padding-left: 1.25rem;
+  color: var(--text-muted);
+}

@@ -32,10 +32,10 @@ block: it needs no data, only that no HTTP call is made, and a guard that
 only runs when a database happens to be present is not run in the gate that
 matters. Nothing else in this suite would catch a page that fetched its own
 API instead — every other test only checks what came back, not how it was
-produced. It covers all three routes this application serves — ``/``,
-``/runs`` and ``/runs/{run_id}`` — not only the catalog page it was written
-alongside: the rule it pins applies to every view, and a route added after
-this test would otherwise go unchecked by it.
+produced. It covers all four routes this application serves — ``/``,
+``/runs``, ``/runs/{run_id}`` and ``/series`` — not only the catalog page it
+was written alongside: the rule it pins applies to every view, and a route
+added after this test would otherwise go unchecked by it.
 """
 
 from __future__ import annotations
@@ -276,10 +276,10 @@ def test_the_pages_make_no_outbound_http_requests() -> None:
     only test in the suite that would catch a later page calling the
     application's own API instead of its services and repositories directly.
 
-    Covers all three routes the branch added or kept, not only the catalog:
-    ``/runs`` and ``/runs/{run_id}`` are exercised the same way, with no
-    session override, so a rewrite of either view to fetch its own HTTP API
-    instead of calling repositories directly would trip this guard too.
+    Covers all four routes the branch added or kept, not only the catalog:
+    ``/runs``, ``/runs/{run_id}`` and ``/series`` are exercised the same way,
+    with no session override, so a rewrite of any view to fetch its own HTTP
+    API instead of calling repositories directly would trip this guard too.
     Unlike its neighbours above, this test has no ``requires_db`` and so
     must pass whether or not a database is reachable, and the detail route
     genuinely has two correct answers depending on that: with a database
@@ -290,9 +290,18 @@ def test_the_pages_make_no_outbound_http_requests() -> None:
     escaping over HTTP, which is all this guard cares about, so the
     assertion accepts both status codes instead of picking one that would
     be false in the other world.
+
+    ``/series`` has no such split: the indicator and country are resolved
+    from the in-process registries before any database access, so a real
+    code for each resolves regardless of the database, and any query that
+    then fails is caught inside ``load_series_page`` and rendered as the
+    "database is not responding" state rather than an error status — 200 in
+    both worlds, for the bare form and for a real selection alike.
     """
     client = TestClient(create_app())
 
     assert client.get("/").status_code == 200
     assert client.get("/runs").status_code == 200
     assert client.get(f"/runs/{uuid.uuid4()}").status_code in {200, 404}
+    assert client.get("/series").status_code == 200
+    assert client.get("/series?indicator=ni_cpi_inflation_annual&country=NIC").status_code == 200

@@ -17,19 +17,32 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from apps.api.dependencies import SessionDep
+from apps.web.charts import CHART_PALETTE, Chart, SeriesRow, build_chart, pivot_cells
 from reim.core.exceptions import CatalogError
+from reim.domain.countries.registry import (
+    COUNTRIES,
+    COUNTRIES_BY_ISO2,
+    COUNTRIES_BY_ISO3,
+    CountryDefinition,
+)
+from reim.domain.indicators.registry import INDICATORS, INDICATORS_BY_CODE, IndicatorDefinition
 from reim.domain.sources.catalog import SourceEntry, get_catalog
+from reim.repositories import comparison as comparison_repo
 from reim.repositories import pipeline_runs as run_repo
+from reim.repositories.comparison import ComparisonQuery, SeriesSummary
+from reim.repositories.reference import get_country_by_iso3
+from reim.schemas.comparison import assess_comparability, levels_comparable
 from reim.schemas.pipelines import (
     FailedCheckGroup,
     PipelineRunDetail,
@@ -49,6 +62,13 @@ RUN_HISTORY_LIMIT = 100
 #: ``SystemStatus`` uses, because these series are ingested infrequently and a
 #: block that is always empty stops being read.
 TRENDS_WINDOW_DAYS = 30
+
+#: How many distinct periods one chart may draw. Nothing is ever downsampled —
+#: REIM does not discard published figures to cheapen a drawing — so a denser
+#: range is refused with an explanation instead. The cap bites only on the two
+#: daily sources (BCN and Banguat exchange rates): 1,500 points is about four
+#: years of daily data, but 125 years of monthly and 375 of quarterly.
+PERIOD_LIMIT = 1500
 
 
 def _format_freshness(value: datetime | None) -> str:
@@ -104,6 +124,10 @@ def _format_duration(milliseconds: int | None) -> str:
 templates = Jinja2Templates(directory=str(TEMPLATES_DIRECTORY))
 templates.env.filters["freshness"] = _format_freshness
 templates.env.filters["duration"] = _format_duration
+# The palette lives beside ``build_chart`` in charts.py, its only other
+# reader, so the stroke a template draws and the colour build_chart's caller
+# assigned by request position never drift apart.
+templates.env.globals["chart_palette"] = CHART_PALETTE
 
 router = APIRouter(tags=["web"], include_in_schema=False)
 
@@ -295,4 +319,189 @@ def _run_not_found(request: Request, run_id: str) -> HTMLResponse:
     """The 404 page, for a malformed identifier and an unknown run alike."""
     return templates.TemplateResponse(
         request, "run_not_found.html", {"run_id": run_id}, status_code=404
+    )
+
+
+@dataclass(frozen=True)
+class SeriesPageData:
+    """Everything ``/series`` draws once a selection resolves."""
+
+    indicator: IndicatorDefinition
+    countries: list[CountryDefinition]
+    rows: list[SeriesRow]
+    summaries: list[SeriesSummary]
+    comparable: bool
+    levels_comparable: bool
+    notes: list[str]
+    total_periods: int
+    #: The overlaid case: one shared axis, filled only when ``comparable`` and
+    #: ``levels_comparable`` both hold and no country is ``undrawable``.
+    chart: Chart | None
+    #: The small-multiple case: one independently-scaled panel per drawable
+    #: country. Filled instead of ``chart`` whenever the countries may not
+    #: honestly share one axis. A panel is itself ``None`` when its country
+    #: has no plottable values, the same case ``build_chart`` already reports
+    #: that way for the overlay.
+    panels: list[tuple[CountryDefinition, Chart | None]]
+    #: Countries excluded from both ``chart`` and ``panels`` because their own
+    #: series carries more than one unit — a unit switch within one country's
+    #: values, which no single axis, shared or its own, can honestly draw.
+    undrawable: list[tuple[CountryDefinition, tuple[str, ...]]]
+
+
+def load_series_page(
+    session: Session,
+    indicator: IndicatorDefinition,
+    countries: list[CountryDefinition],
+    date_from: date | None,
+    date_to: date | None,
+) -> SeriesPageData | None:
+    """Return the page's data, or ``None`` when the database did not answer.
+
+    Four queries share one ``try``: with any of them failing there is no
+    partial page worth rendering, and one ``except`` means one place decides
+    "unreachable" — the same argument ``load_pipeline_summaries`` and
+    ``load_runs_page`` make, and the reason none of them pings the database
+    first.
+
+    ``total_periods`` is counted before the cells are fetched so the page can
+    say how dense a range is even when it declines to draw it.
+    """
+    try:
+        resolved = [get_country_by_iso3(session, country.iso3) for country in countries]
+        query = ComparisonQuery(
+            indicator_code=indicator.code,
+            country_ids=tuple(row.id for row in resolved if row is not None),
+            period_start_from=date_from,
+            period_start_to=date_to,
+        )
+        total_periods = comparison_repo.count_comparison_periods(session, query)
+        cells = (
+            comparison_repo.fetch_comparison_cells(
+                session, query, limit=PERIOD_LIMIT, offset=0, descending=False
+            )
+            if total_periods <= PERIOD_LIMIT
+            else []
+        )
+        summaries = comparison_repo.summarise_series(
+            session, query, [row for row in resolved if row is not None]
+        )
+    except SQLAlchemyError:
+        return None
+
+    definition = INDICATORS_BY_CODE.get(indicator.code)
+    comparable, notes = assess_comparability(summaries, definition)
+    levels_ok = levels_comparable(definition)
+    rows = pivot_cells(cells, [country.iso3 for country in countries])
+
+    # A country whose own series crosses a unit change (spec D4) cannot be
+    # rescued by any axis, shared or its own, so it is set aside before the
+    # comparable/levels_comparable decision even runs on the rest.
+    summaries_by_iso3 = {summary.country_iso3: summary for summary in summaries}
+    undrawable: list[tuple[CountryDefinition, tuple[str, ...]]] = []
+    drawable_countries: list[CountryDefinition] = []
+    for country in countries:
+        summary = summaries_by_iso3.get(country.iso3)
+        if summary is not None and len(summary.units) > 1:
+            undrawable.append((country, summary.units))
+        else:
+            drawable_countries.append(country)
+
+    # Overlay only when levels read across countries and every remaining
+    # country can honestly be drawn at all; small multiples own every other
+    # case, including "no plottable values", which ``build_chart`` already
+    # reports as ``None``.
+    chart: Chart | None = None
+    panels: list[tuple[CountryDefinition, Chart | None]] = []
+    if comparable and levels_ok and not undrawable:
+        chart = build_chart(rows, [c.iso3 for c in drawable_countries])
+    else:
+        panels = [(country, build_chart(rows, [country.iso3])) for country in drawable_countries]
+
+    return SeriesPageData(
+        indicator=indicator,
+        countries=countries,
+        rows=rows,
+        summaries=summaries,
+        comparable=comparable,
+        levels_comparable=levels_ok,
+        notes=notes,
+        total_periods=total_periods,
+        chart=chart,
+        panels=panels,
+        undrawable=undrawable,
+    )
+
+
+@router.get("/series", response_class=HTMLResponse)
+def series(
+    request: Request,
+    session: SessionDep,
+    indicator: str | None = None,
+    country: Annotated[list[str] | None, Query()] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> HTMLResponse:
+    """One indicator over time across several countries.
+
+    The indicator and the countries are resolved from the in-process
+    registries **before** any database access, so a mistyped code answers with
+    a proper 404 page even when PostgreSQL is unreachable. The view never
+    raises ``ResourceNotFoundError``: every handler in ``apps/api/errors.py``
+    answers in JSON, which is right for the API and useless to a browser.
+    """
+    context: dict[str, object] = {
+        "indicator_options": INDICATORS,
+        "country_options": COUNTRIES,
+        "selection": {
+            "indicator": indicator,
+            "country": country or [],
+            "date_from": date_from,
+            "date_to": date_to,
+        },
+        "period_limit": PERIOD_LIMIT,
+        "date_range_invalid": False,
+        "data": None,
+    }
+
+    if not indicator or not country:
+        # State 1: nothing chosen yet. Not an error, and not an empty chart.
+        return templates.TemplateResponse(request, "series.html", context)
+
+    if date_from is not None and date_to is not None and date_from > date_to:
+        # An inverted range: needs no database to answer, and must not share
+        # wording with "holds no data" — the country may well hold data, the
+        # range as given simply cannot select any of it.
+        context["date_range_invalid"] = True
+        return templates.TemplateResponse(request, "series.html", context)
+
+    definition = INDICATORS_BY_CODE.get(indicator)
+    if definition is None:
+        return _series_not_found(request, "indicator", indicator)
+
+    countries: list[CountryDefinition] = []
+    seen: set[str] = set()
+    for code in country:
+        value = code.upper()
+        found = COUNTRIES_BY_ISO2.get(value) if len(value) == 2 else COUNTRIES_BY_ISO3.get(value)
+        if found is None:
+            return _series_not_found(request, "country", value)
+        if found.iso3 not in seen:
+            seen.add(found.iso3)
+            countries.append(found)
+
+    context["data"] = load_series_page(session, definition, countries, date_from, date_to)
+    context["selection"] = {
+        "indicator": indicator,
+        "country": [c.iso3 for c in countries],
+        "date_from": date_from,
+        "date_to": date_to,
+    }
+    return templates.TemplateResponse(request, "series.html", context)
+
+
+def _series_not_found(request: Request, kind: str, value: str) -> HTMLResponse:
+    """States 3 and 4 — an unregistered indicator or country, named as such."""
+    return templates.TemplateResponse(
+        request, "series_not_found.html", {"kind": kind, "value": value}, status_code=404
     )
