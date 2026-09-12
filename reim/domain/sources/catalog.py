@@ -33,6 +33,17 @@ from reim.domain.sources.organizations import ORGANIZATIONS_BY_CODE
 #: marked enabled must point at a real host.
 PLACEHOLDER_HOSTS = ("example.invalid", "example.com", "example.org", "example.net", "localhost")
 
+#: Licence slugs whose terms permit redistribution. Everything else is
+#: recorded but not redistributable, which REIM states rather than hides —
+#: see docs/sources.md for each non-open source's terms. Membership is the
+#: rule: a new licence slug is not open until it is added here deliberately.
+#:
+#: Measured against sources/catalog.yml: 14 of the catalog's 23 sources are
+#: not redistributable, from three publishers — CEPAL (7), IMF (6) and
+#: SIECA (1). The other 9 are open: 6 under CC-BY-4.0 (the World Bank's
+#: Nicaragua series) and 3 under public_official_data.
+OPEN_LICENCES: frozenset[str] = frozenset({"CC-BY-4.0", "public_official_data"})
+
 SourceKey = Annotated[str, Field(pattern=r"^[a-z0-9]+(?:_[a-z0-9]+)*$", max_length=120)]
 
 
@@ -113,6 +124,15 @@ class SourceEntry(BaseModel):
     def country_iso2(self) -> str | None:
         """Uppercase ISO-3166 alpha-2 code, or ``None`` for global sources."""
         return self.country.upper() if self.country else None
+
+    @property
+    def redistributable(self) -> bool:
+        """Whether this source's licence permits redistribution.
+
+        See ``OPEN_LICENCES`` for the rule and ``docs/sources.md`` for the
+        terms behind each non-open licence.
+        """
+        return self.license in OPEN_LICENCES
 
 
 class SourceCatalog(BaseModel):

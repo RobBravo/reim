@@ -2,16 +2,6 @@
 
 {% block title %}Catalog · REIM{% endblock %}
 
-{#
-  Licences REIM has verified as open (see docs/sources.md for each source's
-  terms). Any licence NOT in this list is marked "not open" — so a fourth
-  restrictive source added to sources/catalog.yml is flagged automatically,
-  with no edit to this template. Today that set is exactly three: the IMF
-  (imf_terms_of_use), SIECA (sieca_all_rights_reserved) and CEPAL
-  (cepal_terms_of_use).
-#}
-{% set open_licenses = ["CC-BY-4.0", "public_official_data"] %}
-
 {% block content %}
 <section class="catalog">
   <h2>Catalog</h2>
@@ -38,9 +28,16 @@
           <th scope="col">Records (inserted / updated / rejected)</th>
         </tr>
       </thead>
+      {#
+        Whether a source may be redistributed is a fact about the source,
+        not about this page — SourceEntry.redistributable and its backing
+        OPEN_LICENCES live in reim/domain/sources/catalog.py, next to the
+        rule and its measured proportions (14 of 23 sources, from three
+        publishers, are not redistributable). The IMF, SIECA and CEPAL's
+        own terms are recorded in docs/sources.md.
+      #}
       <tbody>
         {% for summary, entry in rows %}
-        {% set is_open = entry.license in open_licenses %}
         <tr id="{{ entry.key }}">
           <td>
             <a href="{{ entry.documentation_url }}">{{ entry.name }}</a>
@@ -48,8 +45,8 @@
           <td>{{ entry.organization }}</td>
           <td>{{ entry.frequency.value }}</td>
           <td>{{ entry.indicators | length }}</td>
-          <td{% if not is_open %} class="licence-restricted"{% endif %}>
-            {{ entry.license }}{% if not is_open %} <span class="licence-badge">Not open</span>{% endif %}
+          <td{% if not entry.redistributable %} class="licence-restricted"{% endif %}>
+            {{ entry.license }}{% if not entry.redistributable %} <span class="licence-badge">Not open</span>{% endif %}
           </td>
           {% if summary is none %}
           {# The database is unreachable, not "never run" — dashes, not words. #}

@@ -23,7 +23,7 @@ from reim.core.exceptions import CatalogError, CatalogValidationError
 from reim.domain.countries.registry import COUNTRIES, COUNTRIES_BY_ISO2, COUNTRIES_BY_ISO3
 from reim.domain.indicators.registry import INDICATORS, INDICATORS_BY_CODE
 from reim.domain.quality.rules import QualityRuleSet, load_quality_rules
-from reim.domain.sources.catalog import SourceCatalog, SourceEntry, load_catalog
+from reim.domain.sources.catalog import OPEN_LICENCES, SourceCatalog, SourceEntry, load_catalog
 from tests.conftest import REPO_ROOT
 
 VALID_ENTRY: dict[str, Any] = {
@@ -175,6 +175,40 @@ def test_imf_source_declares_its_non_open_licence(catalog: SourceCatalog) -> Non
     assert entry.license == "imf_terms_of_use"
     assert entry.license != "public_official_data"
     assert entry.enabled is True
+
+
+def test_redistributable_reflects_the_open_licences_allowlist() -> None:
+    """The property is membership in OPEN_LICENCES, nothing cleverer."""
+    open_entry = SourceEntry.model_validate({**VALID_ENTRY, "license": "public_official_data"})
+    also_open_entry = SourceEntry.model_validate({**VALID_ENTRY, "license": "CC-BY-4.0"})
+    closed_entry = SourceEntry.model_validate({**VALID_ENTRY, "license": "imf_terms_of_use"})
+
+    assert open_entry.redistributable is True
+    assert also_open_entry.redistributable is True
+    assert closed_entry.redistributable is False
+
+
+def test_fourteen_of_the_catalog_sources_are_not_redistributable(catalog: SourceCatalog) -> None:
+    """Fourteen sources, from three publishers — not "three sources"."""
+    closed = [entry for entry in catalog.sources if not entry.redistributable]
+    closed_by_organization = sorted(entry.organization for entry in closed)
+
+    assert len(catalog.sources) == 23
+    assert len(closed) == 14
+    assert closed_by_organization == ["CEPAL"] * 7 + ["IMF"] * 6 + ["SIECA"] * 1
+
+    open_ = [entry for entry in catalog.sources if entry.redistributable]
+    assert len(open_) == 9
+    assert sum(1 for entry in open_ if entry.license == "CC-BY-4.0") == 6
+    assert sum(1 for entry in open_ if entry.license == "public_official_data") == 3
+
+
+def test_open_licences_allowlist_is_exactly_the_two_slugs_in_use() -> None:
+    """A slug in the allowlist that no source carries is dead configuration."""
+    catalog = load_catalog(REPO_ROOT / "sources" / "catalog.yml")
+    licences_in_use = {entry.license for entry in catalog.sources}
+
+    assert licences_in_use >= OPEN_LICENCES
 
 
 def test_inide_source_declares_all_nine_cpi_indicators(catalog: SourceCatalog) -> None:
