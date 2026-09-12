@@ -317,7 +317,7 @@ interface a real scheduler would implement later.
 
 ## Web pages
 
-REIM has two server-rendered web pages, served from the same application as
+REIM has three server-rendered web pages, served from the same application as
 the API: `make run-api`, then open <http://localhost:8000/>.
 
 The catalog browser at `/` answers what a new reader of the API docs cannot
@@ -338,6 +338,19 @@ quality check it ran, passed or failed. Unlike the catalog, this page has
 nothing to fall back to without a database — the history it shows only
 exists there — so an unreachable database or an unknown run renders as an
 explanatory page rather than the browser's fallback state.
+
+`/series` plots one indicator over time across the countries chosen from an
+ordinary `<form method="get">` — a `<select>` of all 63 indicators, a
+multi-select of all 7 countries, and optional date bounds. The chart is
+server-rendered SVG with no JavaScript at all: the same no-build-step
+decision the catalog page made is not reopened for one page. Two countries'
+lines share one axis only when the indicator's units and currencies agree
+**and** the publisher defines it the same way in every country; otherwise the
+page draws small multiples, one independently-scaled panel per country,
+rather than implying a comparison the data cannot support. A period the
+publisher did not report breaks the line instead of being bridged, and a
+value table beside the chart carries every figure the chart draws, plus any
+country the chart could not draw at all.
 
 The API is unchanged and still lives at `/api/v1` — the pages are an addition
 beside it, not a replacement, calling the same services and repositories the

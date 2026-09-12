@@ -275,10 +275,26 @@ and the tenth — the national central banks — has its first country.
   `comparable` rather than instead of it — `comparable` keeps turning on unit
   and currency, so no existing caller changes meaning. Flipping it was
   rejected in decision D6 of the interest-rates design for that reason.
-- **Web dashboard.** Read-only, server-rendered or a small SPA over the existing
-  API. Time series, country comparison, source and freshness transparency.
-  Every chart links back to the source URL for the underlying figure. The
-  charting approach is still an open decision.
+- ~~**Web dashboard**~~ ✅ **done** — `/series`, REIM's third web page: one
+  indicator plotted over time across up to seven countries, chosen from an
+  ordinary `<form method="get">` with no JavaScript at all. The chart is
+  server-rendered SVG, not a library or a CDN script: every earlier decision
+  about this project — no dependency, no build step, self-hostable on a
+  restricted network — would have been reopened by shipping a vendored
+  charting blob for one page. Two lines share an axis only when both
+  `comparable` and `levels_comparable` hold; either flag failing (differing
+  units or currencies, or a publisher measuring a different instrument per
+  country, as CEPAL's interest rates do) draws small multiples instead, one
+  independently-scaled panel per country, so a shared axis never implies a
+  comparison the data cannot support. A country whose own series crosses a
+  unit change is named in the table but not drawn at all — its own axis
+  cannot rescue a line that lies within a single country. A missing period
+  breaks the line rather than bridging it, the same "never fill a gap"
+  promise the ingestion layer already keeps, now also a drawing rule. Nothing
+  is downsampled; instead a request denser than 1,500 periods is refused with
+  a sentence naming the count and asking for narrower dates — a cap that
+  bites only the two daily exchange-rate sources, since 1,500 points is four
+  years of daily data but 125 years of monthly and 375 of quarterly.
 - ~~**Data catalog browser**~~ ✅ **done** — REIM's **first web page**: what
   REIM holds, how fresh it is, and what is disabled and why, server-rendered
   beside the API rather than as a separate application. All 23 sources, their
