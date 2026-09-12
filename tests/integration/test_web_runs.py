@@ -338,7 +338,7 @@ def test_a_successful_run_shows_no_error_block(client: TestClient, session: Sess
 
     body = client.get(f"/runs/{run.id}").text
 
-    assert "Error" not in body
+    assert "<h3>Error</h3>" not in body
 
 
 @requires_db

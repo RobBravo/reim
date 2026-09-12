@@ -32,11 +32,15 @@ block: it needs no data, only that no HTTP call is made, and a guard that
 only runs when a database happens to be present is not run in the gate that
 matters. Nothing else in this suite would catch a page that fetched its own
 API instead — every other test only checks what came back, not how it was
-produced.
+produced. It covers all three routes this application serves — ``/``,
+``/runs`` and ``/runs/{run_id}`` — not only the catalog page it was written
+alongside: the rule it pins applies to every view, and a route added after
+this test would otherwise go unchecked by it.
 """
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterator
 
 import pytest
@@ -271,7 +275,20 @@ def test_the_pages_make_no_outbound_http_requests() -> None:
     nothing REIM would plausibly call this with can slip past. This is the
     only test in the suite that would catch a later page calling the
     application's own API instead of its services and repositories directly.
+
+    Covers all three routes the branch added or kept, not only the catalog:
+    ``/runs`` and ``/runs/{run_id}`` are exercised the same way, with no
+    session override, so a rewrite of either view to fetch its own HTTP API
+    instead of calling repositories directly would trip this guard too. The
+    detail route is asserted at 404, not 200: ``uuid.UUID`` parses a random
+    id cleanly, and the gate this test runs in keeps a live, freshly
+    truncated database (see ``tests/conftest.py``'s ``session`` fixture), so
+    the run genuinely does not exist rather than the database being
+    unreachable. Forcing 200 here would assert something false rather than
+    what the route actually does.
     """
     client = TestClient(create_app())
 
     assert client.get("/").status_code == 200
+    assert client.get("/runs").status_code == 200
+    assert client.get(f"/runs/{uuid.uuid4()}").status_code == 404
