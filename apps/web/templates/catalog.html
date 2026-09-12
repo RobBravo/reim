@@ -5,17 +5,25 @@
 {% block content %}
 <section class="catalog">
   <h2>Catalog</h2>
+  {% if not database_available %}
+  {#
+    A caption exists only when the table has one — it is not a live region,
+    and there would be none to announce this in the normal case. A <p> with
+    role="status" sits above the table wrapper instead, so assistive tech
+    reads it as an update rather than as the table's (silent) accessible name.
+  #}
+  <p class="catalog-notice" role="status">Freshness is unavailable: the database could not be reached.</p>
+  {% endif %}
   <div class="catalog-table-wrapper">
     <table class="catalog-table">
-      {% if not database_available %}
       {#
-        This caption sits directly above the header row — right beside the
-        freshness columns (Last success, Last run status, Records) whose
-        cells it explains — rather than as a paragraph floating above the
-        whole table.
+        Permanent and descriptive, not conditional: a caption gives the table
+        its accessible name, so one absent whenever the database happens to
+        answer leaves the normal case with none. The count comes from the
+        rows actually rendered, never hardcoded, so it cannot drift from the
+        catalog it describes.
       #}
-      <caption class="catalog-notice">Freshness is unavailable: the database could not be reached.</caption>
-      {% endif %}
+      <caption>REIM's {{ rows | length }} data sources</caption>
       <thead>
         <tr>
           <th scope="col">Source</th>
@@ -53,15 +61,23 @@
           <td class="muted">—</td>
           <td class="muted">—</td>
           <td class="muted">—</td>
+          {% elif summary.last_run_status is none %}
+          {#
+            A source that has never run has one fact to report, not three:
+            "status" and "records" have nothing to say beyond that. A single
+            spanning cell says so once; three cells with two of them blanked
+            would read as a render fault instead (the confusion decision D5
+            exists to prevent). Gated on last_run_status alone, never on
+            last_success_at — a source that ran, failed, and never succeeded
+            has last_success_at is none too, but three genuinely different
+            things to say, and keeps the three-column layout below.
+          #}
+          <td colspan="3">Never run</td>
           {% else %}
           <td>{{ summary.last_success_at | freshness }}</td>
-          <td>{{ summary.last_run_status.value if summary.last_run_status else "Never run" }}</td>
+          <td>{{ summary.last_run_status.value }}</td>
           <td>
-            {%- if summary.last_run_status -%}
             {{ summary.records_inserted_last_run }} / {{ summary.records_updated_last_run }} / {{ summary.records_rejected_last_run }}
-            {%- else -%}
-            Never run
-            {%- endif -%}
           </td>
           {% endif %}
         </tr>
