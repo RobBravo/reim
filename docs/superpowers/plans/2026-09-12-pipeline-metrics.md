@@ -1371,10 +1371,19 @@ def test_failed_checks_are_labelled_by_pipeline_and_name() -> None:
 
 
 def test_a_down_snapshot_reports_the_outage_and_no_pipeline_series() -> None:
+    """No *series*, which is not the same as no mention of the metric.
+
+    An empty family still emits its ``# HELP`` and ``# TYPE`` lines, and that is
+    correct — Prometheus reads metadata-only families and records nothing. So
+    the assertion looks for a labelled sample (the ``{``), not for the metric
+    name appearing anywhere in the payload.
+    """
     text = render_snapshot(MetricsSnapshot(database_up=False)).decode()
 
     assert "reim_database_up 0.0" in text
-    assert "reim_pipeline_" not in text
+    assert "reim_pipeline_enabled{" not in text
+    assert "reim_pipeline_runs_total{" not in text
+    assert "reim_quality_checks_failed_total{" not in text
 
 
 def test_a_healthy_snapshot_reports_the_database_as_up() -> None:
