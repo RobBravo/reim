@@ -133,6 +133,7 @@ def test_an_unregistered_country_gets_the_same_page() -> None:
     response = client.get("/series?indicator=cpi_index_monthly&country=ZZZ")
 
     assert response.status_code == 404
+    assert response.headers["content-type"].startswith("text/html")
     assert "ZZZ" in response.text
 
 
@@ -148,7 +149,7 @@ def test_a_dead_database_is_said_out_loud(monkeypatch: pytest.MonkeyPatch) -> No
     body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
 
     assert "database is not responding" in body.lower()
-    assert "holds no data" not in body.lower()
+    assert "None of the countries you chose holds any data for" not in body
 
 
 @requires_db
@@ -177,7 +178,24 @@ def test_the_countries_holding_nothing_are_named_not_dropped(
     body = client.get("/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
 
     assert "No data for Guatemala" in body
-    assert "no data" in body.lower()
+
+
+@requires_db
+def test_the_same_country_given_twice_collapses_to_one_column(
+    client: TestClient, seeded_session: Session
+) -> None:
+    """``?country=NI&country=NIC`` names Nicaragua under both its codes.
+
+    The view dedupes by ISO-3 (``apps/web/routes.py``'s ``seen`` set); without
+    it the table would carry two identical columns for the same country and
+    double-count its figure.
+    """
+    _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2020, value="5.5")
+
+    body = client.get("/series?indicator=cpi_index_monthly&country=NI&country=NIC").text
+
+    assert body.count('<th scope="col">Nicaragua</th>') == 1
+    assert body.count("5.5") == 1
 
 
 @requires_db
