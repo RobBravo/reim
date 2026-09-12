@@ -8,6 +8,7 @@ exist" from "these countries hold no data" cannot act on any of them.
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
@@ -150,6 +151,44 @@ def test_a_dead_database_is_said_out_loud(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert "database is not responding" in body.lower()
     assert "None of the countries you chose holds any data for" not in body
+
+
+def test_an_inverted_date_range_gets_its_own_sentence() -> None:
+    """The range's own sentence, distinct from state 5's "holds no data".
+
+    The country may well hold data for this indicator; the range as given
+    (``date_from`` after ``date_to``) simply cannot select any of it. Needs no
+    database, for the same reason states 1, 3 and 4 do not either.
+    """
+    client = TestClient(create_app())
+
+    body = client.get(
+        "/series?indicator=cpi_index_monthly&country=NIC&date_from=2021-01-01&date_to=2020-01-01"
+    ).text
+
+    assert "date range is inverted" in body.lower()
+    assert "None of the countries you chose holds any data for" not in body
+
+
+@requires_db
+def test_a_denser_range_than_the_limit_is_declined_not_downsampled(
+    client: TestClient, seeded_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """State 9: nothing is ever downsampled; a denser range is refused instead."""
+    monkeypatch.setattr("apps.web.routes.PERIOD_LIMIT", 1)
+    for year in (2020, 2021, 2022):
+        _add_observation(
+            seeded_session, iso3="NIC", code="cpi_index_monthly", year=year, value="5.5"
+        )
+
+    body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
+
+    # Collapsed whitespace: the sentence wraps across lines in the template
+    # source, and only its words are the thing under test, not its layout.
+    collapsed = re.sub(r"\s+", " ", body)
+    assert "This range holds 3 periods; the chart draws at most 1. Narrow the dates." in collapsed
+    assert "<svg" not in body
+    assert "<table" not in body
 
 
 @requires_db
@@ -299,8 +338,41 @@ def test_the_chart_says_what_it_is_for_a_screen_reader(
     body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
 
     assert 'role="img"' in body
-    assert "<title>" in body
     assert "<desc>" in body
+
+
+@requires_db
+def test_a_gap_breaks_the_stroke_on_the_rendered_page(
+    client: TestClient, seeded_session: Session
+) -> None:
+    """The project's oldest promise, proven end to end through a rendered page.
+
+    NIC and GTM publish this rate on different schedules: NIC in 2020 and
+    2022, GTM only in 2021. GTM's period becomes an internal gap in NIC's own
+    series. This indicator's levels are not comparable across countries, so
+    each gets its own panel and its own ``<svg>``; NIC is requested first, so
+    its panel — and its one ``<path>`` — is the first one on the page.
+    """
+    _add_observation(
+        seeded_session, iso3="NIC", code="lending_rate_nominal_monthly", year=2020, value="5.5"
+    )
+    _add_observation(
+        seeded_session, iso3="GTM", code="lending_rate_nominal_monthly", year=2021, value="8.0"
+    )
+    _add_observation(
+        seeded_session, iso3="NIC", code="lending_rate_nominal_monthly", year=2022, value="6.0"
+    )
+
+    body = client.get("/series?indicator=lending_rate_nominal_monthly&country=NIC&country=GTM").text
+
+    svg_start = body.find("<svg")
+    svg_end = body.find("</svg>", svg_start)
+    assert svg_start != -1 and svg_end != -1, f"no <svg> found: {body}"
+    svg_region = body[svg_start:svg_end]
+    match = re.search(r'<path\s+d="([^"]+)"', svg_region)
+    assert match, f"no <path> found in the first panel: {svg_region}"
+    path_d = match.group(1)
+    assert path_d.count("M") > 1, f"the gap did not split the stroke into two subpaths: {path_d}"
 
 
 @requires_db

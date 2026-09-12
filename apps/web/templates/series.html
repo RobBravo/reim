@@ -131,6 +131,15 @@
   {% if not selection.indicator or not selection.country %}
   {# State 1. A first visit has nothing to say yet, and saying nothing is correct. #}
   <p class="muted">Choose an indicator and at least one country.</p>
+  {% elif date_range_invalid %}
+  {#
+    The range is inverted (date_from after date_to). Its own sentence: the
+    country may well hold data, unlike state 5, where none of them do.
+  #}
+  <p class="muted">
+    The date range is inverted: "from" ({{ selection.date_from }}) is after
+    "to" ({{ selection.date_to }}). Swap the dates.
+  </p>
   {% elif data is none %}
   {# State 2. Distinct from every "nothing to show" sentence below. #}
   <p class="notice" role="status">The series cannot be read: the database is not responding.</p>
@@ -182,16 +191,24 @@
     so it is not repeated here). Each remaining reason gets its own sentence,
     since a reader acts on them differently.
   #}
-  {% if not data.comparable %}
+  {% if data.undrawable %}
+  {#
+    Tested before the units-differ case below: a non-empty ``undrawable``
+    always makes ``comparable`` false too (``assess_comparability`` flips it
+    on ``mixed_within``), so checking units-differ first would always win and
+    name the wrong reason — a country's own internal unit switch, not a
+    mismatch between countries. See the undrawable list below for which
+    country and why.
+  #}
+  <p class="muted series-panels-note">
+    Each remaining country is drawn on its own axis because at least one
+    selected country cannot be charted at all — see below.
+  </p>
+  {% elif not data.comparable %}
   <p class="muted series-panels-note">
     Each country is drawn on its own axis because the countries' units or
     currencies differ; a shared axis between them would not be misleading so
     much as meaningless.
-  </p>
-  {% elif data.undrawable %}
-  <p class="muted series-panels-note">
-    Each remaining country is drawn on its own axis because at least one
-    selected country cannot be charted at all — see below.
   </p>
   {% endif %}
   <div class="series-panels">

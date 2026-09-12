@@ -460,11 +460,19 @@ def series(
             "date_to": date_to,
         },
         "period_limit": PERIOD_LIMIT,
+        "date_range_invalid": False,
         "data": None,
     }
 
     if not indicator or not country:
         # State 1: nothing chosen yet. Not an error, and not an empty chart.
+        return templates.TemplateResponse(request, "series.html", context)
+
+    if date_from is not None and date_to is not None and date_from > date_to:
+        # An inverted range: needs no database to answer, and must not share
+        # wording with "holds no data" — the country may well hold data, the
+        # range as given simply cannot select any of it.
+        context["date_range_invalid"] = True
         return templates.TemplateResponse(request, "series.html", context)
 
     definition = INDICATORS_BY_CODE.get(indicator)
