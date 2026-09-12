@@ -15,7 +15,9 @@ from sqlalchemy.orm import Session
 
 from reim.core.constants import PipelineStatus
 from reim.database.models import PipelineRun
+from reim.repositories import observations as observation_repo
 from reim.repositories import pipeline_runs as run_repo
+from reim.repositories import reference as reference_repo
 from tests.conftest import requires_db
 
 
@@ -163,3 +165,47 @@ def test_a_pipeline_whose_every_run_crashed_totals_zero_not_null(session: Sessio
     rows = run_repo.aggregate_runs_by_pipeline(session)
 
     assert rows[0].duration_ms == 0
+
+
+@requires_db
+def test_sources_are_summarized_in_one_pass(seeded_session: Session, make_observation) -> None:  # type: ignore[no-untyped-def]
+    """Count and newest period for every source, without a query per source."""
+    from reim.services.observation_writer import write_observations
+
+    write_observations(
+        seeded_session,
+        [make_observation(str(year)) for year in (2020, 2021, 2022)],
+        connector_version="1.0.0",
+    )
+    seeded_session.commit()
+
+    source_ids = reference_repo.source_ids_by_key(seeded_session)
+    volumes = observation_repo.summarize_sources(seeded_session)
+    volume = volumes[source_ids["worldbank_ni_cpi_inflation"]]
+
+    assert volume.observations == 3
+    assert volume.latest_period_end is not None
+    assert volume.latest_period_end.year == 2022
+
+
+@requires_db
+def test_a_source_holding_nothing_is_absent_rather_than_zero(seeded_session: Session) -> None:
+    """Storing nothing and storing rows that cover nothing are different facts.
+
+    The caller turns absence into a missing age series and a zero observation
+    count; it cannot make that distinction if the repository flattens it here.
+    """
+    source_ids = reference_repo.source_ids_by_key(seeded_session)
+
+    volumes = observation_repo.summarize_sources(seeded_session)
+
+    assert volumes == {}
+    assert "worldbank_ni_cpi_inflation" in source_ids
+
+
+@requires_db
+def test_every_registered_source_is_keyed_by_its_catalog_key(seeded_session: Session) -> None:
+    source_ids = reference_repo.source_ids_by_key(seeded_session)
+
+    assert len(source_ids) >= 23
+    assert all(isinstance(value, uuid.UUID) for value in source_ids.values())
