@@ -108,14 +108,24 @@ and the tenth — the national central banks — has its first country.
   Salvador, Honduras, Costa Rica and Panama, from the IMF's IMTS dataflow, all
   six with identical coverage back to 1990-01. **Belize is excluded**: it
   reports nothing to that dataflow at any frequency. See `docs/sources.md`.
-- Connectors for the **national central banks**. Six independent
-  investigations, each the size of the BCN work, taken one country at a time.
+- Connectors for the **national central banks**. This line said six independent
+  investigations; there are **five**, because Panama is dollarised and has no
+  central bank — INEC, listed here until 2026-09-11, is its statistics
+  institute.
   **Banguat is done** ✅ — 26,730 observations, a buy and a sell rate for every
-  day since 1990-01-01, the whole history in one request. The other five were
+  day since 1990-01-01, the whole history in one request. The other four were
   probed and their state recorded in `docs/sources.md`: BCCR answers `503` and
-  is known to need an account; BCR, BCH, INEC and the Central Bank of Belize
-  are reachable but expose no machine-readable endpoint that could be found.
-  None is behind a bot wall.
+  is known to need an account; BCR, BCH and the Central Bank of Belize are
+  reachable but expose no machine-readable endpoint that could be found. None
+  is behind a bot wall.
+
+  **INEC was probed on 2026-09-11 and does have an open API** — recovered from
+  its map application's own JavaScript, with a 218-variable catalogue that
+  needs no authentication. It is not ingested because it carries **one
+  reference year, not a series**: `anio=2023` returns data and 2022 returns
+  nothing. Its value is subnational, which is a v0.6.0 concern, and the routes
+  and parameters are recorded so that increment starts from a measurement. See
+  `docs/sources.md`.
 - ~~**SIECA** regional trade series~~ ✅ **done** — not the intra-regional
   merchandise trade this line originally imagined, which has no
   machine-readable endpoint today, but **quarterly trade in services**: 1,242
@@ -292,7 +302,14 @@ Economic figures become far more useful next to what happened around them.
   discipline applied to text.
 - **Event correlation**: link a datapoint to publications and policy events in
   its period. Correlation surfaced as *context*, never asserted as causation.
-- **Geospatial data** where it exists at subnational resolution.
+- **Geospatial data** where it exists at subnational resolution. One route is
+  already measured: **INEC Panama** serves 218 variables — 25 of them economic
+  — at provincial and district level through an open, unauthenticated API,
+  recovered from its map application's JavaScript on 2026-09-11. It carries a
+  single reference year rather than a series, which is why it is not in v0.3.0;
+  for this line that matters far less. `docs/sources.md` records the base URL,
+  the routes and the two parameter traps that cost the probing most of its
+  time.
 
 ## v0.7.0 — Interfaces
 

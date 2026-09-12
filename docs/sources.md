@@ -449,7 +449,7 @@ November. Reading it as 11 August would be silent and wrong, so a test pins it.
 `VariablesDisponibles` lists 40 currencies rather than economic variables: this
 service is exchange rates only, and REIM takes the US dollar (`moneda` 2).
 
-### The other five Central American central banks
+### The other four Central American central banks
 
 Probed on 2026-08-08, none behind a bot wall, none yet automated:
 
@@ -458,11 +458,15 @@ Probed on 2026-08-08, none behind a bot wall, none yet automated:
 | **BCCR** (Costa Rica) | `503` on both URL casings of its documented web service; it is also known to require a registered account |
 | **BCR** (El Salvador) | `estadisticas.bcr.gob.sv` answers `200` but exposes no machine-readable endpoint on its landing page |
 | **BCH** (Honduras) | Site reachable; no data endpoint found |
-| **INEC** (Panama) | Site reachable; `/mapi/map` responds, unresearched |
 | **Central Bank of Belize** | Site reachable; no data endpoint found |
 
 Recorded so the next person does not repeat the probing. Each is an independent
 investigation, and none was in scope for the Guatemalan increment.
+
+This table listed a fifth entry, **INEC (Panama)**, until 2026-09-11. It did not
+belong: INEC is Panama's statistics institute, not a central bank — Panama is
+dollarised and has none. It now has [its own section](#inec-panama--an-open-api-behind-a-map-with-one-year-of-data)
+below, with the endpoint its 2026-08-08 line called "unresearched" now read.
 
 ---
 
@@ -2409,6 +2413,92 @@ dimensions by the ids in `cepalstat.py`, and none of them applies here. It is
 an older table and would need its own investigation, not an adaptation.
 
 ---
+
+### INEC Panama — an open API behind a map, with one year of data
+
+Probed on 2026-09-11, following the 2026-08-08 line that recorded `/mapi/map`
+as responding and unresearched. It responds because it is a **React
+application**, not an endpoint: `Panamá en cifras digital`, whose bundle
+declares its own API.
+
+| | |
+|---|---|
+| **Organization** | Instituto Nacional de Estadística y Censo (`INEC`) — Panama's statistics institute, **not a central bank** |
+| **Base URL** | `https://www.inec.gob.pa/m_2/api`, declared as `baseURL` in `/mapi/assets/index-*.js` |
+| **Auth** | **None** for the routes below. The bundle attaches a bearer token when one is in `localStorage`, and `POST /admin/login` exists, but the catalogue and the data answer without either |
+| **Status** | ⚠️ **Reachable and open, not ingested** — see the reason below |
+
+The base URL was recovered the same way CEPALSTAT's was: by reading the
+portal's own JavaScript. The bundle calls twenty-one routes; these are the ones
+that matter here.
+
+#### The catalogue is open, complete and unusually well described
+
+`GET /meta/estructura-completa` answers **200 with 94 KB** and needs nothing.
+It returns six themes holding **218 variables**, of which **25 are economic**,
+each carrying a definition, its source department, its unit, its update
+frequency and its minimum geographic level. Gross domestic product, for
+instance:
+
+```json
+{
+  "id": 184,
+  "nombre": "Producto interno bruto corriente",
+  "fuente": "Departamento de Cuentas Nacionales",
+  "anio_referencia": 2023,
+  "unidad_medida": "millones de dólares",
+  "frecuencia_actualizacion": "Anual",
+  "nivel_geografico_minimo": "Provincia"
+}
+```
+
+Three sibling routes — `/meta/categorias`, `/meta/variables`,
+`/meta/tipos-estadisticos` — timed out on every attempt while
+`/meta/estructura-completa` answered each time. They are probably slow rather
+than absent; nothing here needs them.
+
+#### The data endpoint works, and its parameters are singular
+
+`GET /data/choropleth` returns real figures:
+
+```text
+/data/choropleth?nivel_geografico=Provincia&id_variable=184&anio=2023
+→ 200, 11 rows, provincial GDP in millions of dollars
+```
+
+Two details cost most of the probing and are worth recording. The parameter
+names are `nivel_geografico`, `id_variable`, `anio`, `mes` and `tipo`, read
+from the bundle rather than guessed — guessing produced four different 500s.
+And **`nivel_geografico` takes the singular `Provincia`**, matching the
+catalogue's `nivel_geografico_minimo`, not the plural `Provincias` the map's
+own UI labels use: the plural returns `500`, the singular returns data.
+
+A `500` from this API is `{"success":false,"message":"Error en API, contacte a
+DTIE."}` for every cause, so it never says what was wrong. A well-formed
+request that matches nothing returns `200` with `[]`, which is the only way to
+tell a bad parameter from an empty result.
+
+#### Why REIM does not ingest it: one year, not a series
+
+`anio=2023` returns data. **`anio=2022` and `anio=2021` return `[]`**, and the
+catalogue agrees — every variable carries a single `anio_referencia`. The
+`anio` and `mes` parameters exist, but only one year is populated.
+
+This is a map viewer, not a statistical archive. REIM stores time series per
+country; a single cross-section, however open, has no series to store. Panama's
+GDP is also [already held](#cepal--annual-gross-domestic-product) annually at
+national level from CEPALSTAT, so the one economic variable that overlaps adds
+nothing.
+
+**What it would be good for is subnational data**, which `ROADMAP.md` places in
+v0.6.0. The 25 economic variables are provincial and district-level — building
+permits, businesses by size and activity, municipal revenue and spending,
+vehicles in circulation — none of which REIM holds at any resolution. If that
+line is ever taken up, this API is open, documented by its own catalogue, and
+the parameters are recorded above.
+
+---
+
 
 ## Registered but not yet implemented
 
