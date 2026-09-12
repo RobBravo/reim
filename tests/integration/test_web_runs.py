@@ -320,3 +320,19 @@ def test_a_run_with_no_checks_says_so(client: TestClient, session: Session) -> N
     body = client.get(f"/runs/{run.id}").text
 
     assert "recorded no quality checks" in body.lower()
+
+
+def test_both_pages_are_reachable_from_the_navigation() -> None:
+    """A page nobody can click is a page nobody reads.
+
+    Asserted on the ``href`` attribute rather than on rendered text, because
+    that is the one place in this file where an attribute *is* the fact
+    under test: a navigation link's reachability has no rendered-text form
+    to assert on instead.
+    """
+    client = TestClient(create_app())
+
+    for path in ("/", "/runs"):
+        body = client.get(path).text
+        assert 'href="/runs"' in body
+        assert 'href="/"' in body
