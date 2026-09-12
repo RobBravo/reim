@@ -130,11 +130,13 @@ def test_the_totals_are_separated_by_status(session: Session) -> None:
 
 
 @requires_db
-def test_a_crashed_run_with_no_duration_does_not_null_the_sum(session: Session) -> None:
+def test_a_crashed_run_does_not_erase_its_siblings_duration(session: Session) -> None:
     """``duration_ms`` is nullable: a run that crashed never got one.
 
-    Without the coalesce, one crashed run makes the whole pipeline's duration
-    total null, and the counter silently stops being exported.
+    Postgres ``SUM`` skips nulls when any row in the group has a value, so
+    a mixed group cannot detect a missing coalesce; this test verifies the
+    more important property: that one run's missing duration doesn't erase
+    another run's recorded duration in the same (pipeline, status) group.
     """
     now = datetime.now(UTC)
     _make_run(session, pipeline_key="a", started_at=now, duration_ms=None)
@@ -143,3 +145,21 @@ def test_a_crashed_run_with_no_duration_does_not_null_the_sum(session: Session) 
     rows = run_repo.aggregate_runs_by_pipeline(session)
 
     assert rows[0].duration_ms == 500
+
+
+@requires_db
+def test_a_pipeline_whose_every_run_crashed_totals_zero_not_null(session: Session) -> None:
+    """The case the coalesce actually exists for.
+
+    Postgres ``SUM`` skips nulls when any row in the group has a value, so a
+    mixed group cannot detect a missing coalesce. Only a group where every
+    ``duration_ms`` is null makes the un-coalesced sum return null — and then
+    ``int(None)`` raises, and the counter silently stops being exported.
+    """
+    now = datetime.now(UTC)
+    _make_run(session, pipeline_key="a", started_at=now, duration_ms=None)
+    _make_run(session, pipeline_key="a", started_at=now - timedelta(hours=1), duration_ms=None)
+
+    rows = run_repo.aggregate_runs_by_pipeline(session)
+
+    assert rows[0].duration_ms == 0
