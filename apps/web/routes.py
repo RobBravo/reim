@@ -86,6 +86,15 @@ def catalog(request: Request, session: SessionDep) -> HTMLResponse:
     whose summary is ``None`` renders those columns as "—", not "Never run":
     the database being unreachable is a different state from a source that
     has genuinely never succeeded.
+
+    A second block, below the table, lists what is disabled and why. The
+    catalog entry is the authority for ``enabled``/``disabled_reason`` — not
+    the ``PipelineSummary`` also carrying those two fields — because it needs
+    no database, so this block renders identically whether or not the
+    database answers. Today that list is empty (23 sources, 23 enabled); the
+    template states that absence explicitly rather than rendering nothing,
+    for the same reason decision D5 does for the freshness notice: an empty
+    section reads as a failed render, not as a fact about the catalog.
     """
     entries = sorted(get_catalog().sources, key=lambda entry: (entry.organization, entry.key))
     database_available = check_database_connection()
@@ -95,8 +104,13 @@ def catalog(request: Request, session: SessionDep) -> HTMLResponse:
     rows: list[tuple[PipelineSummary | None, SourceEntry]] = [
         (summaries.get(entry.key), entry) for entry in entries
     ]
+    disabled_entries = [entry for entry in entries if not entry.enabled]
     return templates.TemplateResponse(
         request,
         "catalog.html",
-        {"rows": rows, "database_available": database_available},
+        {
+            "rows": rows,
+            "database_available": database_available,
+            "disabled_entries": disabled_entries,
+        },
     )

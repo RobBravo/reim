@@ -133,3 +133,16 @@ tbody tr:hover {
   letter-spacing: 0.03em;
   vertical-align: middle;
 }
+
+.catalog-disabled {
+  margin-top: 2rem;
+}
+
+.disabled-list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.disabled-list li {
+  margin-bottom: 0.35rem;
+}

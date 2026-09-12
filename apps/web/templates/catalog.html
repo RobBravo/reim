@@ -70,4 +70,27 @@
     </table>
   </div>
 </section>
+
+<section class="catalog-disabled">
+  {#
+    The heading and this section always render, even with nothing to list —
+    an absent or empty block would be indistinguishable from a rendering
+    fault on a page whose whole purpose is to say what is there (decision D5
+    makes the same call for the freshness notice above). "enabled" and
+    "disabled_reason" come from the catalog entry, not the pipeline summary,
+    so this block needs no database and appears identically either way.
+  #}
+  <h2>Disabled sources</h2>
+  {% if disabled_entries %}
+  <ul class="disabled-list">
+    {% for entry in disabled_entries %}
+    <li id="{{ entry.key }}-disabled">
+      <strong>{{ entry.key }}</strong> &mdash; {{ entry.disabled_reason }}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No source is disabled.</p>
+  {% endif %}
+</section>
 {% endblock %}
