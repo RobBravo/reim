@@ -2,35 +2,75 @@
 
 {% block title %}Catalog · REIM{% endblock %}
 
+{#
+  Licences REIM has verified as open (see docs/sources.md for each source's
+  terms). Any licence NOT in this list is marked "not open" — so a fourth
+  restrictive source added to sources/catalog.yml is flagged automatically,
+  with no edit to this template. Today that set is exactly three: the IMF
+  (imf_terms_of_use), SIECA (sieca_all_rights_reserved) and CEPAL
+  (cepal_terms_of_use).
+#}
+{% set open_licenses = ["CC-BY-4.0", "public_official_data"] %}
+
 {% block content %}
 <section class="catalog">
   <h2>Catalog</h2>
-  {% if not database_available %}
-  <p class="catalog-notice">Freshness is unavailable: the database could not be reached.</p>
-  {% endif %}
-  <table class="catalog-table">
-    <thead>
-      <tr>
-        <th scope="col">Source</th>
-        <th scope="col">Organization</th>
-        <th scope="col">Frequency</th>
-        <th scope="col">Indicators</th>
-        <th scope="col">Licence</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for summary, entry in rows %}
-      <tr id="{{ entry.key }}">
-        <td>
-          <a href="{{ entry.documentation_url }}">{{ entry.name }}</a>
-        </td>
-        <td>{{ entry.organization }}</td>
-        <td>{{ entry.frequency.value }}</td>
-        <td>{{ entry.indicators | length }}</td>
-        <td>{{ entry.license }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="catalog-table-wrapper">
+    <table class="catalog-table">
+      {% if not database_available %}
+      {#
+        This caption sits directly above the header row — right beside the
+        freshness columns (Last success, Last run status, Records) whose
+        cells it explains — rather than as a paragraph floating above the
+        whole table.
+      #}
+      <caption class="catalog-notice">Freshness is unavailable: the database could not be reached.</caption>
+      {% endif %}
+      <thead>
+        <tr>
+          <th scope="col">Source</th>
+          <th scope="col">Organization</th>
+          <th scope="col">Frequency</th>
+          <th scope="col">Indicators</th>
+          <th scope="col">Licence</th>
+          <th scope="col">Last success</th>
+          <th scope="col">Last run status</th>
+          <th scope="col">Records (inserted / updated / rejected)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for summary, entry in rows %}
+        {% set is_open = entry.license in open_licenses %}
+        <tr id="{{ entry.key }}">
+          <td>
+            <a href="{{ entry.documentation_url }}">{{ entry.name }}</a>
+          </td>
+          <td>{{ entry.organization }}</td>
+          <td>{{ entry.frequency.value }}</td>
+          <td>{{ entry.indicators | length }}</td>
+          <td{% if not is_open %} class="licence-restricted"{% endif %}>
+            {{ entry.license }}{% if not is_open %} <span class="licence-badge">Not open</span>{% endif %}
+          </td>
+          {% if summary is none %}
+          {# The database is unreachable, not "never run" — dashes, not words. #}
+          <td class="muted">—</td>
+          <td class="muted">—</td>
+          <td class="muted">—</td>
+          {% else %}
+          <td>{{ summary.last_success_at | freshness }}</td>
+          <td>{{ summary.last_run_status.value if summary.last_run_status else "Never run" }}</td>
+          <td>
+            {%- if summary.last_run_status -%}
+            {{ summary.records_inserted_last_run }} / {{ summary.records_updated_last_run }} / {{ summary.records_rejected_last_run }}
+            {%- else -%}
+            Never run
+            {%- endif -%}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 {% endblock %}

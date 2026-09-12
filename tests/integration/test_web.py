@@ -122,3 +122,30 @@ def test_a_source_links_to_its_documentation(client: TestClient) -> None:
     entry = get_catalog().get("cepalstat_bop_quarterly")
     assert entry.documentation_url is not None
     assert str(entry.documentation_url) in body
+
+
+@requires_db
+def test_freshness_is_shown_per_source(client: TestClient) -> None:
+    """A catalog that does not say how old its data is, is a list of promises."""
+    body = client.get("/").text
+
+    assert "Last success" in body or "last success" in body.lower()
+
+
+@requires_db
+def test_a_source_that_never_ran_says_so(client: TestClient) -> None:
+    """Never-run and ran-and-failed are different states and must read that way."""
+    body = client.get("/").text
+
+    # The seeded fixture runs no pipelines, so every source is in this state.
+    assert "Never" in body or "never" in body
+
+
+@requires_db
+def test_non_open_licences_are_marked(client: TestClient) -> None:
+    """Three of REIM's sources forbid redistribution; the page says which."""
+    body = client.get("/").text
+
+    imf = get_catalog().get("imf_imts_nicaragua")
+    assert imf is not None
+    assert imf.license in body

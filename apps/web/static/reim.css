@@ -101,3 +101,35 @@ tbody tr:hover {
 .muted {
   color: var(--text-muted);
 }
+
+.catalog-table-wrapper {
+  overflow-x: auto;
+}
+
+.catalog-notice {
+  text-align: left;
+  color: var(--text-muted);
+  font-style: italic;
+  padding-bottom: 0.5rem;
+}
+
+/* A licence outside the catalog's known-open allowlist (see catalog.html) —
+   coloured text plus a badge, never an emoji, so the marker survives a
+   screen reader and a printed page equally. */
+.licence-restricted {
+  color: #92400e;
+  font-weight: 600;
+}
+
+.licence-badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
