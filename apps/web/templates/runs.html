@@ -23,7 +23,7 @@
   {% else %}
   <div class="table-wrapper">
     <table class="runs-table">
-      <caption>The {{ rows | length }} most recent runs (of at most {{ history_limit }})</caption>
+      <caption>{{ rows | length }} run{{ '' if rows | length == 1 else 's' }} shown, most recent first (history keeps up to {{ history_limit }})</caption>
       <thead>
         <tr>
           <th scope="col">Started</th>
@@ -52,20 +52,14 @@
   </p>
   <section class="trends">
     <h3>Failed quality checks, last {{ window_days }} days</h3>
-    {% if data.runs_in_window == 0 %}
+    {% if data.failed_checks %}
     {#
-      Not the same as "no failures": this says ingestion has stopped. The two
-      look identical if the block only reports an empty list, and they call
-      for opposite responses.
+      Checked before either "nothing ran" or "healthy" below: a failed check
+      can be created inside the window by a run that started outside it
+      (count_runs windows on started_at, this query on created_at), so a
+      failure must never be hidden behind "no pipeline ran in the last N
+      days" just because the run itself falls outside the window.
     #}
-    <p class="muted">No pipeline ran in the last {{ window_days }} days.</p>
-    {% elif not data.failed_checks %}
-    {#
-      The run count is the evidence that makes "healthy" mean anything. Without
-      it the reader cannot tell this from the branch above.
-    #}
-    <p class="muted">{{ data.runs_in_window }} runs in the last {{ window_days }} days, no failed checks.</p>
-    {% else %}
     <div class="table-wrapper">
       <table class="checks-table">
         <caption>{{ data.failed_checks | length }} check(s) failing, most severe first</caption>
@@ -93,6 +87,19 @@
         </tbody>
       </table>
     </div>
+    {% elif data.runs_in_window == 0 %}
+    {#
+      Not the same as "no failures": this says ingestion has stopped. The two
+      look identical if the block only reports an empty list, and they call
+      for opposite responses.
+    #}
+    <p class="muted">No pipeline ran in the last {{ window_days }} days.</p>
+    {% else %}
+    {#
+      The run count is the evidence that makes "healthy" mean anything. Without
+      it the reader cannot tell this from the branch above.
+    #}
+    <p class="muted">{{ data.runs_in_window }} run{{ '' if data.runs_in_window == 1 else 's' }} in the last {{ window_days }} days, no failed checks.</p>
     {% endif %}
   </section>
   {% endif %}

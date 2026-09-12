@@ -180,6 +180,49 @@ def test_runs_without_failures_report_how_many_ran(client: TestClient, session: 
 
 
 @requires_db
+def test_a_single_run_without_failures_is_not_mispluralized(
+    client: TestClient, session: Session
+) -> None:
+    """The unpluralized "1 runs" reads as a rendering fault."""
+    _add_run(session, started_at=datetime.now(UTC) - timedelta(days=1))
+
+    body = client.get("/runs").text
+
+    assert "1 run in the last 30 days" in body
+    assert "1 runs in the last 30 days" not in body
+
+
+@requires_db
+def test_a_failing_check_created_inside_the_window_wins_even_if_its_run_started_outside_it(
+    client: TestClient, session: Session
+) -> None:
+    """The straddling case ``count_runs`` and ``summarize_failed_checks_by_name``
+    can disagree on: ``count_runs`` windows on ``PipelineRun.started_at``,
+    the failed-check query on ``DataQualityCheck.created_at``. A run that
+    started outside the 30-day window but whose check was created inside it
+    must still surface the failure — never hidden behind "no pipeline ran".
+    """
+    run = _add_run(session, started_at=datetime.now(UTC) - timedelta(days=31))
+    session.add(
+        DataQualityCheck(
+            id=uuid.uuid4(),
+            pipeline_run_id=run.id,
+            check_name="freshness_within_threshold",
+            check_type=CheckType.TIMELINESS,
+            status=CheckStatus.FAILED,
+            severity=CheckSeverity.ERROR,
+            created_at=datetime.now(UTC) - timedelta(days=29),
+        )
+    )
+    session.flush()
+
+    body = client.get("/runs").text
+
+    assert "freshness_within_threshold" in body
+    assert "No pipeline ran in the last 30 days" not in body
+
+
+@requires_db
 def test_a_failing_check_is_named_counted_and_dated(client: TestClient, session: Session) -> None:
     now = datetime.now(UTC)
     for offset in range(1, 14):
