@@ -217,6 +217,31 @@ def test_a_malformed_run_id_gets_a_page_not_a_json_envelope() -> None:
     assert "not-a-uuid" in response.text
 
 
+def test_a_dead_database_is_said_out_loud_not_confused_with_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The detail page's own unreachable-database branch, exercised as a real
+    outage would trigger it: the query itself raises, not a pre-check.
+
+    Distinct from the 404 page a malformed or unknown run gets: "the database
+    is not responding" and "that run is not here" call for different reader
+    actions, so the two pages must not share wording or status code.
+    """
+
+    def _raise(*args: object, **kwargs: object) -> None:
+        raise SQLAlchemyError("database is down")
+
+    monkeypatch.setattr("apps.web.routes.run_repo.get_run", _raise)
+    client = TestClient(create_app())
+
+    response = client.get(f"/runs/{uuid.uuid4()}")
+
+    assert response.status_code == 200
+    assert "this run cannot be read" in response.text.lower()
+    assert "no pipeline run is recorded" not in response.text.lower()
+    assert "run not found" not in response.text.lower()
+
+
 @requires_db
 def test_an_unknown_run_gets_the_same_page(client: TestClient) -> None:
     unknown = uuid.uuid4()

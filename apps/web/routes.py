@@ -35,7 +35,6 @@ from reim.schemas.pipelines import (
     PipelineRunDetail,
     PipelineRunRead,
     PipelineSummary,
-    QualityCheckRead,
 )
 from reim.services.status import build_pipeline_summaries
 
@@ -285,7 +284,6 @@ def run_detail(request: Request, session: SessionDep, run_id: str) -> HTMLRespon
         return _run_not_found(request, run_id)
 
     detail = PipelineRunDetail.model_validate(run)
-    detail.quality_checks = [QualityCheckRead.model_validate(check) for check in run.quality_checks]
     return templates.TemplateResponse(
         request,
         "run_detail.html",

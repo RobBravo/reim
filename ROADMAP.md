@@ -297,13 +297,14 @@ and the tenth — the national central banks — has its first country.
   `/runs/{run_id}`, one run's counters, metadata and every quality check it
   recorded. `/runs` also carries a failed-check trends block over the last 30
   days — wider than `SystemStatus`'s seven, because these series are ingested
-  infrequently and a block that is always empty stops being read. Six empty
+  infrequently and a block that is always empty stops being read. Seven empty
   states across the two pages, each distinct because they call for different
-  responses: the database unreachable, no run has happened yet, no run in the
-  trends window, no failures in the trends window, a run with no checks
-  recorded, and an unknown or malformed run id, which renders as HTML with
-  status 404 rather than the API's JSON error envelope, left untouched for
-  API clients. Staleness stayed on the catalog page rather than repeating it
+  responses: the run history's database unreachable, no run has happened yet,
+  no run in the trends window, no failures in the trends window, a run with
+  no checks recorded, an unknown or malformed run id (which renders as HTML
+  with status 404 rather than the API's JSON error envelope, left untouched
+  for API clients), and the run-detail page's own database unreachable state.
+  Staleness stayed on the catalog page rather than repeating it
   here — this page is about history, not freshness. The one backend addition
   is `summarize_failed_checks_by_name`, which groups failures by check name
   in SQL rather than in Python, so a check failing more often than a query's
