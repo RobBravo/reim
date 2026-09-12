@@ -49,6 +49,13 @@ def pivot_cells(cells: Iterable[ComparisonCell], iso3_order: Sequence[str]) -> l
             )
             by_period[cell.period_start] = row
         if cell.country_iso3 in row.values:
+            # Last-wins: two cells for the same country and period silently
+            # collapse to whichever is processed last. The natural key is
+            # (country, indicator, source, period_start, period_end), so two
+            # publishers covering one country and period are permitted by the
+            # schema and would hit this, order-dependent. Not reachable in
+            # today's catalog — no indicator has two enabled sources for the
+            # same country — so this is a known, bounded gap, not an oversight.
             row.values[cell.country_iso3] = cell.value_numeric
     return [by_period[key] for key in sorted(by_period)]
 
