@@ -203,11 +203,13 @@ def test_the_totals_are_separated_by_status(session: Session) -> None:
 
 
 @requires_db
-def test_a_crashed_run_with_no_duration_does_not_null_the_sum(session: Session) -> None:
+def test_a_crashed_run_does_not_erase_its_siblings_duration(session: Session) -> None:
     """``duration_ms`` is nullable: a run that crashed never got one.
 
-    Without the coalesce, one crashed run makes the whole pipeline's duration
-    total null, and the counter silently stops being exported.
+    This is not the coalesce's guard — see the next test for that. Postgres
+    ``SUM`` skips nulls whenever any row in the group has a value, so this
+    passes with or without the coalesce. What it does pin is that a crashed run
+    does not drag its siblings' time out of the total.
     """
     now = datetime.now(UTC)
     _make_run(session, pipeline_key="a", started_at=now, duration_ms=None)
@@ -216,6 +218,24 @@ def test_a_crashed_run_with_no_duration_does_not_null_the_sum(session: Session) 
     rows = run_repo.aggregate_runs_by_pipeline(session)
 
     assert rows[0].duration_ms == 500
+
+
+@requires_db
+def test_a_pipeline_whose_every_run_crashed_totals_zero_not_null(session: Session) -> None:
+    """The case the coalesce actually exists for.
+
+    Only a group where *every* ``duration_ms`` is null makes the un-coalesced
+    sum return null — and then ``int(None)`` raises and the counter silently
+    stops being exported. A mixed group cannot detect a missing coalesce at
+    all, which is why both tests are here.
+    """
+    now = datetime.now(UTC)
+    _make_run(session, pipeline_key="a", started_at=now, duration_ms=None)
+    _make_run(session, pipeline_key="a", started_at=now - timedelta(hours=1), duration_ms=None)
+
+    rows = run_repo.aggregate_runs_by_pipeline(session)
+
+    assert rows[0].duration_ms == 0
 ```
 
 - [ ] **Step 2: Run them to verify they fail**
@@ -332,11 +352,11 @@ def aggregate_runs_by_pipeline(session: Session) -> list[RunStatusAggregate]:
 .venv/bin/pytest tests/integration/test_metrics_repository.py -q
 ```
 
-Expected: 6 passed.
+Expected: 7 passed.
 
 - [ ] **Step 5: Prove the coalesce test has teeth**
 
-Temporarily change `func.coalesce(func.sum(PipelineRun.duration_ms), 0)` to `func.sum(PipelineRun.duration_ms)`, run the tests, and confirm `test_a_crashed_run_with_no_duration_does_not_null_the_sum` fails with a `TypeError` on `int(None)`. Restore the coalesce. A test that passes either way is not protecting anything.
+Temporarily change `func.coalesce(func.sum(PipelineRun.duration_ms), 0)` to `func.sum(PipelineRun.duration_ms)`, run the tests, and confirm `test_a_pipeline_whose_every_run_crashed_totals_zero_not_null` fails with a `TypeError` on `int(None)` — while `test_a_crashed_run_does_not_erase_its_siblings_duration` keeps passing, since Postgres `SUM` skips nulls when any row in the group has a value. Restore the coalesce. A test that passes either way is not protecting anything: **if the mutation does not fail, stop and report it rather than recording the discrepancy and moving on.**
 
 - [ ] **Step 6: Run the whole gate and commit**
 
@@ -481,7 +501,7 @@ def source_ids_by_key(session: Session) -> dict[str, uuid.UUID]:
 .venv/bin/pytest tests/integration/test_metrics_repository.py -q
 ```
 
-Expected: 9 passed.
+Expected: 10 passed.
 
 - [ ] **Step 6: Run the whole gate and commit**
 
@@ -641,7 +661,7 @@ def summarize_failed_checks_by_pipeline(session: Session) -> list[FailedCheckCou
 .venv/bin/pytest tests/integration/test_metrics_repository.py -q
 ```
 
-Expected: 12 passed.
+Expected: 13 passed.
 
 - [ ] **Step 5: Run the whole gate and commit**
 
