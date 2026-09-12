@@ -26,9 +26,13 @@ are marked ``requires_db`` individually rather than at module scope. That
 keeps the six tests above running on a bare checkout with no database.
 
 The final test pins decision D3: views call services and repositories
-directly and never the application's own HTTP API. Nothing else in this
-suite would catch a page that fetched its own API instead — every other test
-only checks what came back, not how it was produced.
+directly and never the application's own HTTP API. It is deliberately not
+``requires_db``, even though it sits textually after the ``requires_db``
+block: it needs no data, only that no HTTP call is made, and a guard that
+only runs when a database happens to be present is not run in the gate that
+matters. Nothing else in this suite would catch a page that fetched its own
+API instead — every other test only checks what came back, not how it was
+produced.
 """
 
 from __future__ import annotations
@@ -87,7 +91,7 @@ def test_the_catalog_lists_every_source_when_the_database_is_down(
 
     catalog = get_catalog()
     for entry in catalog.sources:
-        assert entry.key in body, f"{entry.key} is missing from the page"
+        assert entry.name in body, f"{entry.name} is missing from the page"
     assert "freshness is unavailable" in body.lower()
 
 
@@ -181,7 +185,7 @@ def test_every_catalog_source_appears(client: TestClient) -> None:
     catalog = get_catalog()
     assert len(catalog.sources) == 23
     for entry in catalog.sources:
-        assert entry.key in body, f"{entry.key} is missing from the page"
+        assert entry.name in body, f"{entry.name} is missing from the page"
 
 
 @requires_db
@@ -232,16 +236,27 @@ def test_non_open_licences_are_marked(client: TestClient) -> None:
     assert imf.license in body
 
 
-@requires_db
 @respx.mock
-def test_the_pages_make_no_outbound_http_requests(client: TestClient) -> None:
+def test_the_pages_make_no_outbound_http_requests() -> None:
     """Views call services directly; a page fetching the app's own API is wrong.
 
-    respx is mounted with no routes, so any outbound HTTP request — including
-    one aimed at REIM's own ``/api/v1``, the mistake decision D3 rules out —
-    raises rather than escaping to the network or looping back into the same
-    process. This is the only test in the suite that would catch a later page
-    calling the application's own API instead of its services and
-    repositories directly.
+    This is the D3 guard, and it needs no data — only that no HTTP call is
+    made — so it runs on a plain ``TestClient`` with no database and no
+    ``requires_db``, unlike its neighbours above: it must run in the
+    ordinary gate, the one every change actually goes through, not only when
+    a database happens to be present.
+
+    respx is mounted with no routes, so any outbound *httpx* request —
+    including one aimed at REIM's own ``/api/v1``, the mistake decision D3
+    rules out — raises rather than escaping to the network or looping back
+    into the same process. respx patches httpx's transports only: a
+    self-call made through ``urllib`` or ``requests`` instead would escape
+    it undetected. That gap is accepted here because ``reim/ingestion/http.py``
+    — the only HTTP client this codebase uses — is httpx throughout, so
+    nothing REIM would plausibly call this with can slip past. This is the
+    only test in the suite that would catch a later page calling the
+    application's own API instead of its services and repositories directly.
     """
+    client = TestClient(create_app())
+
     assert client.get("/").status_code == 200
