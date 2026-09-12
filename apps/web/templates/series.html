@@ -177,17 +177,12 @@
     The small-multiple case (decision D3): one panel per drawable country,
     each scaled on its own values, because a shared axis here would either be
     meaningless (unit or currency mismatch) or would misstate how the
-    countries compare (a CEPAL rate defined differently per country). Each
-    reason gets its own sentence, since a reader acts on them differently.
+    countries compare (a CEPAL rate defined differently per country — that
+    reason is already stated in data.notes above, via assess_comparability,
+    so it is not repeated here). Each remaining reason gets its own sentence,
+    since a reader acts on them differently.
   #}
-  {% if not data.levels_comparable %}
-  <p class="muted series-panels-note">
-    Each country is drawn on its own axis: the publisher's methodology
-    defines this indicator "according to the definition from each country",
-    so levels cannot be read across countries on one shared axis. Movements
-    over time still can be, panel by panel.
-  </p>
-  {% elif not data.comparable %}
+  {% if not data.comparable %}
   <p class="muted series-panels-note">
     Each country is drawn on its own axis because the countries' units or
     currencies differ; a shared axis between them would not be misleading so
@@ -215,14 +210,7 @@
     this is the sentence that says why no line is drawn for it.
   #}
   <ul class="series-undrawable-notes">
-    {% for undrawable_country, units in data.undrawable %}
-    <li>
-      {{ undrawable_country.name }} reports more than one unit for this
-      indicator ({{ units | join(", ") }}); a series that changes unit cannot
-      be safely drawn on any single axis, so no line is drawn for it. Its
-      figures remain in the table below.
-    </li>
-    {% endfor %}
+    {% for undrawable_country, units in data.undrawable %}<li>{{ undrawable_country.name }} reports more than one unit for this indicator ({{ units | join(", ") }}); a series that changes unit cannot be safely drawn on any single axis, so no line is drawn for it. Its figures remain in the table below.</li>{% endfor %}
   </ul>
   {% endif %}
 

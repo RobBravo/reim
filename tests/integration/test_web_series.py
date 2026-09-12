@@ -324,7 +324,9 @@ def test_incomparable_levels_are_never_put_on_one_axis(
     body = client.get("/series?indicator=lending_rate_nominal_monthly&country=PAN&country=GTM").text
 
     assert body.count("<svg") == 2, "levels are not comparable; one axis is wrong"
-    assert "definition from each country" in body.lower() or "methodolog" in body.lower()
+    # The real note from assess_comparability, not a phrase invented for the
+    # assertion: this is what the page actually renders for this indicator.
+    assert "differently in each country, so levels are not comparable" in body
 
 
 @requires_db
@@ -369,12 +371,13 @@ def test_a_country_that_changes_unit_is_named_but_not_charted(
 
     body = client.get("/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
 
-    # "index, percent change" and "more than one unit" are novel phrases this
-    # state introduces; neither is a bare indicator code or country name that
-    # the page would render regardless of this behaviour.
-    assert "more than one unit" in body.lower()
-    assert "index, percent change" in body
-    assert "Guatemala" in body
+    # The full undrawable sentence, contiguous, the way the state-6 test
+    # asserts "No data for Guatemala" contiguously: the country <select>
+    # renders "Guatemala" as an <option> on every request regardless of this
+    # behaviour, so a bare "Guatemala" in body check would be vacuous.
+    assert (
+        "Guatemala reports more than one unit for this indicator (index, percent change)"
+    ) in body
     # Two countries hold data (NIC and GTM); GTM is undrawable, so one fewer
     # <svg> than countries-with-data is drawn.
     assert body.count("<svg") == 1
