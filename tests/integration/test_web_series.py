@@ -1,0 +1,194 @@
+"""The series page: the form, the value table, and the states that draw nothing.
+
+The chart itself arrives in later tasks. What is pinned here is that every one
+of the page's no-chart states says its own sentence — an operator who cannot
+tell "the database is down" from "you asked for an indicator that does not
+exist" from "these countries hold no data" cannot act on any of them.
+"""
+
+from __future__ import annotations
+
+import uuid
+from collections.abc import Iterator
+from datetime import UTC, date, datetime
+from decimal import Decimal
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+
+from apps.api.dependencies import get_db
+from apps.api.main import create_app
+from reim.database.models import Observation
+from reim.repositories.reference import (
+    get_country_by_iso3,
+    get_indicator_by_code,
+    get_source_by_key,
+)
+from tests.conftest import requires_db
+
+
+@pytest.fixture
+def client(seeded_session: Session) -> Iterator[TestClient]:
+    """A client backed by a seeded schema: countries, indicators and sources."""
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: seeded_session
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+def _add_observation(
+    session: Session,
+    *,
+    iso3: str,
+    code: str,
+    year: int,
+    value: str,
+    unit: str = "index",
+) -> None:
+    """Store one annual observation.
+
+    ``value`` is required: ``observations`` carries
+    ``CheckConstraint("value_numeric IS NOT NULL OR value_text IS NOT NULL")``,
+    so a gap is **the absence of a row**, never a row holding null. Build a gap
+    by giving one country a period its neighbour has and not inserting the
+    other's.
+
+    ``unit`` is a parameter because comparability turns on it: two countries
+    reporting in different units make ``comparable`` false, and one country
+    reporting in two units over time is the case decision D4 refuses to chart.
+    """
+    country = get_country_by_iso3(session, iso3)
+    indicator = get_indicator_by_code(session, code)
+    source = get_source_by_key(session, "worldbank_ni_cpi_inflation")
+    assert country is not None, f"{iso3} is not seeded"
+    assert indicator is not None, f"{code} is not seeded"
+    assert source is not None, "the catalog sources are not seeded"
+    session.add(
+        Observation(
+            id=uuid.uuid4(),
+            country_id=country.id,
+            indicator_id=indicator.id,
+            source_id=source.id,
+            period_start=date(year, 1, 1),
+            period_end=date(year, 12, 31),
+            period_label=str(year),
+            value_numeric=Decimal(value),
+            unit=unit,
+            currency_code=None,
+            retrieved_at=datetime.now(UTC),
+            source_url="https://example.invalid/series",
+            content_hash=f"{iso3}-{code}-{year}-{value}",
+            connector_version="0.0.0",
+            pipeline_version="0.0.0",
+        )
+    )
+    session.flush()
+
+
+def test_the_series_page_is_served_with_no_selection() -> None:
+    """State 1: the first visit is a form, not an error and not an empty chart."""
+    client = TestClient(create_app())
+
+    response = client.get("/series")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+
+
+def test_the_form_offers_every_indicator_and_every_country() -> None:
+    """A picker missing an option is a page that cannot answer a fair question."""
+    from reim.domain.countries.registry import COUNTRIES
+    from reim.domain.indicators.registry import INDICATORS
+
+    client = TestClient(create_app())
+
+    body = client.get("/series").text
+
+    assert len(INDICATORS) == 63
+    assert len(COUNTRIES) == 7
+    for country in COUNTRIES:
+        assert country.name in body, f"{country.name} is missing from the form"
+    for indicator in INDICATORS:
+        assert indicator.code in body, f"{indicator.code} is missing from the form"
+
+
+def test_an_unregistered_indicator_gets_a_page_not_a_json_envelope() -> None:
+    """State 3 — and it must not need a database to answer."""
+    client = TestClient(create_app())
+
+    response = client.get("/series?indicator=no_such_indicator&country=NIC")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("text/html")
+    assert "no_such_indicator" in response.text
+
+
+def test_an_unregistered_country_gets_the_same_page() -> None:
+    """State 4, named separately from the indicator so the reader knows which."""
+    client = TestClient(create_app())
+
+    response = client.get("/series?indicator=cpi_index_monthly&country=ZZZ")
+
+    assert response.status_code == 404
+    assert "ZZZ" in response.text
+
+
+def test_a_dead_database_is_said_out_loud(monkeypatch: pytest.MonkeyPatch) -> None:
+    """State 2, distinct from every "nothing to show" sentence on the page."""
+
+    def _raise(*args: object, **kwargs: object) -> None:
+        raise SQLAlchemyError("database is down")
+
+    monkeypatch.setattr("apps.web.routes.comparison_repo.count_comparison_periods", _raise)
+    client = TestClient(create_app())
+
+    body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
+
+    assert "database is not responding" in body.lower()
+    assert "holds no data" not in body.lower()
+
+
+@requires_db
+def test_a_valid_selection_with_no_data_says_so(client: TestClient) -> None:
+    """State 5: the seeded schema has reference data and no observations.
+
+    Asserts the state-5 sentence verbatim, not the brief's "holds no data":
+    the template says "None of the countries you chose holds any data for
+    {indicator}", which shares no distinctive substring with state 6's "No
+    data for {country}" — so a test for one state cannot be satisfied by the
+    other's rendering.
+    """
+    body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
+
+    assert "None of the countries you chose holds any data for" in body
+    assert "database is not responding" not in body.lower()
+
+
+@requires_db
+def test_the_countries_holding_nothing_are_named_not_dropped(
+    client: TestClient, seeded_session: Session
+) -> None:
+    """State 6: a silently missing country reads as a country with a flat line."""
+    _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2020, value="5.5")
+
+    body = client.get("/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
+
+    assert "No data for Guatemala" in body
+    assert "no data" in body.lower()
+
+
+@requires_db
+def test_the_table_carries_every_figure(client: TestClient, seeded_session: Session) -> None:
+    """The table is the chart's accessible equivalent and the test surface both."""
+    _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2020, value="5.5")
+    _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2021, value="7.25")
+
+    body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
+
+    assert "5.5" in body
+    assert "7.25" in body
+    assert "2020" in body
+    assert "2021" in body

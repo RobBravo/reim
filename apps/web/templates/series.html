@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Series · REIM{% endblock %}
+
+{% block content %}
+<section class="series">
+  <h2>Series</h2>
+  <p class="muted">One indicator over time, across the countries you choose.</p>
+
+  {#
+    A plain GET form: the browser serialises and reloads, so the page needs no
+    JavaScript at all. The indicator and country lists come from the in-process
+    registries, so the form renders even when the database is unreachable.
+  #}
+  <form class="series-form" method="get" action="/series">
+    <label for="indicator">Indicator</label>
+    <select id="indicator" name="indicator">
+      <option value="">Choose an indicator</option>
+      {% for option in indicator_options %}
+      <option value="{{ option.code }}"{% if selection.indicator == option.code %} selected{% endif %}>
+        {{ option.code }} &mdash; {{ option.name }} ({{ option.unit }})
+      </option>
+      {% endfor %}
+    </select>
+
+    <label for="country">Countries</label>
+    <select id="country" name="country" multiple size="7">
+      {% for option in country_options %}
+      <option value="{{ option.iso3 }}"{% if option.iso3 in selection.country %} selected{% endif %}>
+        {{ option.name }}
+      </option>
+      {% endfor %}
+    </select>
+
+    <label for="date_from">From</label>
+    <input id="date_from" type="date" name="date_from" value="{{ selection.date_from or '' }}" />
+    <label for="date_to">To</label>
+    <input id="date_to" type="date" name="date_to" value="{{ selection.date_to or '' }}" />
+
+    <button type="submit">Draw</button>
+  </form>
+
+  {% if not selection.indicator or not selection.country %}
+  {# State 1. A first visit has nothing to say yet, and saying nothing is correct. #}
+  <p class="muted">Choose an indicator and at least one country.</p>
+  {% elif data is none %}
+  {# State 2. Distinct from every "nothing to show" sentence below. #}
+  <p class="notice" role="status">The series cannot be read: the database is not responding.</p>
+  {% elif data.total_periods > period_limit %}
+  {#
+    State 9. Nothing is downsampled, so a denser range is declined with the
+    number that makes the refusal actionable rather than mysterious.
+  #}
+  <p class="notice" role="status">
+    This range holds {{ data.total_periods }} periods; the chart draws at most
+    {{ period_limit }}. Narrow the dates.
+  </p>
+  {% elif not data.rows %}
+  {# State 5. Holds no data for any country — distinct from state 6, where some do. #}
+  <p class="muted">
+    None of the countries you chose holds any data for {{ data.indicator.name }}.
+  </p>
+  {% else %}
+  {% set empty_countries = data.summaries | selectattr("observations", "equalto", 0) | list %}
+  {% if empty_countries %}
+  {# State 6: named, never silently dropped — a missing country reads as a flat line. #}
+  <p class="muted">No data for {% for summary in empty_countries %}{{ summary.country_name }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+  {% endif %}
+
+  {% if data.notes %}
+  <ul class="comparability-notes">
+    {% for note in data.notes %}<li>{{ note }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {# The chart is added in Task 3; small multiples in Task 4. #}
+
+  <div class="table-wrapper">
+    <table class="series-table">
+      {#
+        The table is the SVG's accessible equivalent and what the tests assert.
+        Every figure is here in full, exactly as published.
+      #}
+      <caption>{{ data.indicator.name }} ({{ data.indicator.unit }}), {{ data.rows | length }} periods</caption>
+      <thead>
+        <tr>
+          <th scope="col">Period</th>
+          {% for country in data.countries %}<th scope="col">{{ country.name }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.rows %}
+        <tr>
+          <th scope="row">{{ row.period_label }}</th>
+          {% for country in data.countries %}
+          {% set value = row.values.get(country.iso3) %}
+          {# A gap is a dash, never a zero and never blank. #}
+          <td>{% if value is none %}<span class="muted">—</span>{% else %}{{ value }}{% endif %}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

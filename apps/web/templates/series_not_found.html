@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Not found · REIM{% endblock %}
+
+{% block content %}
+<section class="series">
+  <h2>{{ kind | capitalize }} not found</h2>
+  {#
+    The value is echoed back because the commonest way here is a mistyped or
+    truncated link, and the reader cannot check it against what they meant
+    unless they can see it. The kind is named because "not found" alone leaves
+    them guessing which half of the request was wrong.
+  #}
+  <p>No {{ kind }} is registered under <code>{{ value }}</code>.</p>
+  <p><a href="/series">Back to the series picker</a></p>
+</section>
+{% endblock %}
