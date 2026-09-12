@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import Select, func, select
@@ -197,3 +199,90 @@ def order_failed_check_groups(groups: list[FailedCheckGroup]) -> list[FailedChec
         groups,
         key=lambda group: (-SEVERITY_ORDER[group.severity], -group.failures, group.check_name),
     )
+
+
+@dataclass(frozen=True)
+class RunStatusAggregate:
+    """Cumulative totals for one pipeline in one status."""
+
+    pipeline_key: str
+    status: PipelineStatus
+    runs: int
+    records_extracted: int
+    records_inserted: int
+    records_updated: int
+    records_unchanged: int
+    records_rejected: int
+    duration_ms: int
+
+
+def _latest_by_pipeline(
+    session: Session, *, statuses: Sequence[PipelineStatus] | None = None
+) -> dict[str, PipelineRun]:
+    """Return the newest run per pipeline in one query.
+
+    Twenty-three ``latest_run`` calls is the right shape for one page load and
+    the wrong one for a scrape every fifteen seconds. ``DISTINCT ON`` requires
+    its ``ORDER BY`` to lead with the distinct column, which is why
+    ``pipeline_key`` comes first and ``started_at`` descending still decides
+    which row survives.
+    """
+    statement = (
+        select(PipelineRun)
+        .distinct(PipelineRun.pipeline_key)
+        .order_by(PipelineRun.pipeline_key, PipelineRun.started_at.desc())
+    )
+    if statuses is not None:
+        statement = statement.where(PipelineRun.status.in_(statuses))
+    return {run.pipeline_key: run for run in session.scalars(statement)}
+
+
+def latest_runs_by_pipeline(session: Session) -> dict[str, PipelineRun]:
+    """Return every pipeline's most recent run, keyed by pipeline key."""
+    return _latest_by_pipeline(session)
+
+
+def latest_successful_runs_by_pipeline(session: Session) -> dict[str, PipelineRun]:
+    """Return every pipeline's most recent run that did not fail.
+
+    ``partial`` counts: it means some data was written, which is what a
+    freshness gauge cares about.
+    """
+    return _latest_by_pipeline(session, statuses=[PipelineStatus.SUCCESS, PipelineStatus.PARTIAL])
+
+
+def aggregate_runs_by_pipeline(session: Session) -> list[RunStatusAggregate]:
+    """Return cumulative run, record and duration totals per pipeline and status.
+
+    ``duration_ms`` is nullable — a run that crashed before finishing never got
+    one — so its sum is coalesced, or a single crashed run would null the whole
+    pipeline's total. The record counters are ``NOT NULL`` with a default of 0
+    and every group holds at least one row, so their sums cannot be null;
+    coalescing them too would imply a null is possible there.
+    """
+    statement = select(
+        PipelineRun.pipeline_key,
+        PipelineRun.status,
+        func.count(PipelineRun.id).label("runs"),
+        func.sum(PipelineRun.records_extracted).label("extracted"),
+        func.sum(PipelineRun.records_inserted).label("inserted"),
+        func.sum(PipelineRun.records_updated).label("updated"),
+        func.sum(PipelineRun.records_unchanged).label("unchanged"),
+        func.sum(PipelineRun.records_rejected).label("rejected"),
+        func.coalesce(func.sum(PipelineRun.duration_ms), 0).label("duration_ms"),
+    ).group_by(PipelineRun.pipeline_key, PipelineRun.status)
+
+    return [
+        RunStatusAggregate(
+            pipeline_key=row.pipeline_key,
+            status=row.status,
+            runs=int(row.runs),
+            records_extracted=int(row.extracted),
+            records_inserted=int(row.inserted),
+            records_updated=int(row.updated),
+            records_unchanged=int(row.unchanged),
+            records_rejected=int(row.rejected),
+            duration_ms=int(row.duration_ms),
+        )
+        for row in session.execute(statement)
+    ]
