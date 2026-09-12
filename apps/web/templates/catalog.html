@@ -5,5 +5,33 @@
 {% block content %}
 <section class="catalog">
   <h2>Catalog</h2>
+  {% if rows %}
+  <table class="catalog-table">
+    <thead>
+      <tr>
+        <th scope="col">Source</th>
+        <th scope="col">Organization</th>
+        <th scope="col">Frequency</th>
+        <th scope="col">Indicators</th>
+        <th scope="col">Licence</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for summary, entry in rows %}
+      <tr id="{{ entry.key }}">
+        <td>
+          <a href="{{ entry.documentation_url }}">{{ entry.name }}</a>
+        </td>
+        <td>{{ entry.organization }}</td>
+        <td>{{ entry.frequency.value }}</td>
+        <td>{{ entry.indicators | length }}</td>
+        <td>{{ entry.license }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="catalog-unavailable">The database is unavailable, so the catalog cannot be shown right now.</p>
+  {% endif %}
 </section>
 {% endblock %}
