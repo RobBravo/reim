@@ -324,8 +324,9 @@ The catalog browser at `/` answers what a new reader of the API docs cannot
 easily see for themselves — what REIM holds (all 23 sources, their
 organization, frequency and indicators), which licences forbid
 redistribution, how fresh each source's data is, and what is disabled and
-why. No database is required for the catalog itself; freshness falls back to
-"Never run" if PostgreSQL is unreachable.
+why. No database is required for the catalog itself; freshness renders as
+"—" if PostgreSQL is unreachable, distinct from "Never run", which is
+reserved for a source that has genuinely never completed a run.
 
 The run history at `/runs` shows the most recent 100 pipeline runs — their
 source, status, duration and record counts — plus a 30-day trend of failed
