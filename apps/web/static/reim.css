@@ -168,3 +168,22 @@ tbody tr:hover {
 .disabled-list li {
   margin-bottom: 0.35rem;
 }
+
+.severity-critical,
+.severity-error {
+  color: #b23c17;
+  font-weight: 600;
+}
+
+.severity-warning {
+  color: #8a6100;
+}
+
+.status-failed {
+  color: #b23c17;
+  font-weight: 600;
+}
+
+.status-partial {
+  color: #8a6100;
+}

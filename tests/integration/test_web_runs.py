@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,8 +18,8 @@ from sqlalchemy.orm import Session
 
 from apps.api.dependencies import get_db
 from apps.api.main import create_app
-from reim.core.constants import PipelineStatus
-from reim.database.models import PipelineRun
+from reim.core.constants import CheckSeverity, CheckStatus, CheckType, PipelineStatus
+from reim.database.models import DataQualityCheck, PipelineRun
 from reim.domain.sources.catalog import get_catalog
 from tests.conftest import requires_db
 
@@ -146,3 +146,61 @@ def test_every_listed_run_links_to_its_detail_page(client: TestClient, session: 
     body = client.get("/runs").text
 
     assert f"/runs/{run.id}" in body
+
+
+@requires_db
+def test_no_runs_in_the_window_is_not_reported_as_no_failures(
+    client: TestClient, session: Session
+) -> None:
+    """The distinction the whole block exists for.
+
+    A pipeline that stopped running 90 days ago produces no failed checks in
+    a 30-day window — identical output to a pipeline that ran perfectly, and
+    the opposite situation. One says "investigate", the other says "fine".
+    """
+    _add_run(session, started_at=datetime.now(UTC) - timedelta(days=90))
+
+    body = client.get("/runs").text
+
+    assert "No pipeline ran in the last 30 days" in body
+    assert "no failed checks" not in body.lower()
+
+
+@requires_db
+def test_runs_without_failures_report_how_many_ran(client: TestClient, session: Session) -> None:
+    """ "Healthy" is only meaningful with the evidence beside it."""
+    _add_run(session, started_at=datetime.now(UTC) - timedelta(days=1))
+    _add_run(session, started_at=datetime.now(UTC) - timedelta(days=2))
+
+    body = client.get("/runs").text
+
+    assert "2 runs in the last 30 days" in body
+    assert "no failed checks" in body.lower()
+    assert "No pipeline ran in the last 30 days" not in body
+
+
+@requires_db
+def test_a_failing_check_is_named_counted_and_dated(client: TestClient, session: Session) -> None:
+    now = datetime.now(UTC)
+    for offset in range(1, 14):
+        run = _add_run(session, started_at=now - timedelta(days=offset))
+        session.add(
+            DataQualityCheck(
+                id=uuid.uuid4(),
+                pipeline_run_id=run.id,
+                check_name="freshness_within_threshold",
+                check_type=CheckType.TIMELINESS,
+                status=CheckStatus.FAILED,
+                severity=CheckSeverity.ERROR,
+                created_at=now - timedelta(days=offset),
+            )
+        )
+    session.flush()
+
+    body = client.get("/runs").text
+
+    assert "freshness_within_threshold" in body
+    assert "13" in body
+    assert "error" in body
+    assert "banguat_exchange_rate" in body or "Banco de Guatemala" in body
+    assert "no failed checks" not in body.lower()

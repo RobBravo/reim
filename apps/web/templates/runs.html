@@ -50,7 +50,51 @@
     Showing the most recent {{ history_limit }} runs. Older runs are available from
     <code>/api/v1/pipelines/runs</code>, which is paginated.
   </p>
-  {# The failed-check trends block is added in Task 3, below this paragraph. #}
+  <section class="trends">
+    <h3>Failed quality checks, last {{ window_days }} days</h3>
+    {% if data.runs_in_window == 0 %}
+    {#
+      Not the same as "no failures": this says ingestion has stopped. The two
+      look identical if the block only reports an empty list, and they call
+      for opposite responses.
+    #}
+    <p class="muted">No pipeline ran in the last {{ window_days }} days.</p>
+    {% elif not data.failed_checks %}
+    {#
+      The run count is the evidence that makes "healthy" mean anything. Without
+      it the reader cannot tell this from the branch above.
+    #}
+    <p class="muted">{{ data.runs_in_window }} runs in the last {{ window_days }} days, no failed checks.</p>
+    {% else %}
+    <div class="table-wrapper">
+      <table class="checks-table">
+        <caption>{{ data.failed_checks | length }} check(s) failing, most severe first</caption>
+        <thead>
+          <tr>
+            <th scope="col">Check</th>
+            <th scope="col">Type</th>
+            <th scope="col">Severity</th>
+            <th scope="col">Failures</th>
+            <th scope="col">Last failed</th>
+            <th scope="col">Pipelines</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for group in data.failed_checks %}
+          <tr>
+            <td>{{ group.check_name }}</td>
+            <td>{{ group.check_type.value }}</td>
+            <td class="severity-{{ group.severity.value }}">{{ group.severity.value }}</td>
+            <td>{{ group.failures }}</td>
+            <td>{{ group.last_failed_at | freshness }}</td>
+            <td>{{ group.pipeline_keys | join(", ") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
   {% endif %}
 </section>
 {% endblock %}
