@@ -279,16 +279,20 @@ def test_the_pages_make_no_outbound_http_requests() -> None:
     Covers all three routes the branch added or kept, not only the catalog:
     ``/runs`` and ``/runs/{run_id}`` are exercised the same way, with no
     session override, so a rewrite of either view to fetch its own HTTP API
-    instead of calling repositories directly would trip this guard too. The
-    detail route is asserted at 404, not 200: ``uuid.UUID`` parses a random
-    id cleanly, and the gate this test runs in keeps a live, freshly
-    truncated database (see ``tests/conftest.py``'s ``session`` fixture), so
-    the run genuinely does not exist rather than the database being
-    unreachable. Forcing 200 here would assert something false rather than
-    what the route actually does.
+    instead of calling repositories directly would trip this guard too.
+    Unlike its neighbours above, this test has no ``requires_db`` and so
+    must pass whether or not a database is reachable, and the detail route
+    genuinely has two correct answers depending on that: with a database
+    present, a random ``uuid.UUID`` is a real id that does not exist, so
+    ``run_detail`` returns 404; with no database, it catches
+    ``SQLAlchemyError`` and renders the degraded "cannot be read" page with
+    200 instead. Either is proof the request reached the view rather than
+    escaping over HTTP, which is all this guard cares about, so the
+    assertion accepts both status codes instead of picking one that would
+    be false in the other world.
     """
     client = TestClient(create_app())
 
     assert client.get("/").status_code == 200
     assert client.get("/runs").status_code == 200
-    assert client.get(f"/runs/{uuid.uuid4()}").status_code == 404
+    assert client.get(f"/runs/{uuid.uuid4()}").status_code in {200, 404}
