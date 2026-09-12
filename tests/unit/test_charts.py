@@ -15,8 +15,10 @@ from decimal import Decimal
 import pytest
 
 from apps.web.charts import (
+    Chart,
     Scale,
     SeriesRow,
+    build_chart,
     nice_ticks,
     pivot_cells,
     series_path,
@@ -180,3 +182,33 @@ def test_a_series_that_is_entirely_gaps_draws_nothing() -> None:
     scale = Scale(0.0, 1.0, 0.0, 1.0)
 
     assert series_path([(0.0, None), (1.0, None)], scale, scale) == ""
+
+
+def test_a_chart_has_one_path_per_country_with_values() -> None:
+    rows = [
+        SeriesRow(date(2020, 1, 1), "2020", {"NIC": Decimal("1"), "GTM": Decimal("2")}),
+        SeriesRow(date(2021, 1, 1), "2021", {"NIC": Decimal("3"), "GTM": Decimal("4")}),
+    ]
+
+    chart: Chart | None = build_chart(rows, ["NIC", "GTM"])
+
+    assert chart is not None
+    assert set(chart.paths) == {"NIC", "GTM"}
+    assert chart.paths["NIC"].startswith("M")
+
+
+def test_a_chart_of_gaps_only_is_no_chart() -> None:
+    """``None`` rather than an axis around nothing."""
+    rows = [SeriesRow(date(2020, 1, 1), "2020", {"NIC": None})]
+
+    assert build_chart(rows, ["NIC"]) is None
+
+
+def test_a_single_period_still_draws_its_point() -> None:
+    """One observation is data; an empty chart would say it is not."""
+    rows = [SeriesRow(date(2020, 1, 1), "2020", {"NIC": Decimal("4")})]
+
+    chart: Chart | None = build_chart(rows, ["NIC"])
+
+    assert chart is not None
+    assert chart.paths["NIC"].count("M") == 1

@@ -73,7 +73,97 @@
   </ul>
   {% endif %}
 
-  {# The chart is added in Task 3; small multiples in Task 4. #}
+  {% if data.chart %}
+  {#
+    The overlaid case: one shared axis, one <path> per country with values.
+    Renders only when data.comparable and data.levels_comparable — Task 4's
+    small multiples own every other selection, including one with no
+    plottable values at all (build_chart already returns None for that).
+  #}
+  {% set chart = data.chart %}
+  {% set first_period = data.rows[0].period_label %}
+  {% set last_period = data.rows[-1].period_label %}
+  {% set period_range = first_period if first_period == last_period else first_period ~ " to " ~ last_period %}
+  {% set country_names = data.countries | map(attribute="name") | join(", ") %}
+  <figure class="series-chart-figure">
+    <svg
+      class="series-chart"
+      role="img"
+      viewBox="0 0 {{ chart.width }} {{ chart.height }}"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {#
+        Title and description are the accessible name and, together with the
+        table below, the accessible equivalent — they carry the indicator,
+        every requested country (not only the ones with a drawn line: a
+        country that reported nothing must still be named, not silently
+        dropped) and the period range, in words rather than as markup.
+      #}
+      <title>{{ data.indicator.name }} — {{ country_names }}</title>
+      <desc>
+        {{ data.indicator.name }} ({{ data.indicator.unit }}) for {{ country_names }}, {{ period_range }}.
+      </desc>
+
+      {% set domain_span = chart.domain_max - chart.domain_min %}
+      {% for tick in chart.ticks %}
+      {% set tick_y = ((chart.plot_top + chart.plot_bottom) / 2) if domain_span == 0 else (chart.plot_bottom - ((tick - chart.domain_min) / domain_span) * (chart.plot_bottom - chart.plot_top)) %}
+      <line
+        x1="{{ chart.plot_left }}"
+        x2="{{ chart.plot_right }}"
+        y1="{{ tick_y }}"
+        y2="{{ tick_y }}"
+        class="chart-gridline"
+      />
+      <text
+        x="{{ chart.plot_left - 8 }}"
+        y="{{ tick_y }}"
+        class="chart-tick-label"
+        text-anchor="end"
+        dominant-baseline="middle"
+      >{{ tick }}</text>
+      {% endfor %}
+
+      {% set period_count = data.rows | length %}
+      {% set mid_index = (period_count - 1) // 2 %}
+      {% for index in [0, mid_index, period_count - 1] | unique %}
+      <text
+        x="{{ chart.x_positions[index] }}"
+        y="{{ chart.plot_bottom + 20 }}"
+        class="chart-axis-label"
+        text-anchor="middle"
+      >{{ data.rows[index].period_label }}</text>
+      {% endfor %}
+
+      {% for country in data.countries %}
+      {% if country.iso3 in chart.paths %}
+      <path
+        d="{{ chart.paths[country.iso3] }}"
+        fill="none"
+        stroke="{{ chart_palette[loop.index0 % (chart_palette | length)] }}"
+        stroke-width="2"
+        class="chart-line"
+      />
+      {% endif %}
+      {% endfor %}
+    </svg>
+  </figure>
+
+  <ul class="series-legend">
+    {% for country in data.countries %}
+    {% if country.iso3 in chart.paths %}
+    <li>
+      <span
+        class="legend-swatch"
+        style="background: {{ chart_palette[loop.index0 % (chart_palette | length)] }};"
+      ></span>
+      {{ country.name }}
+    </li>
+    {% endif %}
+    {% endfor %}
+  </ul>
+  {% else %}
+  {# Small multiples are added in Task 4. #}
+  {% endif %}
 
   <div class="table-wrapper">
     <table class="series-table">

@@ -195,7 +195,10 @@ def test_the_same_country_given_twice_collapses_to_one_column(
     body = client.get("/series?indicator=cpi_index_monthly&country=NI&country=NIC").text
 
     assert body.count('<th scope="col">Nicaragua</th>') == 1
-    assert body.count("5.5") == 1
+    # Not ``body.count("5.5") == 1``: with the chart drawn, "5.5" is also the
+    # sole point's y-axis tick label, which is separate, correct content. The
+    # table cell is the thing the dedupe must not duplicate.
+    assert body.count("<td>5.5</td>") == 1
 
 
 @requires_db
@@ -210,3 +213,91 @@ def test_the_table_carries_every_figure(client: TestClient, seeded_session: Sess
     assert "7.25" in body
     assert "2020" in body
     assert "2021" in body
+
+
+def _tag_text(body: str, tag: str) -> str:
+    """Return the text between the first ``<tag>`` and ``</tag>``, or "" when absent."""
+    start_marker = f"<{tag}>"
+    end_marker = f"</{tag}>"
+    start = body.find(start_marker)
+    if start == -1:
+        return ""
+    start += len(start_marker)
+    end = body.find(end_marker, start)
+    if end == -1:
+        return ""
+    return body[start:end]
+
+
+def _svg_tag_text(body: str, tag: str) -> str:
+    """Return the text of ``<tag>`` **inside the page's ``<svg>``**, or "".
+
+    HTML's own ``<title>`` — the browser-tab title in ``<head>``, from
+    ``series.html``'s ``{% block title %}`` — shares a tag name with SVG's
+    accessible-name element. ``_tag_text(body, "title")`` alone would find
+    that one first and pass regardless of whether the chart drew anything,
+    which is exactly the vacuous-assertion trap the brief warns about:
+    scoping to the SVG region is what makes the assertion about the chart.
+
+    The page renders a ``<select>`` listing every indicator code and every
+    country name on every request, so ``"Nicaragua" in body`` is true before
+    any chart is drawn too — the reason every chart assertion in this file
+    goes through this helper rather than testing ``body`` directly.
+    """
+    svg_start = body.find("<svg")
+    if svg_start == -1:
+        return ""
+    svg_end = body.find("</svg>", svg_start)
+    svg_region = body[svg_start : svg_end if svg_end != -1 else len(body)]
+    return _tag_text(svg_region, tag)
+
+
+@requires_db
+def test_a_comparable_selection_is_drawn_as_one_chart(
+    client: TestClient, seeded_session: Session
+) -> None:
+    """The SVG's title and description are content, and are what we assert."""
+    _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2020, value="5.5")
+
+    body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
+
+    assert "<svg" in body
+    title = _svg_tag_text(body, "title")
+    desc = _svg_tag_text(body, "desc")
+    assert title, f"no <title> found in body: {body}"
+    assert "Nicaragua" in title
+    # The accessible name carries the indicator, not a generic "chart".
+    assert "Consumer price index (monthly)" in title or "Consumer price index (monthly)" in desc
+
+
+@requires_db
+def test_the_chart_names_every_selected_country_not_only_the_drawn_ones(
+    client: TestClient, seeded_session: Session
+) -> None:
+    """A country that reports nothing must still be named, not silently dropped.
+
+    NIC has an observation; GTM does not, so only NIC gets a ``<path>``. The
+    description must still say both, or a country that vanished from the
+    drawing would also vanish from the page's account of what it shows.
+    """
+    _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2020, value="5.5")
+
+    body = client.get("/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
+
+    desc = _svg_tag_text(body, "desc")
+    assert desc, f"no <desc> found in body: {body}"
+    assert "Nicaragua" in desc
+    assert "Guatemala" in desc
+
+
+@requires_db
+def test_the_chart_says_what_it_is_for_a_screen_reader(
+    client: TestClient, seeded_session: Session
+) -> None:
+    _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2020, value="5.5")
+
+    body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
+
+    assert 'role="img"' in body
+    assert "<title>" in body
+    assert "<desc>" in body

@@ -142,6 +142,101 @@ def nice_ticks(minimum: float, maximum: float, count: int = 5) -> list[float]:
     return [round(first + index * step, 10) for index in range(max(total, 0))]
 
 
+@dataclass(frozen=True, slots=True)
+class Chart:
+    """The geometry of one plotted panel, ready for a template to render."""
+
+    paths: dict[str, str]
+    ticks: list[float]
+    x_positions: list[float]
+    width: int
+    height: int
+    plot_left: float
+    plot_right: float
+    plot_top: float
+    plot_bottom: float
+    domain_min: float
+    domain_max: float
+
+
+#: Room for the value labels on the left and the period labels underneath.
+_MARGIN_LEFT = 64.0
+_MARGIN_RIGHT = 12.0
+_MARGIN_TOP = 12.0
+_MARGIN_BOTTOM = 32.0
+
+
+#: Colours assigned by a country's position in the request, not its identity —
+#: comparing NIC and GTM colours NIC first regardless of the registry's own
+#: order. Luminance rises monotonically down the tuple (near-black to amber)
+#: so the seven are still distinguishable printed in greyscale, not only in
+#: colour.
+CHART_PALETTE: tuple[str, ...] = (
+    "#1a1a1a",
+    "#1f4b99",
+    "#b23c17",
+    "#1b7a3d",
+    "#0f7d8c",
+    "#9c2f6b",
+    "#c98a11",
+)
+
+
+def build_chart(
+    rows: Sequence[SeriesRow],
+    iso3_codes: Sequence[str],
+    *,
+    width: int = 760,
+    height: int = 320,
+) -> Chart | None:
+    """Return the geometry for one panel, or ``None`` when there is nothing to draw.
+
+    ``None`` rather than an empty axis: a chart drawn around no values tells
+    the reader a series exists and is flat, when in fact it is absent.
+
+    Periods are placed by their **index**, not by their date. The series is a
+    sequence of published periods, and spacing them by calendar distance would
+    imply REIM knows what happened in the intervals — which, for a publisher
+    that skipped a quarter, it does not.
+    """
+    domain = value_domain(rows, iso3_codes)
+    if domain is None or not rows:
+        return None
+    domain_min, domain_max = domain
+
+    plot_left, plot_right = _MARGIN_LEFT, float(width) - _MARGIN_RIGHT
+    plot_top, plot_bottom = _MARGIN_TOP, float(height) - _MARGIN_BOTTOM
+
+    last_index = float(max(len(rows) - 1, 1))
+    x_scale = Scale(0.0, last_index, plot_left, plot_right)
+    y_scale = Scale(domain_min, domain_max, plot_bottom, plot_top)
+
+    paths = {
+        code: series_path(
+            [
+                (float(index), None if (value := row.values.get(code)) is None else float(value))
+                for index, row in enumerate(rows)
+            ],
+            x_scale,
+            y_scale,
+        )
+        for code in iso3_codes
+    }
+    return Chart(
+        paths={code: path for code, path in paths.items() if path},
+        ticks=nice_ticks(domain_min, domain_max),
+        x_positions=[round(x_scale.to_pixel(float(index)), 2) for index in range(len(rows))],
+        width=width,
+        height=height,
+        plot_left=plot_left,
+        plot_right=plot_right,
+        plot_top=plot_top,
+        plot_bottom=plot_bottom,
+        domain_min=domain_min,
+        domain_max=domain_max,
+    )
+
+
 def series_path(
     points: Sequence[tuple[float, float | None]], x_scale: Scale, y_scale: Scale
 ) -> str:

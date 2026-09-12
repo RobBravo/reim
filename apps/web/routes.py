@@ -28,7 +28,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from apps.api.dependencies import SessionDep
-from apps.web.charts import SeriesRow, pivot_cells
+from apps.web.charts import CHART_PALETTE, Chart, SeriesRow, build_chart, pivot_cells
 from reim.core.exceptions import CatalogError
 from reim.domain.countries.registry import (
     COUNTRIES,
@@ -124,6 +124,10 @@ def _format_duration(milliseconds: int | None) -> str:
 templates = Jinja2Templates(directory=str(TEMPLATES_DIRECTORY))
 templates.env.filters["freshness"] = _format_freshness
 templates.env.filters["duration"] = _format_duration
+# The palette lives beside ``build_chart`` in charts.py, its only other
+# reader, so the stroke a template draws and the colour build_chart's caller
+# assigned by request position never drift apart.
+templates.env.globals["chart_palette"] = CHART_PALETTE
 
 router = APIRouter(tags=["web"], include_in_schema=False)
 
@@ -330,6 +334,7 @@ class SeriesPageData:
     levels_comparable: bool
     notes: list[str]
     total_periods: int
+    chart: Chart | None
 
 
 def load_series_page(
@@ -374,15 +379,22 @@ def load_series_page(
 
     definition = INDICATORS_BY_CODE.get(indicator.code)
     comparable, notes = assess_comparability(summaries, definition)
+    levels_ok = levels_comparable(definition)
+    rows = pivot_cells(cells, [country.iso3 for country in countries])
+    # The overlaid chart only makes sense when levels read across countries;
+    # Task 4's small multiples own every other case, including "no plottable
+    # values", which ``build_chart`` also reports as ``None``.
+    chart = build_chart(rows, [c.iso3 for c in countries]) if comparable and levels_ok else None
     return SeriesPageData(
         indicator=indicator,
         countries=countries,
-        rows=pivot_cells(cells, [country.iso3 for country in countries]),
+        rows=rows,
         summaries=summaries,
         comparable=comparable,
-        levels_comparable=levels_comparable(definition),
+        levels_comparable=levels_ok,
         notes=notes,
         total_periods=total_periods,
+        chart=chart,
     )
 
 
