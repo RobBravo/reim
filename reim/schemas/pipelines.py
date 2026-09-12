@@ -34,6 +34,23 @@ class QualityCheckRead(BaseModel):
     created_at: datetime
 
 
+class FailedCheckGroup(BaseModel):
+    """Failed checks of one name and severity, aggregated over a time window.
+
+    ``summarize_failed_checks`` answers "how bad is it" by severity alone.
+    This answers "what is failing, how often, since when, and where" — the
+    question an operator actually has, and the one that distinguishes a new
+    failure from one that has been recurring for weeks.
+    """
+
+    check_name: str
+    check_type: CheckType
+    severity: CheckSeverity
+    failures: int
+    last_failed_at: datetime
+    pipeline_keys: list[str]
+
+
 class PipelineRunRead(BaseModel):
     """A pipeline execution record."""
 
