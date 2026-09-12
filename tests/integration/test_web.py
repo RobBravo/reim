@@ -24,6 +24,11 @@ The catalog-freshness tests further down need a live session — the page calls
 ``build_pipeline_summaries``, which queries the last run per source — so they
 are marked ``requires_db`` individually rather than at module scope. That
 keeps the six tests above running on a bare checkout with no database.
+
+The final test pins decision D3: views call services and repositories
+directly and never the application's own HTTP API. Nothing else in this
+suite would catch a page that fetched its own API instead — every other test
+only checks what came back, not how it was produced.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
+import respx
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -224,3 +230,18 @@ def test_non_open_licences_are_marked(client: TestClient) -> None:
     imf = get_catalog().get("imf_imts_nicaragua")
     assert imf is not None
     assert imf.license in body
+
+
+@requires_db
+@respx.mock
+def test_the_pages_make_no_outbound_http_requests(client: TestClient) -> None:
+    """Views call services directly; a page fetching the app's own API is wrong.
+
+    respx is mounted with no routes, so any outbound HTTP request — including
+    one aimed at REIM's own ``/api/v1``, the mistake decision D3 rules out —
+    raises rather than escaping to the network or looping back into the same
+    process. This is the only test in the suite that would catch a later page
+    calling the application's own API instead of its services and
+    repositories directly.
+    """
+    assert client.get("/").status_code == 200

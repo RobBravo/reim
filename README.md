@@ -315,6 +315,23 @@ interface a real scheduler would implement later.
 
 ---
 
+## Web pages
+
+REIM's first web page is a server-rendered catalog browser, served from the
+same application as the API: `make run-api`, then open
+<http://localhost:8000/>. It answers what a new reader of the API docs cannot
+easily see for themselves — what REIM holds (all 23 sources, their
+organization, frequency and indicators), which licences forbid
+redistribution, how fresh each source's data is, and what is disabled and
+why. No database is required for the catalog itself; freshness falls back to
+"Never run" if PostgreSQL is unreachable.
+
+The API is unchanged and still lives at `/api/v1` — the page is an addition
+beside it, not a replacement, calling the same services and repositories the
+API routers call rather than the API itself.
+
+---
+
 ## Using the API
 
 Base URL `/api/v1`. OpenAPI at `/docs` and `/openapi.json`. Read-only.

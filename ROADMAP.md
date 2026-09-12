@@ -265,22 +265,32 @@ and the tenth — the national central banks — has its first country.
 
 ## v0.4.0 — Making the data visible
 
-- **Make `methodology_varies_by_country` machine-readable.** The flag exists on
-  every indicator and three declare it, but it is read in exactly one place —
-  `assess_comparability` — and reaches a client only as free text inside
-  `comparability_notes`. It appears nowhere in the indicator schema, so a client
-  fetching indicator metadata cannot discover it at all. A consumer that reads
-  `comparable: true` and not the prose is misled about precisely the three
-  series whose own descriptions say levels are not comparable. `/compare` should
-  carry a structured field beside the boolean, and the indicator schema should
-  expose the flag. Deliberately *not* solved by flipping `comparable`, which
-  turns on unit and currency and would change meaning for every existing caller
-  — see decision D6 in the interest-rates design.
+- ~~**Make `methodology_varies_by_country` machine-readable.**~~ ✅ **done** —
+  the flag existed on every indicator and three declared it, but it was read
+  in exactly one place — `assess_comparability` — and reached a client only as
+  free text inside `comparability_notes`, nowhere in the indicator schema
+  itself. `IndicatorRead` now carries the flag directly, alongside
+  `currency_convertible` (the other registry flag a client could not
+  discover), and `/compare` carries a structured `levels_comparable` beside
+  `comparable` rather than instead of it — `comparable` keeps turning on unit
+  and currency, so no existing caller changes meaning. Flipping it was
+  rejected in decision D6 of the interest-rates design for that reason.
 - **Web dashboard.** Read-only, server-rendered or a small SPA over the existing
   API. Time series, country comparison, source and freshness transparency.
-  Every chart links back to the source URL for the underlying figure.
-- **Data catalog browser** — what REIM holds, how fresh it is, what is disabled
-  and why.
+  Every chart links back to the source URL for the underlying figure. The
+  charting approach is still an open decision.
+- ~~**Data catalog browser**~~ ✅ **done** — REIM's **first web page**: what
+  REIM holds, how fresh it is, and what is disabled and why, server-rendered
+  beside the API rather than as a separate application. All 23 sources, their
+  organization, frequency, indicators and licence; the three publishers whose
+  terms forbid redistribution marked as such; freshness per source from the
+  same pipeline-run history `/api/v1/pipelines` exposes; and an explicit "no
+  source is disabled" rather than a silently empty section, since nothing is
+  disabled today. Views call services and repositories directly, never the
+  application's own API — a rule now pinned by a guard test, since nothing
+  else would have caught a later page getting that wrong. The one-stylesheet,
+  Jinja2-templates, no-build skeleton this introduced is what the dashboard
+  and observability pages below reuse.
 - **Pipeline observability page** — run history, quality trends, staleness.
 
 ## v0.5.0 — Operations
