@@ -21,9 +21,10 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from apps.api.dependencies import SessionDep
-from reim.database.session import check_database_connection
 from reim.domain.sources.catalog import SourceEntry, get_catalog
 from reim.schemas.pipelines import PipelineSummary
 from reim.services.status import build_pipeline_summaries
@@ -68,24 +69,49 @@ templates.env.filters["freshness"] = _format_freshness
 router = APIRouter(tags=["web"], include_in_schema=False)
 
 
+def load_pipeline_summaries(session: Session) -> tuple[bool, dict[str, PipelineSummary]]:
+    """Return freshness data keyed by source, and whether the database answered.
+
+    There is no separate connectivity check beforehand: a pre-check reachable
+    at time T tells nothing about a query issued at T+1ms, and would add a
+    second connection attempt to every request on top of the one ``session``
+    already opens on first use. So this calls ``build_pipeline_summaries``
+    directly and treats its failure as the answer, which also means there is
+    exactly one place — and one moment — where "the database is unreachable"
+    is decided. ``SQLAlchemyError`` is what a lost connection or a failed
+    query surfaces as (a ``psycopg`` connection failure arrives wrapped as
+    ``sqlalchemy.exc.OperationalError``, a subclass of it); anything else is a
+    real bug and is left to propagate.
+
+    A view with a third data source alongside pipeline summaries calls this
+    once for its degradation and keeps its own dict for the other source,
+    rather than growing a second copy of this try/except.
+    """
+    try:
+        summaries = build_pipeline_summaries(session)
+    except SQLAlchemyError:
+        return False, {}
+    return True, {summary.source_key: summary for summary in summaries}
+
+
 @router.get("/", response_class=HTMLResponse)
 def catalog(request: Request, session: SessionDep) -> HTMLResponse:
     """The catalog browser: what REIM holds, how fresh it is, what is disabled.
 
     The catalog itself — name, organization, frequency, indicators, licence —
     comes entirely from ``get_catalog()``, reading ``sources/catalog.yml``,
-    and needs no database. Only the freshness data
-    (``PipelineSummary``, from ``build_pipeline_summaries``) needs a live
-    session, so it is attached per row only once the database answers, the
-    same guard ``/ready`` uses. When it does not, the full catalog still
+    and needs no database. Only the freshness data (``PipelineSummary``, from
+    ``build_pipeline_summaries``) needs a live session, so
+    ``load_pipeline_summaries`` attaches it per row only once the database
+    answers, discovered by trying rather than by a separate check beforehand
+    (see its docstring for why). When it does not, the full catalog still
     renders — all rows, every column the catalog itself supplies — and the
-    template says so plainly, as the table's caption sitting directly above
-    the freshness columns (Last success, Last run status, Records), rather
-    than rendering nothing: an empty table would be indistinguishable from a
-    broken page (decision D5 makes the same call for disabled sources). A row
-    whose summary is ``None`` renders those columns as "—", not "Never run":
-    the database being unreachable is a different state from a source that
-    has genuinely never succeeded.
+    template says so plainly, as a status notice sitting directly above the
+    table, rather than rendering nothing: an empty table would be
+    indistinguishable from a broken page (decision D5 makes the same call for
+    disabled sources). A row whose summary is ``None`` renders those columns
+    as "—", not "Never run": the database being unreachable is a different
+    state from a source that has genuinely never succeeded.
 
     A second block, below the table, lists what is disabled and why. The
     catalog entry is the authority for ``enabled``/``disabled_reason`` — not
@@ -97,10 +123,7 @@ def catalog(request: Request, session: SessionDep) -> HTMLResponse:
     section reads as a failed render, not as a fact about the catalog.
     """
     entries = sorted(get_catalog().sources, key=lambda entry: (entry.organization, entry.key))
-    database_available = check_database_connection()
-    summaries: dict[str, PipelineSummary] = {}
-    if database_available:
-        summaries = {summary.source_key: summary for summary in build_pipeline_summaries(session)}
+    database_available, summaries = load_pipeline_summaries(session)
     rows: list[tuple[PipelineSummary | None, SourceEntry]] = [
         (summaries.get(entry.key), entry) for entry in entries
     ]

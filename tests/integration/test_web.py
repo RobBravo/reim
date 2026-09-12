@@ -42,6 +42,7 @@ from collections.abc import Iterator
 import pytest
 import respx
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from apps.api.dependencies import get_db
@@ -83,8 +84,22 @@ def test_the_stylesheet_is_served() -> None:
 def test_the_catalog_lists_every_source_when_the_database_is_down(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The catalog is the page's spine; only freshness needs the database."""
-    monkeypatch.setattr("apps.web.routes.check_database_connection", lambda: False)
+    """The catalog is the page's spine; only freshness needs the database.
+
+    There is no separate connectivity check to patch any more (finding 3):
+    the route discovers the database is gone by trying to use it, inside
+    ``load_pipeline_summaries``. So this pins the branch the same way a real
+    outage would trigger it — the query itself failing — by making
+    ``build_pipeline_summaries`` raise the exception a lost connection
+    surfaces as.
+    """
+
+    def _raise_as_if_the_database_were_down(*args: object, **kwargs: object) -> None:
+        raise SQLAlchemyError("database is down")
+
+    monkeypatch.setattr(
+        "apps.web.routes.build_pipeline_summaries", _raise_as_if_the_database_were_down
+    )
     client = TestClient(create_app())
 
     body = client.get("/").text
