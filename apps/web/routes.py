@@ -334,7 +334,19 @@ class SeriesPageData:
     levels_comparable: bool
     notes: list[str]
     total_periods: int
+    #: The overlaid case: one shared axis, filled only when ``comparable`` and
+    #: ``levels_comparable`` both hold and no country is ``undrawable``.
     chart: Chart | None
+    #: The small-multiple case: one independently-scaled panel per drawable
+    #: country. Filled instead of ``chart`` whenever the countries may not
+    #: honestly share one axis. A panel is itself ``None`` when its country
+    #: has no plottable values, the same case ``build_chart`` already reports
+    #: that way for the overlay.
+    panels: list[tuple[CountryDefinition, Chart | None]]
+    #: Countries excluded from both ``chart`` and ``panels`` because their own
+    #: series carries more than one unit — a unit switch within one country's
+    #: values, which no single axis, shared or its own, can honestly draw.
+    undrawable: list[tuple[CountryDefinition, tuple[str, ...]]]
 
 
 def load_series_page(
@@ -381,10 +393,31 @@ def load_series_page(
     comparable, notes = assess_comparability(summaries, definition)
     levels_ok = levels_comparable(definition)
     rows = pivot_cells(cells, [country.iso3 for country in countries])
-    # The overlaid chart only makes sense when levels read across countries;
-    # Task 4's small multiples own every other case, including "no plottable
-    # values", which ``build_chart`` also reports as ``None``.
-    chart = build_chart(rows, [c.iso3 for c in countries]) if comparable and levels_ok else None
+
+    # A country whose own series crosses a unit change (spec D4) cannot be
+    # rescued by any axis, shared or its own, so it is set aside before the
+    # comparable/levels_comparable decision even runs on the rest.
+    summaries_by_iso3 = {summary.country_iso3: summary for summary in summaries}
+    undrawable: list[tuple[CountryDefinition, tuple[str, ...]]] = []
+    drawable_countries: list[CountryDefinition] = []
+    for country in countries:
+        summary = summaries_by_iso3.get(country.iso3)
+        if summary is not None and len(summary.units) > 1:
+            undrawable.append((country, summary.units))
+        else:
+            drawable_countries.append(country)
+
+    # Overlay only when levels read across countries and every remaining
+    # country can honestly be drawn at all; small multiples own every other
+    # case, including "no plottable values", which ``build_chart`` already
+    # reports as ``None``.
+    chart: Chart | None = None
+    panels: list[tuple[CountryDefinition, Chart | None]] = []
+    if comparable and levels_ok and not undrawable:
+        chart = build_chart(rows, [c.iso3 for c in drawable_countries])
+    else:
+        panels = [(country, build_chart(rows, [country.iso3])) for country in drawable_countries]
+
     return SeriesPageData(
         indicator=indicator,
         countries=countries,
@@ -395,6 +428,8 @@ def load_series_page(
         notes=notes,
         total_periods=total_periods,
         chart=chart,
+        panels=panels,
+        undrawable=undrawable,
     )
 
 

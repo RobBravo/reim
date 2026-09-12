@@ -301,3 +301,80 @@ def test_the_chart_says_what_it_is_for_a_screen_reader(
     assert 'role="img"' in body
     assert "<title>" in body
     assert "<desc>" in body
+
+
+@requires_db
+def test_incomparable_levels_are_never_put_on_one_axis(
+    client: TestClient, seeded_session: Session
+) -> None:
+    """CEPAL's interest rates measure a different instrument in each country.
+
+    One axis would tell the reader that one country sits above another when
+    what differs is what is being measured.
+    """
+    for iso3, value in (("PAN", "7.5"), ("GTM", "12.0")):
+        _add_observation(
+            seeded_session,
+            iso3=iso3,
+            code="lending_rate_nominal_monthly",
+            year=2024,
+            value=value,
+        )
+
+    body = client.get("/series?indicator=lending_rate_nominal_monthly&country=PAN&country=GTM").text
+
+    assert body.count("<svg") == 2, "levels are not comparable; one axis is wrong"
+    assert "definition from each country" in body.lower() or "methodolog" in body.lower()
+
+
+@requires_db
+def test_a_comparable_indicator_stays_on_one_axis(
+    client: TestClient, seeded_session: Session
+) -> None:
+    """The other half of the rule: don't split what may honestly be compared."""
+    for iso3, value in (("NIC", "5.5"), ("GTM", "4.0")):
+        _add_observation(
+            seeded_session, iso3=iso3, code="cpi_index_monthly", year=2020, value=value
+        )
+
+    body = client.get("/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
+
+    assert body.count("<svg") == 1
+
+
+@requires_db
+def test_a_country_that_changes_unit_is_named_but_not_charted(
+    client: TestClient, seeded_session: Session
+) -> None:
+    """Spec D4: a country's own axis cannot rescue a line crossing a unit switch.
+
+    NIC reports one unit throughout, GTM switches unit between periods, so
+    GTM's summary carries two entries in ``units``. GTM's figures stay in the
+    table; only NIC gets a panel.
+    """
+    _add_observation(
+        seeded_session, iso3="NIC", code="cpi_index_monthly", year=2020, value="5.5", unit="index"
+    )
+    _add_observation(
+        seeded_session, iso3="GTM", code="cpi_index_monthly", year=2020, value="4.0", unit="index"
+    )
+    _add_observation(
+        seeded_session,
+        iso3="GTM",
+        code="cpi_index_monthly",
+        year=2021,
+        value="4.5",
+        unit="percent change",
+    )
+
+    body = client.get("/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
+
+    # "index, percent change" and "more than one unit" are novel phrases this
+    # state introduces; neither is a bare indicator code or country name that
+    # the page would render regardless of this behaviour.
+    assert "more than one unit" in body.lower()
+    assert "index, percent change" in body
+    assert "Guatemala" in body
+    # Two countries hold data (NIC and GTM); GTM is undrawable, so one fewer
+    # <svg> than countries-with-data is drawn.
+    assert body.count("<svg") == 1

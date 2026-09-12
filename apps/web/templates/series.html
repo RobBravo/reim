@@ -2,6 +2,94 @@
 
 {% block title %}Series · REIM{% endblock %}
 
+{% macro render_chart_svg(chart, countries, indicator, period_range, rows, heading=none) %}
+{#
+  One drawn panel: an SVG with its own title/desc and legend. Shared by the
+  overlaid case (``countries`` is every requested country, one shared axis)
+  and each small-multiple panel (``countries`` is a single-element list, its
+  own axis) — the geometry differs by which ``chart`` is passed in, not by
+  this markup.
+#}
+{% set country_names = countries | map(attribute="name") | join(", ") %}
+<figure class="series-chart-figure">
+  {% if heading %}<h3 class="series-chart-heading">{{ heading }}</h3>{% endif %}
+  <svg
+    class="series-chart"
+    role="img"
+    viewBox="0 0 {{ chart.width }} {{ chart.height }}"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    {#
+      Title and description are the accessible name and, together with the
+      table below, the accessible equivalent — they carry the indicator,
+      every country this panel is for (not only the ones with a drawn line: a
+      country that reported nothing must still be named, not silently
+      dropped) and the period range, in words rather than as markup.
+    #}
+    <title>{{ indicator.name }} — {{ country_names }}</title>
+    <desc>
+      {{ indicator.name }} ({{ indicator.unit }}) for {{ country_names }}, {{ period_range }}.
+    </desc>
+
+    {% set domain_span = chart.domain_max - chart.domain_min %}
+    {% for tick in chart.ticks %}
+    {% set tick_y = ((chart.plot_top + chart.plot_bottom) / 2) if domain_span == 0 else (chart.plot_bottom - ((tick - chart.domain_min) / domain_span) * (chart.plot_bottom - chart.plot_top)) %}
+    <line
+      x1="{{ chart.plot_left }}"
+      x2="{{ chart.plot_right }}"
+      y1="{{ tick_y }}"
+      y2="{{ tick_y }}"
+      class="chart-gridline"
+    />
+    <text
+      x="{{ chart.plot_left - 8 }}"
+      y="{{ tick_y }}"
+      class="chart-tick-label"
+      text-anchor="end"
+      dominant-baseline="middle"
+    >{{ tick }}</text>
+    {% endfor %}
+
+    {% set period_count = rows | length %}
+    {% set mid_index = (period_count - 1) // 2 %}
+    {% for index in [0, mid_index, period_count - 1] | unique %}
+    <text
+      x="{{ chart.x_positions[index] }}"
+      y="{{ chart.plot_bottom + 20 }}"
+      class="chart-axis-label"
+      text-anchor="middle"
+    >{{ rows[index].period_label }}</text>
+    {% endfor %}
+
+    {% for country in countries %}
+    {% if country.iso3 in chart.paths %}
+    <path
+      d="{{ chart.paths[country.iso3] }}"
+      fill="none"
+      stroke="{{ chart_palette[loop.index0 % (chart_palette | length)] }}"
+      stroke-width="2"
+      class="chart-line"
+    />
+    {% endif %}
+    {% endfor %}
+  </svg>
+</figure>
+
+<ul class="series-legend">
+  {% for country in countries %}
+  {% if country.iso3 in chart.paths %}
+  <li>
+    <span
+      class="legend-swatch"
+      style="background: {{ chart_palette[loop.index0 % (chart_palette | length)] }};"
+    ></span>
+    {{ country.name }}
+  </li>
+  {% endif %}
+  {% endfor %}
+</ul>
+{% endmacro %}
+
 {% block content %}
 <section class="series">
   <h2>Series</h2>
@@ -73,96 +161,69 @@
   </ul>
   {% endif %}
 
-  {% if data.chart %}
-  {#
-    The overlaid case: one shared axis, one <path> per country with values.
-    Renders only when data.comparable and data.levels_comparable — Task 4's
-    small multiples own every other selection, including one with no
-    plottable values at all (build_chart already returns None for that).
-  #}
-  {% set chart = data.chart %}
   {% set first_period = data.rows[0].period_label %}
   {% set last_period = data.rows[-1].period_label %}
   {% set period_range = first_period if first_period == last_period else first_period ~ " to " ~ last_period %}
-  {% set country_names = data.countries | map(attribute="name") | join(", ") %}
-  <figure class="series-chart-figure">
-    <svg
-      class="series-chart"
-      role="img"
-      viewBox="0 0 {{ chart.width }} {{ chart.height }}"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      {#
-        Title and description are the accessible name and, together with the
-        table below, the accessible equivalent — they carry the indicator,
-        every requested country (not only the ones with a drawn line: a
-        country that reported nothing must still be named, not silently
-        dropped) and the period range, in words rather than as markup.
-      #}
-      <title>{{ data.indicator.name }} — {{ country_names }}</title>
-      <desc>
-        {{ data.indicator.name }} ({{ data.indicator.unit }}) for {{ country_names }}, {{ period_range }}.
-      </desc>
 
-      {% set domain_span = chart.domain_max - chart.domain_min %}
-      {% for tick in chart.ticks %}
-      {% set tick_y = ((chart.plot_top + chart.plot_bottom) / 2) if domain_span == 0 else (chart.plot_bottom - ((tick - chart.domain_min) / domain_span) * (chart.plot_bottom - chart.plot_top)) %}
-      <line
-        x1="{{ chart.plot_left }}"
-        x2="{{ chart.plot_right }}"
-        y1="{{ tick_y }}"
-        y2="{{ tick_y }}"
-        class="chart-gridline"
-      />
-      <text
-        x="{{ chart.plot_left - 8 }}"
-        y="{{ tick_y }}"
-        class="chart-tick-label"
-        text-anchor="end"
-        dominant-baseline="middle"
-      >{{ tick }}</text>
-      {% endfor %}
-
-      {% set period_count = data.rows | length %}
-      {% set mid_index = (period_count - 1) // 2 %}
-      {% for index in [0, mid_index, period_count - 1] | unique %}
-      <text
-        x="{{ chart.x_positions[index] }}"
-        y="{{ chart.plot_bottom + 20 }}"
-        class="chart-axis-label"
-        text-anchor="middle"
-      >{{ data.rows[index].period_label }}</text>
-      {% endfor %}
-
-      {% for country in data.countries %}
-      {% if country.iso3 in chart.paths %}
-      <path
-        d="{{ chart.paths[country.iso3] }}"
-        fill="none"
-        stroke="{{ chart_palette[loop.index0 % (chart_palette | length)] }}"
-        stroke-width="2"
-        class="chart-line"
-      />
-      {% endif %}
-      {% endfor %}
-    </svg>
-  </figure>
-
-  <ul class="series-legend">
-    {% for country in data.countries %}
-    {% if country.iso3 in chart.paths %}
-    <li>
-      <span
-        class="legend-swatch"
-        style="background: {{ chart_palette[loop.index0 % (chart_palette | length)] }};"
-      ></span>
-      {{ country.name }}
-    </li>
+  {% if data.chart %}
+  {#
+    The overlaid case: one shared axis, one <path> per country with values.
+    Renders only when data.comparable and data.levels_comparable and nothing
+    is undrawable — every other selection gets small multiples instead.
+  #}
+  {{ render_chart_svg(data.chart, data.countries, data.indicator, period_range, data.rows) }}
+  {% elif data.panels %}
+  {#
+    The small-multiple case (decision D3): one panel per drawable country,
+    each scaled on its own values, because a shared axis here would either be
+    meaningless (unit or currency mismatch) or would misstate how the
+    countries compare (a CEPAL rate defined differently per country). Each
+    reason gets its own sentence, since a reader acts on them differently.
+  #}
+  {% if not data.levels_comparable %}
+  <p class="muted series-panels-note">
+    Each country is drawn on its own axis: the publisher's methodology
+    defines this indicator "according to the definition from each country",
+    so levels cannot be read across countries on one shared axis. Movements
+    over time still can be, panel by panel.
+  </p>
+  {% elif not data.comparable %}
+  <p class="muted series-panels-note">
+    Each country is drawn on its own axis because the countries' units or
+    currencies differ; a shared axis between them would not be misleading so
+    much as meaningless.
+  </p>
+  {% elif data.undrawable %}
+  <p class="muted series-panels-note">
+    Each remaining country is drawn on its own axis because at least one
+    selected country cannot be charted at all — see below.
+  </p>
+  {% endif %}
+  <div class="series-panels">
+    {% for panel_country, panel_chart in data.panels %}
+    {% if panel_chart %}
+    {{ render_chart_svg(panel_chart, [panel_country], data.indicator, period_range, data.rows, heading=panel_country.name) }}
     {% endif %}
     {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if data.undrawable %}
+  {#
+    Decision D4: a country whose own series crosses a unit change cannot be
+    rescued by any axis, shared or its own. Its figures stay in the table;
+    this is the sentence that says why no line is drawn for it.
+  #}
+  <ul class="series-undrawable-notes">
+    {% for undrawable_country, units in data.undrawable %}
+    <li>
+      {{ undrawable_country.name }} reports more than one unit for this
+      indicator ({{ units | join(", ") }}); a series that changes unit cannot
+      be safely drawn on any single axis, so no line is drawn for it. Its
+      figures remain in the table below.
+    </li>
+    {% endfor %}
   </ul>
-  {% else %}
-  {# Small multiples are added in Task 4. #}
   {% endif %}
 
   <div class="table-wrapper">
