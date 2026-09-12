@@ -39,17 +39,27 @@ router = APIRouter(tags=["web"], include_in_schema=False)
 def catalog(request: Request, session: SessionDep) -> HTMLResponse:
     """The catalog browser: what REIM holds, how fresh it is, what is disabled.
 
-    Checks the database before querying it, the same guard ``/ready`` uses:
-    the page must still render — header, stylesheet, empty table — when the
-    database is down, rather than 500. ``build_pipeline_summaries`` needs a
-    live connection for run history, so it only runs once the check passes.
+    The catalog itself — name, organization, frequency, indicators, licence —
+    comes entirely from ``get_catalog()``, reading ``sources/catalog.yml``,
+    and needs no database. Only the freshness data
+    (``PipelineSummary``, from ``build_pipeline_summaries``) needs a live
+    session, so it is attached per row only once the database answers, the
+    same guard ``/ready`` uses. When it does not, the full catalog still
+    renders — all rows, every column the catalog itself supplies — and the
+    template says so plainly next to the freshness columns, rather than
+    rendering nothing: an empty table would be indistinguishable from a
+    broken page (decision D5 makes the same call for disabled sources).
     """
-    rows: list[tuple[PipelineSummary, SourceEntry]] = []
-    if check_database_connection():
-        source_catalog = get_catalog()
-        rows = [
-            (summary, source_catalog.get(summary.source_key))
-            for summary in build_pipeline_summaries(session)
-        ]
-        rows.sort(key=lambda row: (row[1].organization, row[1].key))
-    return templates.TemplateResponse(request, "catalog.html", {"rows": rows})
+    entries = sorted(get_catalog().sources, key=lambda entry: (entry.organization, entry.key))
+    database_available = check_database_connection()
+    summaries: dict[str, PipelineSummary] = {}
+    if database_available:
+        summaries = {summary.source_key: summary for summary in build_pipeline_summaries(session)}
+    rows: list[tuple[PipelineSummary | None, SourceEntry]] = [
+        (summaries.get(entry.key), entry) for entry in entries
+    ]
+    return templates.TemplateResponse(
+        request,
+        "catalog.html",
+        {"rows": rows, "database_available": database_available},
+    )

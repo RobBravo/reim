@@ -1,19 +1,27 @@
 """The web catalog browser: routing/static wiring, and the catalog table.
 
-The three tests below need no database. They cover routing and static-file
-wiring only, so they run against a plain ``TestClient`` with no seeded
-session and no dependency override — the ordinary gate, not the
-database-gated integration suite.
+The four tests below need no database. They cover routing, static-file
+wiring, and the page's no-database fallback, so they run against a plain
+``TestClient`` with no seeded session and no dependency override — the
+ordinary gate, not the database-gated integration suite. The catalog itself
+(name, organization, frequency, indicators, licence) comes from
+``get_catalog()``, reading ``sources/catalog.yml``, and needs no database —
+only the freshness data does, so ``test_the_catalog_page_renders`` and its
+neighbours below genuinely exercise the "database unreachable" branch of the
+route on a bare checkout, and
+``test_the_catalog_lists_every_source_when_the_database_is_down`` pins that
+branch deterministically with a monkeypatch, independent of whether a real
+database happens to be reachable in the environment running the gate.
 
 The two API routes checked below (``/health`` and ``/metrics``) are
 deliberately the ones that touch no database: every data-bearing router
 (indicators, countries, sources, ...) requires a live session via
 ``SessionDep``, which is out of scope for this task.
 
-The catalog-table tests further down need a live session — the page calls
+The catalog-freshness tests further down need a live session — the page calls
 ``build_pipeline_summaries``, which queries the last run per source — so they
 are marked ``requires_db`` individually rather than at module scope. That
-keeps the three tests above running on a bare checkout with no database.
+keeps the four tests above running on a bare checkout with no database.
 """
 
 from __future__ import annotations
@@ -57,6 +65,21 @@ def test_the_stylesheet_is_served() -> None:
 
     assert response.status_code == 200
     assert "css" in response.headers["content-type"]
+
+
+def test_the_catalog_lists_every_source_when_the_database_is_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The catalog is the page's spine; only freshness needs the database."""
+    monkeypatch.setattr("apps.web.routes.check_database_connection", lambda: False)
+    client = TestClient(create_app())
+
+    body = client.get("/").text
+
+    catalog = get_catalog()
+    for entry in catalog.sources:
+        assert entry.key in body, f"{entry.key} is missing from the page"
+    assert "freshness is unavailable" in body.lower()
 
 
 @pytest.fixture

@@ -5,7 +5,9 @@
 {% block content %}
 <section class="catalog">
   <h2>Catalog</h2>
-  {% if rows %}
+  {% if not database_available %}
+  <p class="catalog-notice">Freshness is unavailable: the database could not be reached.</p>
+  {% endif %}
   <table class="catalog-table">
     <thead>
       <tr>
@@ -30,8 +32,5 @@
       {% endfor %}
     </tbody>
   </table>
-  {% else %}
-  <p class="catalog-unavailable">The database is unavailable, so the catalog cannot be shown right now.</p>
-  {% endif %}
 </section>
 {% endblock %}
