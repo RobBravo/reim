@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from apps.api.errors import register_exception_handlers
 from apps.api.routers import (
@@ -23,6 +24,7 @@ from apps.api.routers import (
     sources,
     system,
 )
+from apps.web import routes as web_routes
 from reim import __version__
 from reim.core.config import get_settings
 from reim.core.exceptions import REIMError
@@ -132,6 +134,10 @@ def create_app() -> FastAPI:
     app.include_router(observations.router)
     app.include_router(comparison.router)
     app.include_router(pipelines.router)
+
+    # Mounted last so no page path can shadow an API route.
+    app.include_router(web_routes.router)
+    app.mount("/static", StaticFiles(directory=str(web_routes.STATIC_DIRECTORY)), name="static")
     return app
 
 
