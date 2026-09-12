@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 import yaml
 from pydantic import ValidationError
 
-from reim.core.constants import Frequency, IndicatorCategory, TlsProfile, ValueType
+from reim.core.constants import (
+    Frequency,
+    IndicatorCategory,
+    SeasonalAdjustment,
+    TlsProfile,
+    ValueType,
+)
 from reim.core.exceptions import CatalogError, CatalogValidationError
 from reim.domain.countries.registry import COUNTRIES, COUNTRIES_BY_ISO2, COUNTRIES_BY_ISO3
 from reim.domain.indicators.registry import INDICATORS, INDICATORS_BY_CODE
@@ -688,3 +697,57 @@ def test_every_balance_of_payments_indicator_has_a_quality_rule(
         # nothing, which is what the first live run found.
         assert rule.min_observations == 750
         assert rule.min_observations < 775
+
+
+def _indicator_row(code: str) -> SimpleNamespace:
+    """A stand-in for a database Indicator row, which IndicatorRead reads by attribute."""
+    now = datetime(2026, 9, 11, tzinfo=UTC)
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        code=code,
+        name=code,
+        description=None,
+        category=IndicatorCategory.FINANCIAL,
+        frequency=Frequency.MONTHLY,
+        unit="percent per annum",
+        value_type=ValueType.PERCENT,
+        seasonal_adjustment=SeasonalAdjustment.NOT_ADJUSTED,
+        methodology_url=None,
+        is_active=True,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def test_indicator_read_carries_the_registry_flags() -> None:
+    """Two flags governed the API's behaviour while being invisible in it.
+
+    `currency_convertible` decides whether /compare?convert_to=USD works, and
+    `methodology_varies_by_country` whether levels may be read against each
+    other — yet neither reached a client fetching indicator metadata, so the
+    only way to discover the first was to send a request and read the 400.
+
+    Neither is a database column: the registry is the authority and the tables
+    are a projection, so `IndicatorRead` reads them from the registry by code.
+    """
+    from reim.schemas.reference import IndicatorRead
+
+    rates = IndicatorRead.model_validate(_indicator_row("lending_rate_nominal_monthly"))
+    assert rates.methodology_varies_by_country is True
+    assert rates.currency_convertible is False
+
+    # The monetary aggregates are the only convertible family: they are the
+    # only one published in local currency, so they are the only one a
+    # conversion has anything to do.
+    money = IndicatorRead.model_validate(_indicator_row("money_m1_monthly"))
+    assert money.methodology_varies_by_country is False
+    assert money.currency_convertible is True
+
+
+def test_indicator_read_defaults_both_flags_for_an_unregistered_code() -> None:
+    """A row in the database that the registry does not know is not a claim."""
+    from reim.schemas.reference import IndicatorRead
+
+    unknown = IndicatorRead.model_validate(_indicator_row("not_in_the_registry"))
+    assert unknown.methodology_varies_by_country is False
+    assert unknown.currency_convertible is False

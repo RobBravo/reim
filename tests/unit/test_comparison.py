@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from reim.domain.indicators.registry import INDICATORS_BY_CODE
 from reim.repositories.comparison import SeriesSummary
-from reim.schemas.comparison import assess_comparability
+from reim.schemas.comparison import assess_comparability, levels_comparable
 
 
 def summary(
@@ -135,3 +135,30 @@ def test_assess_comparability_without_a_definition_is_unchanged() -> None:
         summary("GTM", units=("index",), currencies=(None,)),
     ]
     assert assess_comparability(summaries) == assess_comparability(summaries, None)
+
+
+def test_levels_comparable_is_false_when_the_publisher_varies_by_country() -> None:
+    """`comparable` answers a narrower question than a reader assumes.
+
+    It turns on unit and currency, which CEPAL's interest rates share. Their
+    levels still cannot be read against each other, because the publisher
+    measures a different instrument in each country. A client reading the
+    boolean and not the prose was misled about exactly those three series.
+    """
+    definition = INDICATORS_BY_CODE["lending_rate_nominal_monthly"]
+    assert definition.methodology_varies_by_country is True
+    assert levels_comparable(definition) is False
+
+
+def test_levels_comparable_is_true_for_an_ordinary_indicator() -> None:
+    """Nothing else in the registry declares it, so nothing else is affected."""
+    assert levels_comparable(INDICATORS_BY_CODE["cpi_index_monthly"]) is True
+
+
+def test_levels_comparable_defaults_to_true_without_a_definition() -> None:
+    """An indicator in the database but absent from the registry is not a claim.
+
+    `/compare` already tolerates that case rather than 404ing, so the structured
+    flag must not invent a restriction the registry never stated.
+    """
+    assert levels_comparable(None) is True

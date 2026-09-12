@@ -39,6 +39,7 @@ from reim.schemas.comparison import (
     ComparisonSeries,
     ConversionBlock,
     assess_comparability,
+    levels_comparable,
 )
 
 router = APIRouter(prefix="/api/v1/compare", tags=["comparison"])
@@ -196,6 +197,7 @@ def compare(
             frequency=definition.frequency,
         ),
         comparable=comparable,
+        levels_comparable=levels_comparable(registered),
         comparability_notes=notes,
         conversion=conversion,
         series=[ComparisonSeries.model_validate(s) for s in summaries],

@@ -20,6 +20,28 @@ from reim.repositories.comparison import SeriesSummary
 from reim.schemas.common import PageMeta
 
 
+def levels_comparable(definition: IndicatorDefinition | None) -> bool:
+    """Whether these series' **levels** may be read against each other.
+
+    ``comparable`` answers a narrower question than its name suggests: it turns
+    on unit and currency agreement. CEPAL's three interest rates share both and
+    are still not comparable as levels, because the publisher measures a
+    different instrument in each country — Panama's "lending rate" is the rate
+    on one-year trade credit, Belize's "policy rate" is its central bank's
+    lending rate. A client reading the boolean and not ``comparability_notes``
+    was misled about exactly those series.
+
+    This is the structured half of that caveat, so a consumer need not parse
+    prose. It does not replace ``comparable``, whose meaning stays as every
+    existing caller understands it.
+
+    An indicator absent from the registry returns ``True``: ``/compare`` serves
+    such an indicator rather than refusing it, and silence is not a claim that
+    levels diverge.
+    """
+    return definition is None or not definition.methodology_varies_by_country
+
+
 def assess_comparability(
     summaries: list[SeriesSummary],
     definition: IndicatorDefinition | None = None,
@@ -179,6 +201,16 @@ class ComparisonResponse(BaseModel):
             "False when the series differ in unit or currency. Sources differing does "
             "not make them incomparable."
         )
+    )
+    levels_comparable: bool = Field(
+        default=True,
+        description=(
+            "False when the publisher defines the indicator differently in each "
+            "country, so that levels may not be read against each other even "
+            "though the unit and currency match. Movements over time remain "
+            "comparable. Distinct from `comparable`, which turns on unit and "
+            "currency only."
+        ),
     )
     comparability_notes: list[str]
     conversion: ConversionBlock | None = Field(
