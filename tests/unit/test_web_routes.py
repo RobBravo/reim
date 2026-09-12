@@ -1,4 +1,4 @@
-"""``apps/web/routes.py``'s pure logic: the freshness formatter.
+"""``apps/web/routes.py``'s pure logic: the freshness formatter and the duration formatter.
 
 ``_format_freshness`` is the only piece of real logic the catalog view adds —
 everything else is data already validated elsewhere, handed to a template.
@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from apps.web.routes import _format_freshness
+from apps.web.routes import _format_duration, _format_freshness
 
 
 def _days_ago(days: int) -> datetime:
@@ -58,3 +58,23 @@ def test_a_future_timestamp_still_reads_today() -> None:
     value = datetime.now(UTC) + timedelta(days=5)
 
     assert _format_freshness(value).endswith("today")
+
+
+def test_a_run_with_no_duration_reads_as_a_dash() -> None:
+    """A run still in flight has no duration — a dash, never "0 ms"."""
+    assert _format_duration(None) == "—"
+
+
+@pytest.mark.parametrize(
+    ("milliseconds", "expected"),
+    [
+        (0, "0 ms"),
+        (999, "999 ms"),
+        (1000, "1.0 s"),
+        (59_999, "60.0 s"),
+        (60_000, "1m 0s"),
+        (3_723_000, "62m 3s"),
+    ],
+)
+def test_every_duration_branch_and_its_boundary(milliseconds: int, expected: str) -> None:
+    assert _format_duration(milliseconds) == expected

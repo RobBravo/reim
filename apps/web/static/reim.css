@@ -118,7 +118,7 @@ tbody tr:hover {
   color: var(--text-muted);
 }
 
-.catalog-table-wrapper {
+.table-wrapper {
   overflow-x: auto;
 }
 
@@ -126,6 +126,13 @@ tbody tr:hover {
   color: var(--text-muted);
   font-style: italic;
   margin: 0 0 0.75rem;
+}
+
+.notice {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid #b23c17;
+  background: #fdf2ee;
 }
 
 /* A licence outside the catalog's known-open allowlist (see catalog.html) —

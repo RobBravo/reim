@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Runs · REIM{% endblock %}
+
+{% block content %}
+<section class="runs">
+  <h2>Pipeline runs</h2>
+
+  {% if data is none %}
+  {#
+    The whole page is database-backed, unlike the catalog, which renders from
+    sources/catalog.yml with or without one. So there is no table to degrade:
+    the notice replaces it rather than sitting above it.
+  #}
+  <p class="notice" role="status">The run history cannot be read: the database is not responding.</p>
+  {% elif not data.runs %}
+  {#
+    Distinct from the notice above and from "no failures" below. A fresh
+    install lands here, and it means "start the scheduler", not "something
+    broke" — the reader cannot act correctly on a sentence that covers both.
+  #}
+  <p class="muted">No pipeline has run yet.</p>
+  {% else %}
+  <div class="table-wrapper">
+    <table class="runs-table">
+      <caption>The {{ rows | length }} most recent runs (of at most {{ history_limit }})</caption>
+      <thead>
+        <tr>
+          <th scope="col">Started</th>
+          <th scope="col">Source</th>
+          <th scope="col">Status</th>
+          <th scope="col">Duration</th>
+          <th scope="col">Records (inserted / updated / rejected)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run, source_name in rows %}
+        <tr>
+          <td><a href="/runs/{{ run.id }}">{{ run.started_at | freshness }}</a></td>
+          <td>{{ source_name }}</td>
+          <td class="status-{{ run.status.value }}">{{ run.status.value }}</td>
+          <td>{{ run.duration_ms | duration }}</td>
+          <td>{{ run.records_inserted }} / {{ run.records_updated }} / {{ run.records_rejected }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted">
+    Showing the most recent {{ history_limit }} runs. Older runs are available from
+    <code>/api/v1/pipelines/runs</code>, which is paginated.
+  </p>
+  {# The failed-check trends block is added in Task 3, below this paragraph. #}
+  {% endif %}
+</section>
+{% endblock %}
