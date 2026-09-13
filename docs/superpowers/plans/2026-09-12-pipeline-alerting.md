@@ -851,7 +851,7 @@ alert_repeat_hours: int = Field(default=24, ge=1, le=720)
 alert_stuck_run_hours: int = Field(default=6, ge=1, le=168)
 ```
 
-Import `CheckSeverity` from `reim.core.constants`. If that creates a circular import, define the floor as a `str` validated against `CheckSeverity` values instead, and say so in your report.
+Import `CheckSeverity` from `reim.core.constants`. There is no circular-import risk: `constants.py` imports only `__future__` and `enum`, verified before this plan was written.
 
 - [ ] **Step 4: Write the rules module**
 
