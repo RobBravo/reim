@@ -12,9 +12,12 @@ and a Pushgateway is infrastructure this project does not take on.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
+from prometheus_client import CollectorRegistry, generate_latest
+from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily, Metric
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -226,3 +229,146 @@ def build_metrics_snapshot(
         pipelines=tuple(pipelines),
         failed_checks=tuple(failed_checks),
     )
+
+
+class _SnapshotCollector:
+    """Yields one snapshot's metric families. Registered, scraped, discarded."""
+
+    def __init__(self, snapshot: MetricsSnapshot) -> None:
+        self._snapshot = snapshot
+
+    def collect(self) -> Iterator[Metric]:
+        yield GaugeMetricFamily(
+            "reim_database_up",
+            "1 when the metrics queries reached the database, 0 when they failed.",
+            value=1.0 if self._snapshot.database_up else 0.0,
+        )
+        yield from _pipeline_families(self._snapshot.pipelines)
+        yield _failed_check_family(self._snapshot.failed_checks)
+
+
+def _pipeline_families(pipelines: tuple[PipelineMetrics, ...]) -> Iterator[Metric]:
+    """Build one family per metric, adding a series per pipeline.
+
+    Counter families are constructed with their base name: the client appends
+    ``_total``, so ``reim_pipeline_runs`` renders ``reim_pipeline_runs_total``
+    and passing the suffix here would render it twice.
+    """
+    enabled = GaugeMetricFamily(
+        "reim_pipeline_enabled",
+        "1 when the pipeline is enabled in the source catalog, 0 when disabled.",
+        labels=["pipeline_key"],
+    )
+    observations = GaugeMetricFamily(
+        "reim_pipeline_observations",
+        "Observations currently stored for this pipeline's source.",
+        labels=["pipeline_key"],
+    )
+    age = GaugeMetricFamily(
+        "reim_pipeline_data_age_days",
+        "Days between today and the newest period this pipeline holds data for.",
+        labels=["pipeline_key"],
+    )
+    threshold = GaugeMetricFamily(
+        "reim_pipeline_freshness_max_age_days",
+        "Configured maximum tolerated data age, from sources/quality_rules.yml.",
+        labels=["pipeline_key"],
+    )
+    last_run = GaugeMetricFamily(
+        "reim_pipeline_last_run_timestamp_seconds",
+        "Start of the most recent run, in Unix seconds.",
+        labels=["pipeline_key"],
+    )
+    last_success = GaugeMetricFamily(
+        "reim_pipeline_last_success_timestamp_seconds",
+        "Start of the most recent run that did not fail, in Unix seconds.",
+        labels=["pipeline_key"],
+    )
+    last_duration = GaugeMetricFamily(
+        "reim_pipeline_last_run_duration_seconds",
+        "How long the most recent run took.",
+        labels=["pipeline_key"],
+    )
+    last_records = GaugeMetricFamily(
+        "reim_pipeline_last_run_records",
+        "Records the most recent run reported, by outcome.",
+        labels=["pipeline_key", "outcome"],
+    )
+    runs = CounterMetricFamily(
+        "reim_pipeline_runs",
+        "Runs recorded, by terminal status.",
+        labels=["pipeline_key", "status"],
+    )
+    records = CounterMetricFamily(
+        "reim_pipeline_records",
+        "Records reported across every run, by outcome.",
+        labels=["pipeline_key", "outcome"],
+    )
+    duration = CounterMetricFamily(
+        "reim_pipeline_run_duration_seconds",
+        "Time spent running this pipeline across every run.",
+        labels=["pipeline_key"],
+    )
+
+    for metrics in pipelines:
+        key = [metrics.pipeline_key]
+        enabled.add_metric(key, 1.0 if metrics.enabled else 0.0)
+        observations.add_metric(key, metrics.observations)
+        if metrics.data_age_days is not None:
+            age.add_metric(key, metrics.data_age_days)
+        if metrics.freshness_max_age_days is not None:
+            threshold.add_metric(key, metrics.freshness_max_age_days)
+        if metrics.last_run_at is not None:
+            last_run.add_metric(key, metrics.last_run_at.timestamp())
+        if metrics.last_success_at is not None:
+            last_success.add_metric(key, metrics.last_success_at.timestamp())
+        if metrics.last_run_duration_ms is not None:
+            last_duration.add_metric(key, metrics.last_run_duration_ms / 1000)
+        if metrics.last_run_records is not None:
+            for outcome, count in metrics.last_run_records.items():
+                last_records.add_metric([metrics.pipeline_key, outcome], count)
+        for status, count in metrics.runs_by_status.items():
+            runs.add_metric([metrics.pipeline_key, status], count)
+        for outcome, count in metrics.records_total.items():
+            records.add_metric([metrics.pipeline_key, outcome], count)
+        duration.add_metric(key, metrics.duration_ms_total / 1000)
+
+    yield enabled
+    yield observations
+    yield age
+    yield threshold
+    yield last_run
+    yield last_success
+    yield last_duration
+    yield last_records
+    yield runs
+    yield records
+    yield duration
+
+
+def _failed_check_family(counts: tuple[FailedCheckCount, ...]) -> Metric:
+    """Build the failed-check counter, one series per pipeline and check name."""
+    family = CounterMetricFamily(
+        "reim_quality_checks_failed",
+        "Quality checks recorded as failed, by pipeline and check name.",
+        labels=["pipeline_key", "check_name"],
+    )
+    for count in counts:
+        family.add_metric([count.pipeline_key, count.check_name], count.failures)
+    return family
+
+
+def render_snapshot(snapshot: MetricsSnapshot) -> bytes:
+    """Render a snapshot as Prometheus text exposition.
+
+    Pure: snapshot in, bytes out, no session, no clock, no settings — which is
+    why every naming and absent-series rule is tested against this function
+    rather than inferred from a scraped endpoint.
+
+    A fresh registry per call, rather than module-level metric objects, so a
+    label set that stops existing — a source dropped from the catalog — stops
+    being exported instead of lingering at its last value forever.
+    """
+    registry = CollectorRegistry()
+    registry.register(_SnapshotCollector(snapshot))
+    return generate_latest(registry)
