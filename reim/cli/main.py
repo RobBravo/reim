@@ -34,6 +34,7 @@ from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.registry import ConnectorRegistry
 from reim.ingestion.runner import PipelineRunner
 from reim.repositories import pipeline_runs as run_repo
+from reim.services.alerting import AlertDeliveryError, run_alert_check
 from reim.services.seeding import seed_all
 
 EXIT_OK = 0
@@ -46,11 +47,13 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+alert_app = typer.Typer(help="Evaluate and deliver operational alerts.", no_args_is_help=True)
 catalog_app = typer.Typer(help="Inspect and validate the source catalog.", no_args_is_help=True)
 db_app = typer.Typer(help="Database maintenance commands.", no_args_is_help=True)
 pipeline_app = typer.Typer(help="List and execute ingestion pipelines.", no_args_is_help=True)
 quality_app = typer.Typer(help="Data-quality reporting.", no_args_is_help=True)
 
+app.add_typer(alert_app, name="alert")
 app.add_typer(catalog_app, name="catalog")
 app.add_typer(db_app, name="db")
 app.add_typer(pipeline_app, name="pipeline")
@@ -306,6 +309,43 @@ def quality_report(
             CheckSeverity.ERROR.value, 0
         )
     raise typer.Exit(EXIT_FAILURE if blocking else EXIT_OK)
+
+
+# --------------------------------------------------------------------------
+# alert
+# --------------------------------------------------------------------------
+@alert_app.command("check")
+def alert_check(
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Evaluate and print without delivering or recording."),
+    ] = False,
+) -> None:
+    """Evaluate alert conditions and deliver what changed. Exits 1 if anything is firing.
+
+    Intended for cron, beside the ingestion jobs. The exit code reflects whether
+    anything is wrong, not whether a notification was sent, so a cron job
+    watching the status keeps seeing a failure while an alert is merely being
+    suppressed.
+    """
+    with session_scope() as session:
+        try:
+            result = asyncio.run(run_alert_check(session, dry_run=dry_run))
+        except AlertDeliveryError as exc:
+            err(f"✗ {exc.message}", err=True)
+            raise typer.Exit(EXIT_FAILURE) from exc
+
+    for alert in result.firing:
+        typer.echo(f"{alert.severity.value:8} {alert.condition.value:12} {alert.summary}")
+    for row in result.resolved:
+        typer.echo(f"{'resolved':8} {row.condition:12} {row.pipeline_key}")
+
+    if not result.firing and not result.resolved:
+        typer.echo("No alert conditions are firing.")
+        raise typer.Exit(EXIT_OK)
+    if result.firing:
+        raise typer.Exit(EXIT_FAILURE)
+    raise typer.Exit(EXIT_OK)
 
 
 # --------------------------------------------------------------------------
