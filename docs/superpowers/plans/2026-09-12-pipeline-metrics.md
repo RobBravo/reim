@@ -18,7 +18,8 @@
 * **No `is_stale`, and no verdict of any kind.** Age and threshold ship as separate gauges; Prometheus does the comparison (spec D4).
 * **An absent series, never a zero, when there is no threshold and when there is no data.** `0` reads as "permanently overdue" or "perfectly fresh" (spec D7). Counters are the exception and start at zero — see Task 5, Step 1.
 * **`CounterMetricFamily`/`GaugeMetricFamily`, never `Counter`/`Gauge`.** The metric classes append a `_created` series holding the process start time, meaningless for a counter rebuilt from the database on every scrape (spec D9).
-* **A counter family is constructed with its BASE name.** `CounterMetricFamily("reim_pipeline_runs", …)` renders as `reim_pipeline_runs_total`; passing `"reim_pipeline_runs_total"` renders `reim_pipeline_runs_total_total`. Verified against 0.26.0.
+* **A counter family is constructed with its BASE name.** `CounterMetricFamily("reim_pipeline_runs", …)` renders as `reim_pipeline_runs_total` — the client appends the suffix. Measured against 0.26.0: the *family* API also strips a trailing `_total` before re-appending it, so passing the suffixed name renders identically rather than doubling; doubling is reachable only through the `Counter` **class**, which appends unconditionally. Use the base name regardless, and see Step 5 — the mutation that actually proves this decision is the family-vs-class one, not the name.
+* **Labels render in ALPHABETICAL order, not declaration order.** Measured against 0.26.0: a family declared `labels=["pipeline_key", "outcome"]` renders `{outcome="…",pipeline_key="…"}`. Any assertion matching a full rendered line must sort its labels, which is easy to get wrong when a pair like `pipeline_key`/`status` happens to coincide.
 * **Base units.** Seconds, never milliseconds. Timestamps in Unix seconds.
 * **Database availability is discovered by querying and catching `SQLAlchemyError`, never by a pre-check.** `check_database_connection()` must not appear in the new code (spec D11).
 * **A database outage renders `reim_database_up 0` at status 200**, never a 500 (spec D10).
@@ -1283,10 +1284,12 @@ def _render(**overrides: object) -> str:
 
 
 def test_the_counter_name_is_not_doubled() -> None:
-    """``CounterMetricFamily`` appends ``_total`` itself.
+    """The rendered counter name carries exactly one ``_total``.
 
-    Constructing it with ``reim_pipeline_runs_total`` renders
-    ``reim_pipeline_runs_total_total``, which no alert rule would ever match.
+    ``CounterMetricFamily`` strips a trailing ``_total`` before re-appending it,
+    so this cannot fail while the family API is used — it pins the convention
+    and would catch a switch to the ``Counter`` class, which appends the suffix
+    unconditionally and makes ``_total_total`` reachable.
     """
     text = _render()
 
@@ -1350,7 +1353,7 @@ def test_a_pipeline_that_never_ran_omits_last_run_series_but_keeps_counters_at_z
     assert "reim_pipeline_last_run_duration_seconds{" not in text
     assert "reim_pipeline_last_run_records{" not in text
     assert "reim_pipeline_runs_total{" not in text
-    assert 'reim_pipeline_records_total{pipeline_key="bcn_fx",outcome="inserted"} 0.0' in text
+    assert 'reim_pipeline_records_total{outcome="inserted",pipeline_key="bcn_fx"} 0.0' in text
 
 
 def test_every_record_outcome_is_labelled_separately() -> None:
@@ -1386,8 +1389,8 @@ def test_failed_checks_are_labelled_by_pipeline_and_name() -> None:
 
     text = render_snapshot(snapshot).decode()
 
-    assert 'reim_quality_checks_failed_total{pipeline_key="a",check_name="freshness"} 3.0' in text
-    assert 'reim_quality_checks_failed_total{pipeline_key="b",check_name="freshness"} 1.0' in text
+    assert 'reim_quality_checks_failed_total{check_name="freshness",pipeline_key="a"} 3.0' in text
+    assert 'reim_quality_checks_failed_total{check_name="freshness",pipeline_key="b"} 1.0' in text
 
 
 def test_a_down_snapshot_reports_the_outage_and_no_pipeline_series() -> None:
@@ -1583,9 +1586,11 @@ def render_snapshot(snapshot: MetricsSnapshot) -> bytes:
 
 Expected: 13 passed. If `mypy` objects to `registry.register(_SnapshotCollector(...))`, the collector needs to satisfy `prometheus_client.registry.Collector` — it does structurally, via `collect()`; add an explicit base class only if mypy demands it.
 
-- [ ] **Step 5: Prove the doubled-name test has teeth**
+- [ ] **Step 5: Prove the family-over-class decision has teeth**
 
-Temporarily rename the `runs` family to `"reim_pipeline_runs_total"`, run the tests, and confirm `test_the_counter_name_is_not_doubled` fails. Restore it.
+Renaming the `runs` family to `"reim_pipeline_runs_total"` does **not** work as a mutation: `CounterMetricFamily` strips a trailing `_total` before re-appending it, so the rendered name is unchanged and `test_the_counter_name_is_not_doubled` cannot fail that way. Doubling is reachable only through the `Counter` class.
+
+Mutate the decision that is actually load-bearing instead. Temporarily swap the `runs` counter family for a `prometheus_client.Counter` registered on the same registry, run the tests, and confirm `test_no_created_series_is_emitted` **fails** because a `_created` series carrying the process start time appears. Restore the family. If that mutation does not fail, stop and report it rather than working around it.
 
 - [ ] **Step 6: Run the whole gate and commit**
 

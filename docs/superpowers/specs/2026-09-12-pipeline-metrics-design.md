@@ -266,7 +266,14 @@ empirically against 0.26.0, because three details bite here:
 * A `Counter` constructed with the name `reim_pipeline_runs_total` renders as
   `reim_pipeline_runs_total_total` — the client appends the suffix. Metric
   families are built with the **base** name; §2.2's table shows the rendered
-  name.
+  name. `CounterMetricFamily` is more forgiving — it strips a trailing `_total`
+  before re-appending, so the doubling is reachable only through the class — but
+  the base name is what the rendered-name table means either way.
+* Labels render in **alphabetical** order, not declaration order: a family
+  declared `labels=["pipeline_key", "outcome"]` renders
+  `{outcome="…",pipeline_key="…"}`. Only tests care, and they care a lot: a
+  label pair like `pipeline_key`/`status`, where the two orders coincide, will
+  not warn you that the rule exists.
 * `Counter` also emits a `_created` gauge holding the process start time, which
   is meaningless for a counter rebuilt from the database on every scrape and
   would report "created just now" each time. `CounterMetricFamily` emits no
