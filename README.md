@@ -354,6 +354,7 @@ The payload is JSON:
     {
       "condition": "stale",
       "details": {"data_age_days": 9, "freshness_max_age_days": 7},
+      "first_notified_at": "2026-09-11T14:00:00+00:00",
       "pipeline_key": "worldbank_ni_cpi_inflation",
       "severity": "warning",
       "summary": "worldbank_ni_cpi_inflation has no data newer than 9 days, past its 7-day threshold."
@@ -363,6 +364,7 @@ The payload is JSON:
   "resolved": [
     {
       "condition": "failed_run",
+      "details": {"last_run_at": "2026-09-12T10:29:00+00:00"},
       "first_notified_at": "2026-09-12T10:30:00+00:00",
       "pipeline_key": "worldbank_ni_remittances",
       "summary": "worldbank_ni_remittances no longer reports failed_run."

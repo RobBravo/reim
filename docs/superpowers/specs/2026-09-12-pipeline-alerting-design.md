@@ -330,8 +330,13 @@ next person's branch rather than this one.
   keep matching.
 * **Escalation, on-call schedules, acknowledgements.** Paging concerns, and they
   belong to whatever receives the webhook.
-* **Authenticating the webhook.** An operator-controlled URL may carry a token
-  in its query string, which is how most receivers work. REIM adds no signing
+* **Authenticating the webhook.** An operator-controlled URL carries its own
+  secret, and where that secret sits varies: Slack and Discord put it in the
+  **path** (`hooks.slack.com/services/T…/B…/token`), others use a query
+  parameter. This sentence originally said "in its query string, which is how
+  most receivers work", and that half-truth is what produced a redaction
+  helper which stripped the query and printed a Slack token in full. Delivery
+  errors therefore name only the scheme, host and port. REIM adds no signing
   header in this increment.
 * **An alert history API or web page.** The table records it and `psql` reads
   it; a surface for that is worth building only once someone wants it.

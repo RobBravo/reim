@@ -46,20 +46,28 @@ class AlertDeliveryError(REIMError):
 
 
 def _redact_url(url: str) -> str:
-    """Return ``url`` with any userinfo and query string removed.
+    """Return only the scheme, host and port of ``url``, marking any path.
 
-    An operator-controlled webhook URL may carry a token in its query string
-    (spec §9), and that URL is otherwise interpolated straight into an
-    exception message that a human reads — in cron mail, or on a terminal
-    that ends up in shell history. Scheme, host and path are enough to say
-    which endpoint failed without echoing the secret. Mirrors ``_safe_dsn`` in
-    ``reim/cli/main.py``, which redacts the database DSN the same way.
+    An operator-controlled webhook URL carries a secret, and this URL is
+    interpolated into an exception message a human reads — in cron mail, or on
+    a terminal whose history is kept. Everything after the host is dropped.
+
+    Keeping the path was the obvious thing and it was wrong: Slack and Discord
+    put the token *in the path*, not the query string, so
+    ``hooks.slack.com/services/T00/B00/XXXX`` would have leaked in full. There
+    is no part of a webhook URL below the host that can be assumed safe to
+    print, so none of it is. A trailing ``/…`` records that a path existed, so
+    the message cannot be misread as naming a bare host.
+
+    The host is enough to say which endpoint failed; an operator running
+    several webhooks on one host has them in their own configuration.
     """
     parts = urlsplit(url)
     netloc = parts.hostname or ""
     if parts.port is not None:
         netloc = f"{netloc}:{parts.port}"
-    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+    suffix = "/…" if parts.path.strip("/") else ""
+    return f"{urlunsplit((parts.scheme, netloc, '', '', ''))}{suffix}"
 
 
 def _first_notified_at(

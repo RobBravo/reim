@@ -18,7 +18,7 @@ import pytest
 
 from reim.core.config import Settings
 from reim.core.exceptions import ExtractionError
-from reim.services.alerting import AlertDeliveryError, _post_to_webhook
+from reim.services.alerting import AlertDeliveryError, _post_to_webhook, _redact_url
 
 URL = "https://hooks.example.org/reim"
 
@@ -111,7 +111,7 @@ async def test_a_non_2xx_answer_becomes_an_alert_delivery_error(
     with pytest.raises(AlertDeliveryError) as excinfo:
         await _post_to_webhook(URL, b"{}", _settings())
 
-    assert URL in excinfo.value.message
+    assert "hooks.example.org" in excinfo.value.message
     assert excinfo.value.details["status_code"] == 404
 
 
@@ -157,6 +157,38 @@ async def test_a_transport_failure_translation_redacts_the_url(
 
     assert "secret" not in excinfo.value.message
     assert "secret" not in json.dumps(excinfo.value.details)
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        # Slack and Discord put the token in the PATH, not the query string.
+        # Keeping the path — the obvious first implementation — leaked both in full.
+        ("https://hooks.slack.com/services/T00/B00/XXXXSECRET", "https://hooks.slack.com/…"),
+        ("https://discord.com/api/webhooks/123/SECRET", "https://discord.com/…"),
+        # The query string, which is where the spec anticipated the token.
+        ("https://hooks.example.org/reim?token=SECRET", "https://hooks.example.org/…"),
+        # Userinfo, which carries credentials directly.
+        ("https://user:SECRET@hooks.example.org/reim", "https://hooks.example.org/…"),
+        # A port identifies the endpoint and reveals nothing, so it survives.
+        ("https://hooks.example.org:8443/reim", "https://hooks.example.org:8443/…"),
+        # No path at all: no marker, because there is nothing being withheld.
+        ("https://hooks.example.org", "https://hooks.example.org"),
+        ("https://hooks.example.org/", "https://hooks.example.org"),
+    ],
+)
+def test_no_part_of_the_url_below_the_host_survives_redaction(url: str, expected: str) -> None:
+    """Everything after the host goes, wherever the secret happens to sit.
+
+    Testing only a query-string token — the spec's own example — is what let
+    the first implementation ship while still printing a Slack webhook in
+    full. There is no component below the host that can be assumed safe, so
+    the cases here are the placements real providers actually use.
+    """
+    redacted = _redact_url(url)
+
+    assert redacted == expected
+    assert "SECRET" not in redacted
 
 
 async def test_a_transport_failure_is_translated_and_the_original_is_chained(
