@@ -28,6 +28,11 @@ class Reconciliation:
     resolved: tuple[OpenAlert, ...] = ()
     #: Firing, but notified recently enough to stay quiet about.
     suppressed: tuple[Alert, ...] = ()
+    #: Previously notified, but for a pipeline that was not evaluated this run
+    #: (typically disabled) rather than one that stopped firing. Closed the
+    #: same way as ``resolved``, but never announced: nothing recovered, so
+    #: there is nothing to say.
+    withdrawn: tuple[OpenAlert, ...] = ()
 
     @property
     def has_changes(self) -> bool:
@@ -51,8 +56,9 @@ def reconcile(
     *,
     repeat_after: timedelta,
     now: datetime,
+    evaluated_keys: frozenset[str] | None = None,
 ) -> Reconciliation:
-    """Sort the evaluated alerts against the open rows into four groups.
+    """Sort the evaluated alerts against the open rows into five groups.
 
     Matching is on ``(condition, pipeline_key)``: one pipeline can hold several
     conditions at once and each is tracked on its own, so a stale pipeline does
@@ -61,6 +67,15 @@ def reconcile(
     An alert notified exactly ``repeat_after`` ago repeats rather than staying
     quiet. At a boundary the safer failure is to speak twice, not to fall
     silent.
+
+    ``evaluated_keys`` is the set of pipeline keys that were actually
+    evaluated this run. Disabled pipelines are skipped during evaluation
+    (D12), so an open row for one is not "no longer firing" — it is not being
+    looked at, and reporting it as resolved would announce a recovery that
+    never happened. When given, such a row is withdrawn instead of resolved;
+    left as ``None``, every pipeline is treated as evaluated, which keeps this
+    function's previous behaviour unchanged for any caller that does not pass
+    it.
     """
     open_by_key = {(row.condition, row.pipeline_key): row for row in open_alerts}
     seen: set[tuple[str, str]] = set()
@@ -80,11 +95,20 @@ def reconcile(
         else:
             suppressed.append(alert)
 
-    resolved = tuple(row for key, row in open_by_key.items() if key not in seen)
+    resolved: list[OpenAlert] = []
+    withdrawn: list[OpenAlert] = []
+    for key, row in open_by_key.items():
+        if key in seen:
+            continue
+        if evaluated_keys is not None and row.pipeline_key not in evaluated_keys:
+            withdrawn.append(row)
+        else:
+            resolved.append(row)
 
     return Reconciliation(
         new=tuple(new),
         repeat=tuple(repeat),
-        resolved=resolved,
+        resolved=tuple(resolved),
         suppressed=tuple(suppressed),
+        withdrawn=tuple(withdrawn),
     )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -20,6 +20,9 @@ class OpenAlert:
     pipeline_key: str
     first_notified_at: datetime
     last_notified_at: datetime
+    #: Figures sent with the last notification, so a resolution notice can
+    #: quote what the problem had been without recomputing it.
+    details: dict[str, Any] = field(default_factory=dict)
 
 
 def list_open(session: Session) -> list[OpenAlert]:
@@ -35,6 +38,7 @@ def list_open(session: Session) -> list[OpenAlert]:
             pipeline_key=row.pipeline_key,
             first_notified_at=row.first_notified_at,
             last_notified_at=row.last_notified_at,
+            details=row.details,
         )
         for row in session.scalars(statement)
     ]

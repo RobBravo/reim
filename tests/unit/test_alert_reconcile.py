@@ -138,3 +138,44 @@ def test_nothing_true_and_nothing_open_is_a_quiet_run() -> None:
 
     assert result.has_changes is False
     assert result.firing == ()
+
+
+def test_an_open_row_for_an_unevaluated_pipeline_is_withdrawn_not_resolved() -> None:
+    """D12: a disabled pipeline vanishing from the evaluated set is not a recovery."""
+    result = reconcile(
+        [],
+        [_open(pipeline_key="banguat_exchange_rate")],
+        repeat_after=DAY,
+        now=NOW,
+        evaluated_keys=frozenset({"some_other_pipeline"}),
+    )
+
+    assert result.resolved == ()
+    assert [row.pipeline_key for row in result.withdrawn] == ["banguat_exchange_rate"]
+    # Neither an announced change nor a currently-firing problem.
+    assert result.has_changes is False
+    assert result.firing == ()
+
+
+def test_an_open_row_for_an_evaluated_pipeline_that_stopped_firing_still_resolves() -> None:
+    result = reconcile(
+        [],
+        [_open(pipeline_key="bcn_fx")],
+        repeat_after=DAY,
+        now=NOW,
+        evaluated_keys=frozenset({"bcn_fx"}),
+    )
+
+    assert [row.pipeline_key for row in result.resolved] == ["bcn_fx"]
+    assert result.withdrawn == ()
+    assert result.has_changes is True
+
+
+def test_evaluated_keys_none_behaves_exactly_as_today() -> None:
+    """The default keeps every existing caller's behaviour unchanged."""
+    with_none = reconcile([], [_open()], repeat_after=DAY, now=NOW, evaluated_keys=None)
+    without_the_argument = reconcile([], [_open()], repeat_after=DAY, now=NOW)
+
+    assert with_none == without_the_argument
+    assert [row.pipeline_key for row in with_none.resolved] == ["bcn_fx"]
+    assert with_none.withdrawn == ()

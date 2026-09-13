@@ -27,6 +27,7 @@ def test_a_recorded_alert_comes_back_as_open(session: Session) -> None:
     assert open_alerts[0].condition == "stale"
     assert open_alerts[0].pipeline_key == "a"
     assert open_alerts[0].first_notified_at == open_alerts[0].last_notified_at
+    assert open_alerts[0].details == {"data_age_days": 9}
 
 
 @requires_db

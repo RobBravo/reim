@@ -22,7 +22,9 @@ from reim.core.config import Settings
 from reim.core.constants import PipelineStatus
 from reim.database.models import PipelineRun
 from reim.repositories import alerts as alert_repo
+from reim.services.alert_reconcile import Reconciliation
 from reim.services.alerting import AlertDeliveryError, run_alert_check
+from reim.services.metrics import MetricsSnapshot
 from tests.conftest import requires_db
 
 NOW = datetime(2026, 9, 12, 18, 0, tzinfo=UTC)
@@ -134,6 +136,9 @@ async def test_a_condition_that_clears_sends_one_resolution_notice(
 
     assert [row.pipeline_key for row in result.resolved] == [PIPELINE]
     assert recorder.payloads[-1]["resolved"][0]["condition"] == "failed_run"
+    assert recorder.payloads[-1]["resolved"][0]["details"] == {
+        "last_run_at": (NOW - timedelta(hours=2)).isoformat()
+    }
     assert alert_repo.list_open(seeded_session) == []
 
     quiet = await run_alert_check(
@@ -257,3 +262,72 @@ async def test_the_payload_names_the_environment_and_its_own_version(
     assert payload["version"] == 1
     assert payload["environment"]
     assert payload["generated_at"] == NOW.isoformat()
+
+
+@requires_db
+async def test_a_new_alert_is_first_notified_now(seeded_session: Session) -> None:
+    _failed_run(seeded_session, started_at=NOW - timedelta(hours=1))
+    recorder = _Recorder()
+
+    await run_alert_check(seeded_session, settings=_settings(), send=recorder, now=NOW)
+
+    assert recorder.payloads[0]["firing"][0]["first_notified_at"] == NOW.isoformat()
+
+
+@requires_db
+async def test_a_repeat_carries_the_original_first_notified_time(
+    seeded_session: Session,
+) -> None:
+    """The whole point: day 22 of an outage must still say day 1's date."""
+    _failed_run(seeded_session, started_at=NOW - timedelta(hours=1))
+    recorder = _Recorder()
+    settings = _settings(alert_repeat_hours=24)
+    repeat_at = NOW + timedelta(hours=25)
+
+    await run_alert_check(seeded_session, settings=settings, send=recorder, now=NOW)
+    await run_alert_check(seeded_session, settings=settings, send=recorder, now=repeat_at)
+
+    assert len(recorder.payloads) == 2
+    first_entry = recorder.payloads[0]["firing"][0]
+    repeat_entry = recorder.payloads[1]["firing"][0]
+    assert first_entry["first_notified_at"] == NOW.isoformat()
+    # The repeat is delivered at ``repeat_at``, not ``NOW`` — proving this
+    # isn't just echoing ``generated_at`` back for every firing entry.
+    assert repeat_entry["first_notified_at"] == NOW.isoformat()
+    assert repeat_entry["first_notified_at"] != repeat_at.isoformat()
+
+
+@requires_db
+async def test_an_unreachable_database_yields_an_empty_reconciliation_and_leaves_state_alone(
+    seeded_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard that makes a false-recovery sweep unreachable rather than merely avoided.
+
+    Without the ``snapshot.database_up`` check, evaluation would see no
+    alerts (a down database says nothing about any pipeline) while this
+    already-open row stays in ``list_open`` — and reconciliation would read
+    that as the row having resolved, announcing a false recovery and clearing
+    it from the state table.
+    """
+    alert_repo.record_notified(
+        seeded_session,
+        condition="failed_run",
+        pipeline_key=PIPELINE,
+        details={"last_run_at": NOW.isoformat()},
+        now=NOW - timedelta(hours=1),
+    )
+    seeded_session.flush()
+
+    def _down(*args: object, **kwargs: object) -> MetricsSnapshot:
+        return MetricsSnapshot(database_up=False)
+
+    monkeypatch.setattr("reim.services.alerting.build_metrics_snapshot", _down)
+    recorder = _Recorder()
+
+    result = await run_alert_check(seeded_session, settings=_settings(), send=recorder, now=NOW)
+
+    assert result == Reconciliation()
+    assert recorder.payloads == []
+    open_rows = alert_repo.list_open(seeded_session)
+    assert [row.pipeline_key for row in open_rows] == [PIPELINE]
+    assert open_rows[0].condition == "failed_run"

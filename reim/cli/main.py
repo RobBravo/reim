@@ -327,6 +327,11 @@ def alert_check(
     anything is wrong, not whether a notification was sent, so a cron job
     watching the status keeps seeing a failure while an alert is merely being
     suppressed.
+
+    An unreachable database degrades ``run_alert_check`` to an empty,
+    unrecorded result rather than a crash, which looks identical to a quiet
+    run with nothing firing or resolved — so that case is disambiguated here,
+    the same way ``db check`` reports it.
     """
     with session_scope() as session:
         try:
@@ -334,6 +339,10 @@ def alert_check(
         except AlertDeliveryError as exc:
             err(f"✗ {exc.message}", err=True)
             raise typer.Exit(EXIT_FAILURE) from exc
+
+    if not result.firing and not result.resolved and not check_database_connection():
+        err(f"✗ Database unreachable at {_safe_dsn()}", err=True)
+        raise typer.Exit(EXIT_FAILURE)
 
     for alert in result.firing:
         typer.echo(f"{alert.severity.value:8} {alert.condition.value:12} {alert.summary}")
