@@ -332,8 +332,23 @@ and the tenth — the national central banks — has its first country.
 - **Alerting** on stale pipelines, failed runs and quality regressions
   (webhook / email; no new infrastructure).
 - **Scheduler integration** behind the existing `PipelineScheduler` interface.
-- **Prometheus metrics** beyond the current process-level defaults: per-pipeline
-  volumes, durations, freshness gauges.
+- ~~**Prometheus metrics**~~ ✅ **done** — `/metrics` now exports per-pipeline
+  volumes, run durations and freshness gauges alongside `reim_database_up`,
+  one series per catalog entry, on top of the process-level defaults it
+  already carried. Every figure is derived from `pipeline_runs` at scrape
+  time rather than kept as an in-process counter: ingestion runs in a CLI
+  process that has exited long before any scrape arrives, so a counter kept
+  there would never be visible to the process answering Prometheus, and a
+  Pushgateway that would fix that is infrastructure this project does not
+  take on. Data age and its threshold ship as two separate gauges rather than
+  a single `is_stale` boolean, so the staleness policy stays where it is
+  tuned — `sources/quality_rules.yml` — instead of being re-encoded a second
+  time in the exporter. Reading them costs six grouped queries per scrape,
+  replacing the 115 round trips `build_pipeline_summaries` costs for the same
+  catalog: right for an occasional JSON request, wrong at a 15-second scrape
+  interval. A database outage still answers `reim_database_up 0` at status
+  200 rather than a failed scrape, because the scrape that matters most is
+  the one taken during the outage.
 - Public deployment guide with hardening notes.
 
 ## v0.6.0 — Context

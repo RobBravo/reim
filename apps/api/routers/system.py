@@ -9,6 +9,7 @@ from reim import __version__
 from reim.core.config import get_settings
 from reim.database.session import check_database_connection
 from reim.schemas.pipelines import HealthStatus, ReadinessStatus, SystemStatus
+from reim.services.metrics import build_metrics_snapshot, render_snapshot
 from reim.services.status import build_system_status
 
 router = APIRouter(tags=["system"])
@@ -54,13 +55,19 @@ def system_status(session: SessionDep) -> SystemStatus:
 
 
 @router.get("/metrics", include_in_schema=False, summary="Prometheus metrics")
-def metrics() -> Response:
-    """Expose process metrics in Prometheus text format.
+def metrics(session: SessionDep) -> Response:
+    """Expose process and per-pipeline metrics in Prometheus text format.
 
     Disabled by setting ``REIM_METRICS_ENABLED=false``.
+
+    The session is safe to depend on even when the database is down: ``get_db``
+    builds it without connecting, so the failure surfaces inside
+    ``build_metrics_snapshot`` as a caught ``SQLAlchemyError`` and the scrape
+    still answers, with ``reim_database_up 0``.
     """
     if not get_settings().metrics_enabled:
         return Response(status_code=status.HTTP_404_NOT_FOUND)
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    body = generate_latest() + render_snapshot(build_metrics_snapshot(session))
+    return Response(content=body, media_type=CONTENT_TYPE_LATEST)

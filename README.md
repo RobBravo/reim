@@ -367,7 +367,7 @@ Base URL `/api/v1`. OpenAPI at `/docs` and `/openapi.json`. Read-only.
 ```text
 GET /health                              liveness (touches no dependency)
 GET /ready                               readiness (checks PostgreSQL)
-GET /metrics                             Prometheus text format
+GET /metrics                             Prometheus text format (process + per-pipeline)
 GET /api/v1/status                       platform counters and coverage
 
 GET /api/v1/countries                    ?active_only
@@ -391,6 +391,42 @@ GET /api/v1/pipelines                    health, volumes and freshness
 GET /api/v1/pipelines/runs               ?pipeline_key &status
 GET /api/v1/pipelines/runs/{run_id}      run + its quality checks
 ```
+
+### Metrics
+
+`/metrics` carries the process-level defaults `prometheus_client` always
+exports, plus these, one series per catalog entry:
+
+```text
+reim_database_up
+reim_pipeline_enabled{pipeline_key}
+reim_pipeline_observations{pipeline_key}
+reim_pipeline_data_age_days{pipeline_key}
+reim_pipeline_freshness_max_age_days{pipeline_key}
+reim_pipeline_last_run_timestamp_seconds{pipeline_key}
+reim_pipeline_last_success_timestamp_seconds{pipeline_key}
+reim_pipeline_last_run_duration_seconds{pipeline_key}
+reim_pipeline_last_run_records{pipeline_key,outcome}
+reim_pipeline_runs_total{pipeline_key,status}
+reim_pipeline_records_total{pipeline_key,outcome}
+reim_pipeline_run_duration_seconds_total{pipeline_key}
+reim_quality_checks_failed_total{pipeline_key,check_name}
+```
+
+They exist for one alert:
+
+```text
+reim_pipeline_data_age_days > reim_pipeline_freshness_max_age_days
+```
+
+REIM exports no `is_stale`. The threshold lives in `sources/quality_rules.yml`,
+where it is tuned per indicator, and the comparison belongs to the alert rule,
+not to the exporter — encoding it a second time here would give the two a
+chance to disagree. No threshold configured and no data stored both produce an
+absent series rather than a zero, so the alert should also require both sides
+to exist. `reim_database_up` reports whether the metrics queries reached the
+database; an outage still answers `200` with it at `0`, because the scrape
+that matters most is the one taken during the outage.
 
 Observation filters: `country` (ISO2 or ISO3), `indicator`, `source`,
 `category`, `date_from`, `date_to`, `validation_status`, `status`, plus
