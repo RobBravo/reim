@@ -78,7 +78,7 @@ Output shape — one commented block per frequency, then the alert line:
 0 13 * * * cd /opt/reim && .venv/bin/python -m reim.cli pipeline run-all --frequency daily
 
 # monthly — 11 pipelines: cepalstat_bop, imf_imts_nic, …
-20 13 5 * * cd /opt/reim && .venv/bin/python -m reim.cli pipeline run-all --frequency monthly
+15 13 5 * * cd /opt/reim && .venv/bin/python -m reim.cli pipeline run-all --frequency monthly
 
 # Alerting — runs after the ingestion window, since staleness is only
 # meaningful once the day's ingestion has finished.
@@ -102,11 +102,20 @@ own list rather than a thundering herd — but it is still two sweeps contending
 for the same database and, where a source serves several pipelines, the same
 host. There is no reason to accept that when the fix is free.
 
-**The emitter offsets each frequency by 20 minutes, in a fixed order, and
-changes nothing else about the expression.** `DEFAULT_CRON_BY_FREQUENCY` remains
-the sole authority on *which days* a cadence runs; the emitter rewrites only the
-minute field. Daily keeps :00 because it runs most often and should be the one
-that never moves.
+**The emitter gives each frequency its own minute, and changes nothing else
+about the expression.** `DEFAULT_CRON_BY_FREQUENCY` remains the sole authority
+on *which days* a cadence runs; the emitter rewrites only the minute field, and
+every offset stays inside the hour so the day fields cannot be perturbed:
+
+```text
+daily 0 · weekly 5 · monthly 15 · quarterly 25
+semiannual 35 · annual 45 · irregular 55
+```
+
+Ordered by how often the cadence runs, so `daily` keeps `:00` — it fires most
+often and is the one that should never move. Seven distinct minutes are needed
+even though four are used today, because the mapping is over the enum and a new
+source may introduce a cadence at any time.
 
 This is policy the catalog does not state, and it is the emitter inventing it
 (D4). It is recorded here rather than buried because an operator who wants a
