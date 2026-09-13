@@ -4,6 +4,7 @@ Importing this package registers every table on ``Base.metadata``; Alembic's
 ``env.py`` relies on that for autogeneration.
 """
 
+from reim.database.models.alerts import AlertState
 from reim.database.models.observation import (
     NATURAL_KEY_COLUMNS,
     Observation,
@@ -14,6 +15,7 @@ from reim.database.models.reference import Country, DataSource, Indicator, Organ
 
 __all__ = [
     "NATURAL_KEY_COLUMNS",
+    "AlertState",
     "Country",
     "DataQualityCheck",
     "DataSource",
