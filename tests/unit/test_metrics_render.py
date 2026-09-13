@@ -52,10 +52,12 @@ def _render(**overrides: object) -> str:
 
 
 def test_the_counter_name_is_not_doubled() -> None:
-    """``CounterMetricFamily`` appends ``_total`` itself.
+    """The rendered counter name carries exactly one ``_total``.
 
-    Constructing it with ``reim_pipeline_runs_total`` renders
-    ``reim_pipeline_runs_total_total``, which no alert rule would ever match.
+    ``CounterMetricFamily`` strips a trailing ``_total`` before re-appending it,
+    so this cannot fail while the family API is used — it pins the convention
+    and would catch a switch to the ``Counter`` class, where the suffix is
+    appended unconditionally and doubling is reachable.
     """
     text = _render()
 
