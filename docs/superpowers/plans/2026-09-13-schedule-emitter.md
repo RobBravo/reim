@@ -180,8 +180,7 @@ git commit -m "feat(schedule): run one cadence at a time"
   ```text
   FREQUENCY_MINUTES: dict[Frequency, int]
   ScheduleEntry(comment: str, expression: str, command: str)
-  build_schedule(catalog, *, working_dir, include_disabled=False,
-                 python="\.venv/bin/python") -> list[ScheduleEntry]
+  build_schedule(catalog, *, working_dir, python=".venv/bin/python") -> list[ScheduleEntry]
   render_crontab(entries) -> str
   ```
 
@@ -246,10 +245,8 @@ def _catalog(*entries: SourceEntry) -> SourceCatalog:
     return SourceCatalog(version=1, sources=list(entries))
 
 
-def _schedule(*entries: SourceEntry, include_disabled: bool = False) -> list[ScheduleEntry]:
-    return build_schedule(
-        _catalog(*entries), working_dir=WORKING_DIR, include_disabled=include_disabled
-    )
+def _schedule(*entries: SourceEntry) -> list[ScheduleEntry]:
+    return build_schedule(_catalog(*entries), working_dir=WORKING_DIR)
 
 
 def test_only_cadences_present_in_the_catalog_get_a_block() -> None:
@@ -328,17 +325,6 @@ def test_disabled_sources_are_absent_rather_than_commented_out() -> None:
 
     assert "off" not in text
     assert "weekly" not in text
-
-
-def test_include_disabled_brings_them_back() -> None:
-    entries = _schedule(
-        _entry("on", Frequency.MONTHLY),
-        _entry("off", Frequency.WEEKLY, enabled=False),
-        include_disabled=True,
-    )
-    text = render_crontab(entries)
-
-    assert "--frequency weekly" in text
 
 
 def test_the_alert_check_is_emitted_last_and_after_the_ingestion_window() -> None:
@@ -475,7 +461,6 @@ def build_schedule(
     catalog: SourceCatalog,
     *,
     working_dir: Path,
-    include_disabled: bool = False,
     python: str = ".venv/bin/python",
 ) -> list[ScheduleEntry]:
     """Return one entry per cadence in use, then the alert check.
@@ -484,11 +469,14 @@ def build_schedule(
     enum: a crontab carrying blocks for cadences no source uses is noise an
     operator has to read and then delete.
 
-    Disabled sources are omitted rather than commented out. The catalog already
-    records why each one is off, and a commented cron line invites uncommenting
-    it without reading that.
+    Disabled sources are never scheduled, and there is no parameter to include
+    them. The catalog records why each one is off, and ``disabled_reason`` may
+    be a licence that forbids redistribution — a commented cron line invites
+    uncommenting it without reading that, and a flag that emits one is worse,
+    because a crontab runs unattended. An operator wanting to see what is
+    disabled has ``reim pipeline list``.
     """
-    sources = catalog.sources if include_disabled else catalog.enabled_sources
+    sources = catalog.enabled_sources
     prefix = f"cd {working_dir} && {python} -m reim.cli"
 
     by_frequency: dict[Frequency, list[str]] = {}
@@ -539,7 +527,7 @@ Export `ScheduleEntry`, `build_schedule` and `render_crontab` from `reim/domain/
 .venv/bin/pytest tests/unit/test_schedule.py -q
 ```
 
-Expected: 13 passed.
+Expected: 12 passed.
 
 - [ ] **Step 5: Prove the minute-only rule has teeth**
 
@@ -614,9 +602,6 @@ def pipeline_schedule(
         Path | None,
         typer.Option("--working-dir", help="Directory the cron lines cd into."),
     ] = None,
-    include_disabled: Annotated[
-        bool, typer.Option("--include-disabled", help="Also schedule disabled pipelines.")
-    ] = False,
 ) -> None:
     """Print a crontab fragment scheduling each cadence, plus the alert check.
 
@@ -630,11 +615,7 @@ def pipeline_schedule(
         err(f"✗ {exc.message}", err=True)
         raise typer.Exit(EXIT_INVALID) from exc
 
-    entries = build_schedule(
-        catalog,
-        working_dir=working_dir or Path.cwd(),
-        include_disabled=include_disabled,
-    )
+    entries = build_schedule(catalog, working_dir=working_dir or Path.cwd())
     typer.echo(render_crontab(entries), nl=False)
     raise typer.Exit(EXIT_OK)
 ```

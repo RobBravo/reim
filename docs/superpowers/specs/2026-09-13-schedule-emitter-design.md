@@ -65,7 +65,7 @@ operator reviews the text and pipes it where they want it. That is deliberate �
 a tool that edits a live crontab is a tool that can silently delete one (D6).
 
 ```text
-reim pipeline schedule [--working-dir PATH] [--include-disabled]
+reim pipeline schedule [--working-dir PATH]
 ```
 
 Output shape — one commented block per frequency, then the alert line:
@@ -162,7 +162,7 @@ One pure module, `reim/domain/pipelines/schedule.py`:
 
 ```text
 ScheduleEntry(comment: str, expression: str, command: str)
-build_schedule(catalog, *, working_dir, include_disabled, python) -> list[ScheduleEntry]
+build_schedule(catalog, *, working_dir, python) -> list[ScheduleEntry]
 render_crontab(entries) -> str
 ```
 
@@ -183,8 +183,9 @@ What the tests pin:
 * The comment names the pipelines the block will run, and that list matches what
   `--frequency` would select. A comment that drifts from the command it
   describes is worse than no comment.
-* `--include-disabled` adds disabled sources; by default they are absent
-  entirely rather than commented out.
+* Disabled sources are absent entirely rather than commented out, and no
+  parameter exists to include them — a catalog of nothing but disabled sources
+  yields no ingestion blocks at all.
 * The alert line is emitted last and after the ingestion window.
 * The emitted text is a valid crontab shape: five whitespace-separated schedule
   fields then a command, and no line exceeding what cron accepts.
@@ -207,7 +208,7 @@ data.
 | **D5** | `--frequency` filters in the CLI, not in `ConnectorRegistry` | `run_all` already takes `keys`; the catalog is what knows a cadence, and the registry does not need a parameter for one caller (§4) |
 | **D6** | Print to stdout; never install, never write a file | A tool that edits a live crontab can silently delete one. The operator reviews and pipes (§2) |
 | **D7** | Each block names the pipelines it will run | `--frequency monthly` is otherwise opaque, and this output exists to be read before it is installed (§2) |
-| **D8** | Disabled sources are omitted, not commented out | The catalog records why a source is off; a commented cron line invites uncommenting it without reading that (§6) |
+| **D8** | Disabled sources are never scheduled, and there is no flag to include them | The catalog records why a source is off, and `disabled_reason` may be a licence that forbids redistribution. A commented cron line invites uncommenting without reading that; a flag that emits one is worse, because a crontab runs unattended. An operator wanting to see what is disabled has `reim pipeline list` (§6) |
 
 ## 8. Out of scope
 
