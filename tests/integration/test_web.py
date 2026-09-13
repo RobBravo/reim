@@ -15,10 +15,16 @@ disabled-block tests exercise the catalog-only branch the same way,
 independent of whether a real database happens to be reachable in the
 environment running the gate.
 
-The two API routes checked below (``/health`` and ``/metrics``) are
-deliberately the ones that touch no database: every data-bearing router
-(indicators, countries, sources, ...) requires a live session via
-``SessionDep``, which is out of scope for this task.
+The two API routes checked below are ``/health`` and ``/metrics``. Only
+``/health`` touches no dependency at all. ``/metrics`` now takes a session
+via ``SessionDep`` and runs six queries per request, so it belongs here for
+a different reason: it degrades instead of failing.
+``build_metrics_snapshot`` catches ``SQLAlchemyError``, so with no reachable
+database the scrape still answers 200, reporting ``reim_database_up 0`` and
+no per-pipeline series. That is a deliberate design decision — the scrape an
+operator most needs is the one taken during an outage — and it is what this
+test actually pins for ``/metrics``: a 200 regardless of whether the
+database is up.
 
 The catalog-freshness tests further down need a live session — the page calls
 ``build_pipeline_summaries``, which queries the last run per source — so they

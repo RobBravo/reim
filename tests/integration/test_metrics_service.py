@@ -113,6 +113,47 @@ def test_a_failed_last_run_still_reports_the_older_success(seeded_session: Sessi
 
 
 @requires_db
+def test_records_and_durations_fold_across_statuses_while_runs_stay_per_status(
+    seeded_session: Session,
+) -> None:
+    """A per-status/cross-status mix-up in ``_fold_aggregates`` is invisible here otherwise.
+
+    ``runs_by_status`` is assigned per status, because ``(pipeline, status)``
+    is unique per row the ``GROUP BY pipeline_key, status`` query returns.
+    ``records_total`` and ``duration_ms_total`` carry no status label, so they
+    are summed across every status instead. Every other test in this file
+    gives a pipeline only one status, so summing where the code should assign
+    (or the reverse) would still pass all of them. This test gives one
+    pipeline two statuses, with different record counts, so that mix-up would
+    make it fail.
+    """
+    now = datetime.now(UTC)
+    _make_run(
+        seeded_session,
+        pipeline_key="worldbank_ni_cpi_inflation",
+        started_at=now - timedelta(days=1),
+        status=PipelineStatus.SUCCESS,
+        duration_ms=2_500,
+        inserted=4,
+    )
+    _make_run(
+        seeded_session,
+        pipeline_key="worldbank_ni_cpi_inflation",
+        started_at=now,
+        status=PipelineStatus.FAILED,
+        duration_ms=1_500,
+        inserted=9,
+    )
+    seeded_session.flush()
+
+    metrics = _for(build_metrics_snapshot(seeded_session), "worldbank_ni_cpi_inflation")
+
+    assert metrics.runs_by_status == {"success": 1, "failed": 1}
+    assert metrics.records_total["inserted"] == 13
+    assert metrics.duration_ms_total == 4_000
+
+
+@requires_db
 def test_age_is_measured_from_the_newest_period_not_the_run(
     seeded_session: Session,
     make_observation,  # type: ignore[no-untyped-def]
