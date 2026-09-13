@@ -286,3 +286,50 @@ def aggregate_runs_by_pipeline(session: Session) -> list[RunStatusAggregate]:
         )
         for row in session.execute(statement)
     ]
+
+
+@dataclass(frozen=True)
+class FailedCheckCount:
+    """How many times one check has failed in one pipeline."""
+
+    pipeline_key: str
+    check_name: str
+    failures: int
+
+
+def summarize_failed_checks_by_pipeline(session: Session) -> list[FailedCheckCount]:
+    """Return failed-check counts grouped by pipeline and check name.
+
+    ``summarize_failed_checks_by_name`` groups by name alone, which is what the
+    observability page shows and is not enough for a metric: the same check
+    failing on two pipelines has to be two series, or an alert can say a
+    freshness check is failing without saying where to look.
+
+    ``DataQualityCheck`` carries no ``pipeline_key``, so the pipeline comes from
+    joining the run on the indexed ``pipeline_run_id``. This is a new function
+    rather than a parameter on the existing one, whose caller's grouping must
+    not change.
+
+    Ordered in SQL so two renders of identical data produce identical
+    exposition text, rather than whatever order the database happened to
+    return.
+    """
+    statement = (
+        select(
+            PipelineRun.pipeline_key,
+            DataQualityCheck.check_name,
+            func.count(DataQualityCheck.id).label("failures"),
+        )
+        .join(PipelineRun, DataQualityCheck.pipeline_run_id == PipelineRun.id)
+        .where(DataQualityCheck.status == CheckStatus.FAILED)
+        .group_by(PipelineRun.pipeline_key, DataQualityCheck.check_name)
+        .order_by(PipelineRun.pipeline_key, DataQualityCheck.check_name)
+    )
+    return [
+        FailedCheckCount(
+            pipeline_key=row.pipeline_key,
+            check_name=row.check_name,
+            failures=int(row.failures),
+        )
+        for row in session.execute(statement)
+    ]

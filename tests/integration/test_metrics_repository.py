@@ -13,8 +13,8 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from reim.core.constants import PipelineStatus
-from reim.database.models import PipelineRun
+from reim.core.constants import CheckSeverity, CheckStatus, CheckType, PipelineStatus
+from reim.database.models import DataQualityCheck, PipelineRun
 from reim.repositories import observations as observation_repo
 from reim.repositories import pipeline_runs as run_repo
 from reim.repositories import reference as reference_repo
@@ -44,6 +44,27 @@ def _make_run(
     session.add(run)
     session.flush()
     return run
+
+
+def _make_check(
+    session: Session,
+    *,
+    run: PipelineRun,
+    check_name: str,
+    status: CheckStatus = CheckStatus.FAILED,
+) -> None:
+    session.add(
+        DataQualityCheck(
+            id=uuid.uuid4(),
+            pipeline_run_id=run.id,
+            check_name=check_name,
+            check_type=CheckType.COMPLETENESS,
+            status=status,
+            severity=CheckSeverity.ERROR,
+            created_at=run.started_at,
+        )
+    )
+    session.flush()
 
 
 @requires_db
@@ -209,3 +230,41 @@ def test_every_registered_source_is_keyed_by_its_catalog_key(seeded_session: Ses
 
     assert len(source_ids) >= 23
     assert all(isinstance(value, uuid.UUID) for value in source_ids.values())
+
+
+@requires_db
+def test_the_same_check_failing_in_two_pipelines_is_two_rows(session: Session) -> None:
+    """The whole reason this is not ``summarize_failed_checks_by_name``.
+
+    Grouped by name alone, an alert could say a freshness check is failing but
+    not which pipeline to look at.
+    """
+    now = datetime.now(UTC)
+    for key in ("a", "b", "a"):
+        run = _make_run(session, pipeline_key=key, started_at=now)
+        _make_check(session, run=run, check_name="freshness")
+
+    counts = run_repo.summarize_failed_checks_by_pipeline(session)
+
+    assert [(row.pipeline_key, row.failures) for row in counts] == [("a", 2), ("b", 1)]
+
+
+@requires_db
+def test_passing_checks_are_not_counted_as_failures(session: Session) -> None:
+    run = _make_run(session, pipeline_key="a", started_at=datetime.now(UTC))
+    _make_check(session, run=run, check_name="freshness", status=CheckStatus.PASSED)
+
+    assert run_repo.summarize_failed_checks_by_pipeline(session) == []
+
+
+@requires_db
+def test_failed_check_counts_come_back_in_a_stable_order(session: Session) -> None:
+    """Two renders of identical data must produce identical exposition text."""
+    now = datetime.now(UTC)
+    run = _make_run(session, pipeline_key="a", started_at=now)
+    for name in ("range", "freshness", "completeness"):
+        _make_check(session, run=run, check_name=name)
+
+    counts = run_repo.summarize_failed_checks_by_pipeline(session)
+
+    assert [row.check_name for row in counts] == ["completeness", "freshness", "range"]
