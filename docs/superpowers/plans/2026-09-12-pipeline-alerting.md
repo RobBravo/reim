@@ -1902,8 +1902,8 @@ Check how `err` is defined in that module and match it; if the existing commands
 
 ```bash
 export REIM_DATABASE_URL=postgresql+psycopg://reim:reim@localhost:55432/reim
-.venv/bin/python -m reim alert check --dry-run
-.venv/bin/python -m reim alert check --help
+.venv/bin/python -m reim.cli alert check --dry-run
+.venv/bin/python -m reim.cli alert check --help
 ```
 
 The local database holds seeded data, so expect either "No alert conditions are firing." or a list of stale pipelines with exit 1 — both are correct. Record what you saw. No webhook is configured, so nothing is delivered and nothing is recorded.
