@@ -23,7 +23,7 @@ import typer
 
 from reim import __version__
 from reim.core.config import get_settings
-from reim.core.constants import CheckSeverity, CheckStatus, PipelineStatus
+from reim.core.constants import CheckSeverity, CheckStatus, Frequency, PipelineStatus
 from reim.core.exceptions import REIMError
 from reim.core.logging import configure_logging, get_logger
 from reim.database.session import check_database_connection, session_scope
@@ -226,15 +226,35 @@ def pipeline_run_all(
     include_disabled: Annotated[
         bool, typer.Option("--include-disabled", help="Also run disabled pipelines.")
     ] = False,
+    frequency: Annotated[
+        Frequency | None,
+        typer.Option("--frequency", help="Only run pipelines published at this cadence."),
+    ] = None,
 ) -> None:
-    """Run every enabled pipeline. Exits 1 if any of them fails."""
+    """Run every enabled pipeline. Exits 1 if any of them fails.
+
+    ``--frequency`` restricts the run to one cadence, which is what the crontab
+    emitted by ``pipeline schedule`` installs — and what an operator wants when
+    re-running just the daily sources after a network problem, rather than
+    sweeping all 23.
+    """
     try:
         registry = ConnectorRegistry(load_catalog())
     except REIMError as exc:
         err(f"✗ {exc.message}", err=True)
         raise typer.Exit(EXIT_INVALID) from exc
 
-    outcomes = asyncio.run(PipelineRunner(registry).run_all(enabled_only=not include_disabled))
+    keys: list[str] | None = None
+    if frequency is not None:
+        entries = registry.catalog.sources if include_disabled else registry.catalog.enabled_sources
+        keys = [entry.key for entry in entries if entry.frequency is frequency]
+        if not keys:
+            typer.echo(f"No pipelines are published at {frequency.value} cadence.")
+            raise typer.Exit(EXIT_OK)
+
+    outcomes = asyncio.run(
+        PipelineRunner(registry).run_all(enabled_only=not include_disabled, keys=keys)
+    )
     for outcome in outcomes:
         _print_outcome(outcome)
 
