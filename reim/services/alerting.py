@@ -117,6 +117,11 @@ async def run_alert_check(
     down must cost noise, never an alert: nothing is marked notified, so the
     next run says it again. Recording first and delivering after would lose an
     alert permanently on a transient failure.
+
+    The trailing ``session.flush()`` is deliberate, not a leftover:
+    ``record_notified``'s update path (an alert that is already open) mutates
+    the existing row and returns without flushing on its own, so this call is
+    what pushes that particular change out.
     """
     resolved_settings = settings or get_settings()
     moment = now or datetime.now(UTC)
@@ -149,7 +154,8 @@ async def run_alert_check(
     if send is not None:
         await send(body)
     else:
-        assert url  # narrowed by the guard above
+        if url is None:  # pragma: no cover - narrowed by the guard above
+            raise AlertDeliveryError("No alert webhook URL is configured.")
         await _post_to_webhook(url, body, resolved_settings)
 
     for alert in result.new + result.repeat:
