@@ -718,6 +718,23 @@ def test_a_run_running_within_the_grace_period_is_not_stuck() -> None:
     )
 
 
+def test_a_run_running_exactly_the_grace_period_is_not_stuck() -> None:
+    """Equal is still tolerated — the same rule the staleness threshold follows.
+
+    Without this, flipping ``<=`` to ``<`` in ``_stuck_run`` passes every other
+    test, because the neighbouring cases sit a clear hour either side of the
+    boundary rather than on it.
+    """
+    assert (
+        _evaluate(
+            last_run_status=PipelineStatus.RUNNING,
+            last_run_at=NOW - timedelta(hours=6),
+            stuck_after=timedelta(hours=6),
+        )
+        == []
+    )
+
+
 def test_a_pipeline_that_never_ran_stays_silent() -> None:
     """Adding a catalog entry must not page anyone about unstarted work."""
     assert (
@@ -1054,11 +1071,16 @@ def evaluate(
 .venv/bin/pytest tests/unit/test_alert_rules.py -q
 ```
 
-Expected: 18 passed.
+Expected: 19 passed.
 
 - [ ] **Step 6: Prove the threshold boundary has teeth**
 
-Change `age <= threshold` to `age < threshold` in `_stale`, confirm `test_an_age_exactly_at_the_threshold_is_not_stale` fails, and restore it. An off-by-one here would page an operator every single day about a source that is behaving exactly as configured.
+This task has **two** equality boundaries and both get the drill, because a boundary tested from only one side is not pinned at all.
+
+1. Change `age <= threshold` to `age < threshold` in `_stale`, confirm `test_an_age_exactly_at_the_threshold_is_not_stale` fails, and restore it. An off-by-one here would page an operator every single day about a source behaving exactly as configured.
+2. Change `stuck_for <= stuck_run_after` to `stuck_for < stuck_run_after` in `_stuck_run`, confirm `test_a_run_running_exactly_the_grace_period_is_not_stuck` fails — and that the 5-hour and 7-hour tests still pass, which is why the equality case had to be added. Restore it.
+
+If either mutation does not fail, stop and report it rather than working around it.
 
 - [ ] **Step 7: Run the whole gate and commit**
 
