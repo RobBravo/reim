@@ -329,8 +329,19 @@ and the tenth — the national central banks — has its first country.
 ## v0.5.0 — Operations
 
 - **API keys and rate limiting** for public deployment.
-- **Alerting** on stale pipelines, failed runs and quality regressions
-  (webhook / email; no new infrastructure).
+- ~~**Alerting**~~ ✅ **done** — four conditions: pipelines stale by their
+  indicator age thresholds, runs that failed mid-pipeline, runs stuck in
+  `running` state longer than a configured window (visibility into killed
+  ingestion processes), and data quality regressions. Evaluation runs as a
+  cron'd CLI command because staleness is invisible from inside an active run
+  and only the metrics snapshot sees it; staleness policy stays in
+  `sources/quality_rules.yml` where it is tuned. A state table reconciles each
+  run's alerts against open history, emitting ~21 messages over a three-week
+  outage rather than 500: one notice per distinct condition and pipeline when
+  it first fires, silence for a configurable repeat interval, and exactly one
+  "resolved" notice when it clears. State is recorded only after a successful
+  webhook delivery, so transient HTTP failures cost repetition rather than a
+  lost alert.
 - **Scheduler integration** behind the existing `PipelineScheduler` interface.
 - ~~**Prometheus metrics**~~ ✅ **done** — `/metrics` now exports per-pipeline
   volumes, run durations and freshness gauges alongside `reim_database_up`,

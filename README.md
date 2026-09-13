@@ -313,6 +313,72 @@ interface a real scheduler would implement later.
 0 13 5 * * cd /opt/reim && .venv/bin/python -m reim.cli pipeline run-all
 ```
 
+### Operational alerts
+
+REIM evaluates four conditions — `stale` (data older than its indicators'
+configured thresholds), `failed_run` (a pipeline that broke mid-load),
+`stuck_run` (a run stuck in `running` state because its process was killed),
+and `quality` (checks failed with error or worse severity) — and delivers one
+digest per run to a webhook URL. Exit code is `0` if nothing is firing, `1` if
+any condition holds whether suppressed or delivered. This allows a cron job
+monitoring the exit status to detect a problem even while it is being
+temporarily silenced.
+
+```bash
+.venv/bin/python -m reim.cli alert check --dry-run
+```
+
+The command respects four settings:
+
+- `REIM_ALERT_WEBHOOK_URL` (required to deliver): an HTTPS endpoint to receive
+  the digest. If unset, the command still evaluates all conditions, prints any
+  firing alerts and resolves, and exits with the appropriate code, but sends
+  nothing.
+- `REIM_ALERT_SEVERITY_FLOOR=error` (default): one of `info`, `warning`,
+  `error`, or `critical`. Only quality conditions with this severity or worse are
+  reported.
+- `REIM_ALERT_REPEAT_HOURS=24` (default): hours to wait after notifying about a
+  condition before notifying again. A problem that stays silent for this interval
+  still fires exit code 1, so cron knows to look.
+- `REIM_ALERT_STUCK_RUN_HOURS=6` (default): hours a run is allowed to sit in
+  `running` state before it is assumed to have been killed and flagged as stuck.
+  Ingestion processes can die without cleaning up their row, and without this
+  check nothing else would ever see them.
+
+The payload is JSON:
+
+```text
+{
+  "environment": "production",
+  "firing": [
+    {
+      "condition": "stale",
+      "details": {"data_age_days": 9, "freshness_max_age_days": 7},
+      "pipeline_key": "worldbank_ni_cpi_inflation",
+      "severity": "warning",
+      "summary": "worldbank_ni_cpi_inflation has no data newer than 9 days, past its 7-day threshold."
+    }
+  ],
+  "generated_at": "2026-09-13T10:30:45.123456+00:00",
+  "resolved": [
+    {
+      "condition": "failed_run",
+      "first_notified_at": "2026-09-12T10:30:00+00:00",
+      "pipeline_key": "worldbank_ni_remittances",
+      "summary": "worldbank_ni_remittances no longer reports failed_run."
+    }
+  ],
+  "version": 1
+}
+```
+
+Schedule one alert check beside the ingestion jobs — the same timing works, but
+the check must run **after** the ingestion completes so staleness is visible:
+
+```cron
+0 14 5 * * cd /opt/reim && .venv/bin/python -m reim.cli alert check
+```
+
 ---
 
 ## Web pages

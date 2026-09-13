@@ -52,6 +52,7 @@ def _make_check(
     run: PipelineRun,
     check_name: str,
     status: CheckStatus = CheckStatus.FAILED,
+    severity: CheckSeverity = CheckSeverity.ERROR,
 ) -> None:
     session.add(
         DataQualityCheck(
@@ -60,7 +61,7 @@ def _make_check(
             check_name=check_name,
             check_type=CheckType.COMPLETENESS,
             status=status,
-            severity=CheckSeverity.ERROR,
+            severity=severity,
             created_at=run.started_at,
         )
     )
@@ -268,3 +269,53 @@ def test_failed_check_counts_come_back_in_a_stable_order(session: Session) -> No
     counts = run_repo.summarize_failed_checks_by_pipeline(session)
 
     assert [row.check_name for row in counts] == ["completeness", "freshness", "range"]
+
+
+@requires_db
+def test_only_the_latest_runs_failed_checks_are_reported(session: Session) -> None:
+    """A check that failed last month must not read as failing now.
+
+    ``summarize_failed_checks_by_pipeline`` counts all history, which is right
+    for a monotonic counter and wrong for "is this pipeline failing today".
+    """
+    now = datetime.now(UTC)
+    old = _make_run(session, pipeline_key="a", started_at=now - timedelta(days=30))
+    _make_check(session, run=old, check_name="freshness")
+    latest = _make_run(session, pipeline_key="a", started_at=now)
+    _make_check(session, run=latest, check_name="range")
+
+    rows = run_repo.latest_run_failed_checks(session)
+
+    assert [(row.pipeline_key, row.check_name) for row in rows] == [("a", "range")]
+
+
+@requires_db
+def test_the_latest_run_checks_carry_their_severity(session: Session) -> None:
+    run = _make_run(session, pipeline_key="a", started_at=datetime.now(UTC))
+    _make_check(session, run=run, check_name="range", severity=CheckSeverity.WARNING)
+
+    rows = run_repo.latest_run_failed_checks(session)
+
+    assert rows[0].severity is CheckSeverity.WARNING
+    assert rows[0].failures == 1
+
+
+@requires_db
+def test_a_passing_latest_run_reports_nothing(session: Session) -> None:
+    run = _make_run(session, pipeline_key="a", started_at=datetime.now(UTC))
+    _make_check(session, run=run, check_name="range", status=CheckStatus.PASSED)
+
+    assert run_repo.latest_run_failed_checks(session) == []
+
+
+@requires_db
+def test_each_pipeline_reports_its_own_latest_run(session: Session) -> None:
+    """One pipeline's stale failure must not be attributed to another's run."""
+    now = datetime.now(UTC)
+    for key in ("a", "b"):
+        run = _make_run(session, pipeline_key=key, started_at=now)
+        _make_check(session, run=run, check_name="freshness")
+
+    rows = run_repo.latest_run_failed_checks(session)
+
+    assert sorted(row.pipeline_key for row in rows) == ["a", "b"]

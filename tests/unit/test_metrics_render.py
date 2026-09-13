@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from reim.core.constants import PipelineStatus
 from reim.repositories.pipeline_runs import FailedCheckCount
 from reim.services.metrics import (
     RECORD_OUTCOMES,
@@ -33,6 +34,7 @@ def _metrics(**overrides: object) -> PipelineMetrics:
         "last_run_at": datetime(2026, 9, 12, 6, 0, tzinfo=UTC),
         "last_success_at": datetime(2026, 9, 12, 6, 0, tzinfo=UTC),
         "last_run_duration_ms": 2_500,
+        "last_run_status": PipelineStatus.SUCCESS,
         "last_run_records": dict.fromkeys(RECORD_OUTCOMES, 4),
         "runs_by_status": {"success": 40, "failed": 2},
         "records_total": dict.fromkeys(RECORD_OUTCOMES, 100),

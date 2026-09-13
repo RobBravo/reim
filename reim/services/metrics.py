@@ -21,6 +21,7 @@ from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily, Metri
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from reim.core.constants import PipelineStatus
 from reim.database.models import PipelineRun
 from reim.domain.quality.rules import QualityRuleSet, get_quality_rules
 from reim.domain.sources.catalog import SourceCatalog, SourceEntry, get_catalog
@@ -51,6 +52,7 @@ class PipelineMetrics:
     last_run_at: datetime | None
     last_success_at: datetime | None
     last_run_duration_ms: int | None
+    last_run_status: PipelineStatus | None
     last_run_records: dict[str, int] | None
     runs_by_status: dict[str, int]
     records_total: dict[str, int]
@@ -165,6 +167,7 @@ def _pipeline_metrics(
         last_run_at=last_run.started_at if last_run is not None else None,
         last_success_at=last_success.started_at if last_success is not None else None,
         last_run_duration_ms=last_run.duration_ms if last_run is not None else None,
+        last_run_status=last_run.status if last_run is not None else None,
         last_run_records=last_records,
         runs_by_status=totals.runs_by_status if totals is not None else {},
         records_total=(

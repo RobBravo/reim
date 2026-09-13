@@ -12,7 +12,7 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from reim.core.constants import Environment
+from reim.core.constants import CheckSeverity, Environment
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     max_page_size: int = Field(default=1000, ge=1, le=10000)
     max_export_rows: int = Field(default=100_000, ge=1)
     metrics_enabled: bool = True
+
+    # -- Alerting ---------------------------------------------------------
+    alert_webhook_url: str | None = None
+    alert_severity_floor: CheckSeverity = CheckSeverity.ERROR
+    alert_repeat_hours: int = Field(default=24, ge=1, le=720)
+    alert_stuck_run_hours: int = Field(default=6, ge=1, le=168)
 
     @field_validator("cors_allow_origins", mode="before")
     @classmethod
