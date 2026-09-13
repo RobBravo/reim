@@ -319,14 +319,13 @@ REIM evaluates four conditions — `stale` (data older than its indicators'
 configured thresholds), `failed_run` (a pipeline that broke mid-load),
 `stuck_run` (a run stuck in `running` state because its process was killed),
 and `quality` (checks failed with error or worse severity) — and delivers one
-digest per run to a webhook URL. Exit codes are `0` if nothing is firing, `1`
-if any condition holds (whether suppressed or delivered), and `2` for
-configuration errors. This allows a cron job monitoring the exit status to
-detect a problem even while it is being temporarily silenced.
+digest per run to a webhook URL. Exit code is `0` if nothing is firing, `1` if
+any condition holds whether suppressed or delivered. This allows a cron job
+monitoring the exit status to detect a problem even while it is being
+temporarily silenced.
 
 ```bash
 .venv/bin/python -m reim.cli alert check --dry-run
-.venv/bin/python -m reim.cli alert check --dry-run | jq
 ```
 
 The command respects four settings:
@@ -354,10 +353,10 @@ The payload is JSON:
   "firing": [
     {
       "condition": "stale",
-      "details": {},
+      "details": {"data_age_days": 9, "freshness_max_age_days": 7},
       "pipeline_key": "worldbank_ni_cpi_inflation",
-      "severity": "error",
-      "summary": "Data is 7 days old; threshold is 5 days."
+      "severity": "warning",
+      "summary": "worldbank_ni_cpi_inflation has no data newer than 9 days, past its 7-day threshold."
     }
   ],
   "generated_at": "2026-09-13T10:30:45.123456+00:00",
@@ -365,8 +364,8 @@ The payload is JSON:
     {
       "condition": "failed_run",
       "first_notified_at": "2026-09-12T10:30:00+00:00",
-      "pipeline_key": "cepal_gdp",
-      "summary": "cepal_gdp no longer reports failed_run."
+      "pipeline_key": "worldbank_ni_remittances",
+      "summary": "worldbank_ni_remittances no longer reports failed_run."
     }
   ],
   "version": 1

@@ -329,7 +329,7 @@ and the tenth — the national central banks — has its first country.
 ## v0.5.0 — Operations
 
 - **API keys and rate limiting** for public deployment.
-- ~~**Alerting**~~ ✅ **done** on four conditions: pipelines stale by their
+- ~~**Alerting**~~ ✅ **done** — four conditions: pipelines stale by their
   indicator age thresholds, runs that failed mid-pipeline, runs stuck in
   `running` state longer than a configured window (visibility into killed
   ingestion processes), and data quality regressions. Evaluation runs as a
