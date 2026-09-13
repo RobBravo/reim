@@ -274,3 +274,37 @@ def test_a_snapshot_costs_six_queries_whatever_the_catalog_holds(
         event.remove(bind, "before_cursor_execute", _record)
 
     assert len(statements) == 6, "\n\n".join(statements)
+
+
+@requires_db
+def test_the_snapshot_reports_the_last_runs_status(seeded_session: Session) -> None:
+    """``runs_by_status`` counts all history; alerting needs the latest outcome.
+
+    Without this field the "last run failed" and "a run is stuck" conditions
+    cannot be evaluated from the snapshot at all.
+    """
+    now = datetime.now(UTC)
+    _make_run(
+        seeded_session,
+        pipeline_key="worldbank_ni_cpi_inflation",
+        started_at=now - timedelta(days=1),
+    )
+    _make_run(
+        seeded_session,
+        pipeline_key="worldbank_ni_cpi_inflation",
+        started_at=now,
+        status=PipelineStatus.FAILED,
+    )
+    seeded_session.flush()
+
+    metrics = _for(build_metrics_snapshot(seeded_session), "worldbank_ni_cpi_inflation")
+
+    assert metrics.last_run_status is PipelineStatus.FAILED
+    assert metrics.runs_by_status == {"success": 1, "failed": 1}
+
+
+@requires_db
+def test_a_pipeline_that_never_ran_has_no_last_run_status(seeded_session: Session) -> None:
+    metrics = _for(build_metrics_snapshot(seeded_session), "worldbank_ni_cpi_inflation")
+
+    assert metrics.last_run_status is None

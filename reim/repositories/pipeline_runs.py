@@ -333,3 +333,53 @@ def summarize_failed_checks_by_pipeline(session: Session) -> list[FailedCheckCou
         )
         for row in session.execute(statement)
     ]
+
+
+@dataclass(frozen=True)
+class LatestFailedCheck:
+    """One check that failed in a pipeline's most recent run."""
+
+    pipeline_key: str
+    check_name: str
+    severity: CheckSeverity
+    failures: int
+
+
+def latest_run_failed_checks(session: Session) -> list[LatestFailedCheck]:
+    """Return the failed checks of each pipeline's most recent run.
+
+    ``summarize_failed_checks_by_pipeline`` counts every failure ever recorded,
+    which is right for a monotonic counter and wrong for "is this pipeline
+    failing now" — a check that broke once in March would read as a live
+    problem forever. This restricts to the latest run per pipeline and carries
+    the severity, so a caller can apply a floor.
+
+    Ordered so two evaluations of identical data produce identical output.
+    """
+    latest = (
+        select(PipelineRun.id, PipelineRun.pipeline_key)
+        .distinct(PipelineRun.pipeline_key)
+        .order_by(PipelineRun.pipeline_key, PipelineRun.started_at.desc())
+        .subquery()
+    )
+    statement = (
+        select(
+            latest.c.pipeline_key,
+            DataQualityCheck.check_name,
+            DataQualityCheck.severity,
+            func.count(DataQualityCheck.id).label("failures"),
+        )
+        .join(latest, DataQualityCheck.pipeline_run_id == latest.c.id)
+        .where(DataQualityCheck.status == CheckStatus.FAILED)
+        .group_by(latest.c.pipeline_key, DataQualityCheck.check_name, DataQualityCheck.severity)
+        .order_by(latest.c.pipeline_key, DataQualityCheck.check_name)
+    )
+    return [
+        LatestFailedCheck(
+            pipeline_key=row.pipeline_key,
+            check_name=row.check_name,
+            severity=row.severity,
+            failures=int(row.failures),
+        )
+        for row in session.execute(statement)
+    ]
