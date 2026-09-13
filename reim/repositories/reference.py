@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -77,3 +79,13 @@ def list_organizations(session: Session, *, country_iso2: str | None = None) -> 
             Country.iso2 == country_iso2.upper()
         )
     return list(session.scalars(statement))
+
+
+def source_ids_by_key(session: Session) -> dict[str, uuid.UUID]:
+    """Return every registered source's id, keyed by its catalog key.
+
+    One query in place of a ``get_source_by_key`` per catalog entry; the caller
+    joins the catalog to what is stored in memory.
+    """
+    statement = select(DataSource.source_key, DataSource.id)
+    return {row.source_key: row.id for row in session.execute(statement)}

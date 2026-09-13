@@ -198,3 +198,34 @@ def latest_period_end(session: Session, source_id: uuid.UUID) -> date | None:
     return session.scalar(
         select(func.max(Observation.period_end)).where(Observation.source_id == source_id)
     )
+
+
+@dataclass(frozen=True)
+class SourceVolume:
+    """How much one source holds, and how recent it is."""
+
+    observations: int
+    latest_period_end: date | None
+
+
+def summarize_sources(session: Session) -> dict[uuid.UUID, SourceVolume]:
+    """Return row count and newest period per source, in one grouped pass.
+
+    A source with no observations is absent from the mapping rather than
+    present with a zero: "nothing stored" and "stored, covering nothing" read
+    differently on a freshness dashboard, and the caller needs to keep them
+    apart.
+    """
+    statement = select(
+        Observation.source_id,
+        func.count(Observation.id).label("observations"),
+        func.max(Observation.period_end).label("latest_period_end"),
+    ).group_by(Observation.source_id)
+
+    return {
+        row.source_id: SourceVolume(
+            observations=int(row.observations),
+            latest_period_end=row.latest_period_end,
+        )
+        for row in session.execute(statement)
+    }
