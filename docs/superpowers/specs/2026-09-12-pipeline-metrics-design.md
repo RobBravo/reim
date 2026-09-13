@@ -183,6 +183,18 @@ threshold today. Both are still correctness rules, because the fallback in
 adding a rule for it — so their tests must construct the case rather than hunt
 for a real catalog entry that exhibits it.
 
+**A related but distinct asymmetry sits between the two counters in §2.2, and
+it is worth stating so nobody "corrects" one side of it to match the other.**
+`reim_pipeline_records_total` is zero-filled for a pipeline that has never
+run — five series at 0, one per outcome — because `RECORD_OUTCOMES` is a
+fixed, known-in-advance set: "zero of five known outcomes happened" is an
+honest thing to assert about a pipeline that has never run.
+`reim_pipeline_runs_total` on that same never-run pipeline is sparse instead —
+no series at all — because the status set is only known once a run has
+actually happened (§2.2: "only statuses that actually occurred are emitted").
+A fixed label set can be zero-filled honestly; an open one cannot, because
+there is no status yet to assign a zero to.
+
 ### 2.5 The threshold for a pipeline with several indicators
 
 Freshness is per source — `latest_period_end` is keyed on `source_id` — but the
