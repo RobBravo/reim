@@ -120,6 +120,23 @@ def test_a_run_running_within_the_grace_period_is_not_stuck() -> None:
     )
 
 
+def test_a_run_running_exactly_the_grace_period_is_not_stuck() -> None:
+    """Equal is still tolerated — the same rule the staleness threshold follows.
+
+    Without this, flipping ``<=`` to ``<`` in ``_stuck_run`` passes every other
+    test, because the neighbouring cases sit a clear hour either side of the
+    boundary rather than on it.
+    """
+    assert (
+        _evaluate(
+            last_run_status=PipelineStatus.RUNNING,
+            last_run_at=NOW - timedelta(hours=6),
+            stuck_after=timedelta(hours=6),
+        )
+        == []
+    )
+
+
 def test_a_pipeline_that_never_ran_stays_silent() -> None:
     """Adding a catalog entry must not page anyone about unstarted work."""
     assert (
