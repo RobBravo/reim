@@ -67,7 +67,6 @@ def build_schedule(
     catalog: SourceCatalog,
     *,
     working_dir: Path,
-    include_disabled: bool = False,
     python: str = ".venv/bin/python",
 ) -> list[ScheduleEntry]:
     """Return one entry per cadence in use, then the alert check.
@@ -76,11 +75,11 @@ def build_schedule(
     enum: a crontab carrying blocks for cadences no source uses is noise an
     operator has to read and then delete.
 
-    Disabled sources are omitted rather than commented out. The catalog already
-    records why each one is off, and a commented cron line invites uncommenting
-    it without reading that.
+    Only enabled sources are scheduled. Disabled sources are never included,
+    because a crontab is unattended and ``disabled_reason`` may record a licence
+    constraint that must not be silently bypassed.
     """
-    sources = catalog.sources if include_disabled else catalog.enabled_sources
+    sources = catalog.enabled_sources
     prefix = f"cd {working_dir} && {python} -m reim.cli"
 
     by_frequency: dict[Frequency, list[str]] = {}

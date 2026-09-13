@@ -54,10 +54,8 @@ def _catalog(*entries: SourceEntry) -> SourceCatalog:
     return SourceCatalog(version=1, sources=list(entries))
 
 
-def _schedule(*entries: SourceEntry, include_disabled: bool = False) -> list[ScheduleEntry]:
-    return build_schedule(
-        _catalog(*entries), working_dir=WORKING_DIR, include_disabled=include_disabled
-    )
+def _schedule(*entries: SourceEntry) -> list[ScheduleEntry]:
+    return build_schedule(_catalog(*entries), working_dir=WORKING_DIR)
 
 
 def test_only_cadences_present_in_the_catalog_get_a_block() -> None:
@@ -93,7 +91,7 @@ def test_the_emitter_rewrites_the_minute_and_nothing_else() -> None:
     fields — fails here, which is the point: staggering is a minute-level
     concern and must not silently become a scheduling one.
     """
-    for frequency in (Frequency.DAILY, Frequency.MONTHLY, Frequency.QUARTERLY):
+    for frequency in (Frequency.DAILY, Frequency.WEEKLY, Frequency.MONTHLY, Frequency.QUARTERLY):
         entries = _schedule(_entry("a", frequency))
         emitted = entries[0].expression.split()
         default = DEFAULT_CRON_BY_FREQUENCY[frequency].split()
@@ -123,7 +121,7 @@ def test_each_block_names_the_pipelines_it_will_run() -> None:
     block = next(entry for entry in entries if "run-all" in entry.command)
     assert "alpha" in block.comment
     assert "beta" in block.comment
-    assert "2" in block.comment
+    assert "2 pipeline(s)" in block.comment
 
 
 def test_disabled_sources_are_absent_rather_than_commented_out() -> None:
@@ -136,17 +134,6 @@ def test_disabled_sources_are_absent_rather_than_commented_out() -> None:
 
     assert "off" not in text
     assert "weekly" not in text
-
-
-def test_include_disabled_brings_them_back() -> None:
-    entries = _schedule(
-        _entry("on", Frequency.MONTHLY),
-        _entry("off", Frequency.WEEKLY, enabled=False),
-        include_disabled=True,
-    )
-    text = render_crontab(entries)
-
-    assert "--frequency weekly" in text
 
 
 def test_the_alert_check_is_emitted_last_and_after_the_ingestion_window() -> None:
