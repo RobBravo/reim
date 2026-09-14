@@ -328,7 +328,19 @@ and the tenth — the national central banks — has its first country.
 
 ## v0.5.0 — Operations
 
-- **API keys and rate limiting** for public deployment.
+- ~~**API keys and rate limiting**~~ ✅ **done** — a key raises a caller's
+  allowance rather than gating access, because REIM publishes open data and
+  invites redistribution: gating it would contradict what the platform is
+  for. Anonymous requests keep working, at 60 per minute by default; a key
+  raises that to 600. Counters are kept in memory rather than in the
+  database, since the shipped deployment is a single uvicorn worker and that
+  makes the count exact — a worker count above one would multiply the
+  effective limit by that count, an explicit caveat rather than a hidden one.
+  Identity is the socket peer unless `REIM_TRUSTED_PROXY_HOPS` opts in,
+  because trusting `X-Forwarded-For` by default builds a limiter any client
+  bypasses by setting a header. Keys are minted from `reim key
+  create|list|revoke`, never over HTTP, since the API stays read-only by
+  decision D13. The README's "put a gateway in front" advice is retired.
 - ~~**Alerting**~~ ✅ **done** — four conditions: pipelines stale by their
   indicator age thresholds, runs that failed mid-pipeline, runs stuck in
   `running` state longer than a configured window (visibility into killed
