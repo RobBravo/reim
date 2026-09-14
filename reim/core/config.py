@@ -6,11 +6,13 @@ from disk or from the repository; secrets must arrive through the environment.
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from reim.core.constants import CheckSeverity, Environment
 
@@ -63,7 +65,14 @@ class Settings(BaseSettings):
     # -- API --------------------------------------------------------------
     api_title: str = "REIM API"
     api_root_path: str = ""
-    cors_allow_origins: list[str] = Field(default_factory=lambda: ["*"])
+    # NoDecode: pydantic-settings JSON-decodes complex-typed fields inside
+    # EnvSettingsSource before any field_validator runs, so a comma-separated
+    # or bare "*" value from the environment would raise SettingsError and
+    # the app would not boot before ``_split_origins`` ever saw it.
+    # Suppressing that pre-parse hands the raw string to the validator below,
+    # which does its own JSON parsing for the one form pydantic-settings used
+    # to handle.
+    cors_allow_origins: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["*"])
     cors_allow_credentials: bool = False
     default_page_size: int = Field(default=100, ge=1, le=1000)
     max_page_size: int = Field(default=1000, ge=1, le=10000)
@@ -86,13 +95,23 @@ class Settings(BaseSettings):
     @field_validator("cors_allow_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:
-        """Allow a comma-separated string so the value works in a ``.env`` file."""
+        """Allow a comma-separated string so the value works in a ``.env`` file.
+
+        ``NoDecode`` on the field stops pydantic-settings from JSON-decoding
+        this value before this validator runs, so a JSON-looking string
+        reaches here undecoded and must be parsed here rather than merely
+        returned for pydantic to parse later.
+        """
         if isinstance(value, str):
             stripped = value.strip()
             if not stripped:
                 return []
-            if stripped.startswith("["):  # already JSON, let pydantic parse it
-                return stripped
+            if stripped.startswith("["):
+                try:
+                    return json.loads(stripped)
+                except json.JSONDecodeError as exc:
+                    msg = f"REIM_CORS_ALLOW_ORIGINS is not valid JSON: {exc}"
+                    raise ValueError(msg) from exc
             return [item.strip() for item in stripped.split(",") if item.strip()]
         return value
 
