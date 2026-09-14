@@ -6,28 +6,47 @@ the app instance precisely so a limit cannot leak between tests.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import functools
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from apps.api.dependencies import get_db
 from apps.api.main import create_app
+from apps.api.middleware import build_rate_limit_middleware
 from reim.core.config import get_settings
 from reim.repositories.api_keys import create_key, revoke_key
 from tests.conftest import requires_db
 
 ANONYMOUS_LIMIT = 3
 
+#: Far enough above the anonymous allowance that a request served on the keyed
+#: one cannot be mistaken for a request served anonymously.
+KEYED_LIMIT = 100
+
+#: The instant every request in this module is counted at.
+#:
+#: Windows are aligned to the wall clock, so a test that read the real clock
+#: could straddle a boundary, see the counter reset, and pass while the limiter
+#: was broken. Pinning the clock removes that flake — and it flaked toward
+#: passing, which is the direction that matters for a limiter.
+FROZEN_NOW = 1_000_000.0
+
 
 @pytest.fixture
-def client(
+def build_app(
     seeded_session: Session, engine: Engine, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[TestClient]:
-    """An app with a deliberately tiny anonymous allowance.
+) -> Iterator[Callable[..., FastAPI]]:
+    """Build apps with a tiny anonymous allowance and a pinned clock.
+
+    Keyword arguments are environment variables set before the settings cache
+    is cleared, so a test can build the same app under a different deployment
+    shape (a root path, a CORS origin) without a fixture of its own.
 
     The middleware opens its **own** session rather than using a request-scoped
     dependency, so it has to be pointed at the test schema explicitly. The
@@ -37,18 +56,32 @@ def client(
     the code under test.
     """
     monkeypatch.setenv("REIM_RATE_LIMIT_ANONYMOUS", str(ANONYMOUS_LIMIT))
-    monkeypatch.setenv("REIM_RATE_LIMIT_KEYED", "100")
-    get_settings.cache_clear()
+    monkeypatch.setenv("REIM_RATE_LIMIT_KEYED", str(KEYED_LIMIT))
 
     test_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     monkeypatch.setattr("apps.api.middleware.get_session_factory", lambda: test_factory)
+    monkeypatch.setattr(
+        "apps.api.main.build_rate_limit_middleware",
+        functools.partial(build_rate_limit_middleware, clock=lambda: FROZEN_NOW),
+    )
 
-    app = create_app()
-    app.dependency_overrides[get_db] = lambda: seeded_session
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
+    def build(**environment: str) -> FastAPI:
+        for name, value in environment.items():
+            monkeypatch.setenv(name, value)
+        get_settings.cache_clear()
+        app = create_app()
+        app.dependency_overrides[get_db] = lambda: seeded_session
+        return app
+
+    yield build
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def client(build_app: Callable[..., FastAPI]) -> Iterator[TestClient]:
+    """A client for the default deployment shape: no root path, no proxy."""
+    with TestClient(build_app()) as test_client:
+        yield test_client
 
 
 @requires_db

@@ -63,9 +63,18 @@ def _resolve_key(token: str) -> tuple[str | None, bool]:
 
 
 def build_rate_limit_middleware(
-    limiter: FixedWindowLimiter, settings: Settings
+    limiter: FixedWindowLimiter,
+    settings: Settings,
+    *,
+    clock: Callable[[], float] = time.time,
 ) -> Callable[[Request, Handler], Awaitable[Response]]:
-    """Return the middleware, closed over this application's own limiter."""
+    """Return the middleware, closed over this application's own limiter.
+
+    ``clock`` is injectable so a test can pin the instant every request is
+    counted at. The window is aligned to the wall clock, so a test reading the
+    real clock can straddle a boundary, watch the counter reset, and pass while
+    the limiter is broken — a flake in the one direction that matters here.
+    """
 
     async def rate_limit(request: Request, call_next: Handler) -> Response:
         if not request.url.path.startswith(LIMITED_PREFIX):
@@ -94,7 +103,7 @@ def build_rate_limit_middleware(
                 trusted_proxy_hops=settings.trusted_proxy_hops,
             )
 
-        decision = limiter.check(identity, limit, now=time.time())
+        decision = limiter.check(identity, limit, now=clock())
         if not decision.allowed:
             return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
