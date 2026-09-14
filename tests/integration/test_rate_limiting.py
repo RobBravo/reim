@@ -132,6 +132,50 @@ def test_an_unknown_key_is_rejected(client: TestClient) -> None:
 
 
 @requires_db
+def test_an_unknown_key_is_counted_against_the_anonymous_allowance(client: TestClient) -> None:
+    """A junk header must not buy unlimited, uncounted lookups.
+
+    Every presented token costs a hash and an indexed read of ``api_keys``. If
+    the 401 returns before the count, an unauthenticated caller converts a
+    rate-limited endpoint into an unmetered database-load generator by adding
+    one header. So the count comes first and the refusal reason second: past
+    the allowance the answer is 429, not another 401.
+    """
+    headers = {"X-API-Key": "reim_nonsense"}
+    for _ in range(ANONYMOUS_LIMIT):
+        assert client.get("/api/v1/countries", headers=headers).status_code == 401
+
+    response = client.get("/api/v1/countries", headers=headers)
+
+    assert response.status_code == 429
+    assert response.json()["error"]["code"] == "rate_limited"
+
+
+@requires_db
+def test_a_refusal_carries_the_same_envelope_as_any_other_error(client: TestClient) -> None:
+    """Both refusals happen before any exception handler runs.
+
+    Nothing else asserts the middleware's envelope agrees with the handlers',
+    so a key could quietly disappear from one of them.
+    """
+    handled = client.get("/api/v1/countries/ZZ")
+    unauthorized = client.get("/api/v1/countries", headers={"X-API-Key": "reim_nonsense"})
+    for _ in range(ANONYMOUS_LIMIT):
+        client.get("/api/v1/countries")
+    limited = client.get("/api/v1/countries")
+
+    assert handled.status_code == 404
+    assert unauthorized.status_code == 401
+    assert limited.status_code == 429
+    for response, code in ((unauthorized, "invalid_api_key"), (limited, "rate_limited")):
+        error = response.json()["error"]
+        assert error.keys() == handled.json()["error"].keys()
+        assert error["code"] == code
+        assert error["message"]
+        assert error["details"] == {}
+
+
+@requires_db
 def test_a_revoked_key_is_rejected(client: TestClient, seeded_session: Session) -> None:
     record, token = create_key(seeded_session, label="test", now=datetime.now(UTC))
     revoke_key(seeded_session, key_id=record.id, now=datetime.now(UTC))

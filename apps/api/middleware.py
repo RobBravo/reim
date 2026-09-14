@@ -7,6 +7,11 @@ a liveness probe can restart a healthy container.
 
 An anonymous request does no database work at all: the key table is touched
 only when a key is actually presented.
+
+Every request under the prefix is counted, and *then* a refusal reason is
+chosen. Deciding the other way round — refusing an invalid key before counting
+it — leaves the one request that costs a database read as the only one nothing
+bounds.
 """
 
 from __future__ import annotations
@@ -89,31 +94,34 @@ def build_rate_limit_middleware(
         if not path.startswith(LIMITED_PREFIX):
             return await call_next(request)
 
-        identity: str | None = None
+        # Resolved for every request, keyed or not. An invalid key is still
+        # counted, against the peer that presented it, so the lookup it costs
+        # is bounded by the anonymous allowance like everything else.
+        identity = client_identity(
+            request.client.host if request.client else None,
+            request.headers.get("X-Forwarded-For"),
+            trusted_proxy_hops=settings.trusted_proxy_hops,
+        )
         limit = settings.rate_limit_anonymous
+        invalid = False
 
         token = request.headers.get(API_KEY_HEADER)
         if token:
-            identity, recognised = _resolve_key(token)
-            if not recognised:
-                return JSONResponse(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    content=error_envelope(
-                        "invalid_api_key", "That API key is not valid or has been revoked."
-                    ),
-                )
-            if identity is not None:
+            keyed_identity, recognised = _resolve_key(token)
+            if keyed_identity is not None:
+                identity = keyed_identity
                 limit = settings.rate_limit_keyed
-
-        if identity is None:
-            identity = client_identity(
-                request.client.host if request.client else None,
-                request.headers.get("X-Forwarded-For"),
-                trusted_proxy_hops=settings.trusted_proxy_hops,
-            )
+            elif not recognised:
+                # Refused below, after the count — never instead of it.
+                invalid = True
+            # Recognised but unidentified is D8: the database is down, so the
+            # request keeps the anonymous identity and allowance.
 
         decision = limiter.check(identity, limit, now=clock())
         if not decision.allowed:
+            # Identity, never the token: a refusal is worth a line, and one
+            # carrying a credential would be worse than no line at all.
+            logger.warning("api.rate_limited", identity=identity, path=path)
             return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 content=error_envelope(
@@ -122,6 +130,16 @@ def build_rate_limit_middleware(
                 ),
                 headers={"Retry-After": str(decision.retry_after_seconds)},
             )
+
+        if invalid:
+            logger.warning("api.invalid_api_key", identity=identity, path=path)
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content=error_envelope(
+                    "invalid_api_key", "That API key is not valid or has been revoked."
+                ),
+            )
+
         return await call_next(request)
 
     return rate_limit
