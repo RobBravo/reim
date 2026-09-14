@@ -1,0 +1,189 @@
+"""The one request-path concern REIM adds: how much, and from whom.
+
+Only paths under ``/api/v1`` are limited. That single rule exempts the liveness
+and readiness probes, the Prometheus scrape, the web pages, the static assets
+and the docs without enumerating any of them — and a limiter that can throttle
+a liveness probe can restart a healthy container.
+
+An anonymous request does no database work at all: the key table is touched
+only when a key is actually presented.
+
+Every request under the prefix is counted, and *then* a refusal reason is
+chosen. Deciding the other way round — refusing an invalid key before counting
+it — leaves the one request that costs a database read as the only one nothing
+bounds.
+
+CORS is registered outside this middleware, so a browser preflight is answered
+before the limiter sees it and costs nobody an allowance: accepted, because a
+preflight reaches no route, no key lookup and no database, and counting it
+would spend the anonymous allowance a key exists to raise.
+"""
+
+from __future__ import annotations
+
+import time
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
+
+from fastapi import Request, Response, status
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
+
+# Re-exported by ``starlette.routing`` rather than declared there, which is why
+# mypy needs telling; it is the module the router itself imports it from.
+from starlette.routing import get_route_path  # type: ignore[attr-defined]
+
+from apps.api.errors import error_envelope
+from apps.api.ratelimit import FixedWindowLimiter, client_identity
+from reim.core.config import Settings
+from reim.core.logging import get_logger
+from reim.database.session import get_session_factory
+from reim.repositories.api_keys import find_by_token
+
+logger = get_logger(__name__)
+
+#: Everything below this prefix is limited; everything else is not.
+LIMITED_PREFIX = "/api/v1"
+
+#: Header a caller presents a key in.
+API_KEY_HEADER = "X-API-Key"
+
+#: How stale ``last_used_at`` may get before it is refreshed.
+#:
+#: The column exists so an operator can find a key nobody uses any more, and
+#: ``reim key list`` shows it — but writing it on every request would put an
+#: UPDATE in the path of a read-only API. An hour is far finer than the
+#: question it answers, and it costs at most one write per key per hour no
+#: matter how hard that key is used.
+LAST_USED_REFRESH = timedelta(hours=1)
+
+Handler = Callable[[Request], Awaitable[Response]]
+
+
+def _resolve_key(token: str) -> tuple[str | None, bool]:
+    """Return ``(identity, recognised)`` for a presented token.
+
+    A lookup that fails because the database is unreachable reports the token
+    as *recognised but unidentified*, so the request proceeds on the anonymous
+    allowance instead of being rejected. A 401 is a misleading way to say the
+    database is down, and the endpoint the request is heading for will report
+    the outage in its own terms.
+
+    ``last_used_at`` is refreshed at most once per ``LAST_USED_REFRESH`` per
+    key, so a key in heavy use costs one write an hour rather than one per
+    request. Without this the column would never be written at all and
+    ``reim key list`` would report every key as never used. The write shares
+    the ``except`` below, so a database that reads but cannot write silently
+    demotes every keyed caller to the anonymous allowance, with one warning
+    line to say so.
+    """
+    session: Session | None = None
+    try:
+        # Inside the ``try``: the first call builds the engine, and a malformed
+        # ``REIM_DATABASE_URL`` raises ``ArgumentError`` — a ``SQLAlchemyError``
+        # — which outside it would escape as a 500 instead of downgrading.
+        session = get_session_factory()()
+        record = find_by_token(session, token)
+        if record is None:
+            return None, False
+
+        # Read the attributes here, not after the ``finally``: ``rollback()``
+        # expires every instance in the session and ``close()`` detaches them,
+        # so a later attribute access raises ``DetachedInstanceError``.
+        identity = f"key:{record.id}"
+        now = datetime.now(UTC)
+        if record.last_used_at is None or now - record.last_used_at > LAST_USED_REFRESH:
+            record.last_used_at = now
+            session.commit()
+        return identity, True
+    except SQLAlchemyError:
+        logger.warning("api.key_lookup_unavailable")
+        return None, True
+    finally:
+        if session is not None:
+            # A no-op after a commit; it discards the read transaction
+            # otherwise. Guarded because the session may never have been made.
+            session.rollback()
+            session.close()
+
+
+def build_rate_limit_middleware(
+    limiter: FixedWindowLimiter,
+    settings: Settings,
+    *,
+    clock: Callable[[], float] = time.time,
+) -> Callable[[Request, Handler], Awaitable[Response]]:
+    """Return the middleware, closed over this application's own limiter.
+
+    ``clock`` is injectable so a test can pin the instant every request is
+    counted at. The window is aligned to the wall clock, so a test reading the
+    real clock can straddle a boundary, watch the counter reset, and pass while
+    the limiter is broken — a flake in the one direction that matters here.
+    """
+
+    async def rate_limit(request: Request, call_next: Handler) -> Response:
+        # ``request.url.path`` still carries the ``root_path`` a proxy did not
+        # strip, while the router matches on the path with it removed, so an app
+        # behind ``REIM_API_ROOT_PATH`` would serve every data route unlimited
+        # and nothing would say so. ``get_route_path`` is the function the
+        # router itself calls: one implementation of the rule, so the two cannot
+        # disagree about where a request is going.
+        path = get_route_path(request.scope)
+        if not path.startswith(LIMITED_PREFIX):
+            return await call_next(request)
+
+        # Resolved for every request, keyed or not. An invalid key is still
+        # counted, against the peer that presented it, so the lookup it costs
+        # is bounded by the anonymous allowance like everything else.
+        identity = client_identity(
+            request.client.host if request.client else None,
+            request.headers.get("X-Forwarded-For"),
+            trusted_proxy_hops=settings.trusted_proxy_hops,
+        )
+        limit = settings.rate_limit_anonymous
+        invalid = False
+
+        token = request.headers.get(API_KEY_HEADER)
+        if token:
+            # Offloaded: every route handler in REIM is a sync ``def`` that
+            # FastAPI already runs in a threadpool, and a blocking psycopg call
+            # left on the event loop stalls the whole process — including the
+            # liveness probe this prefix rule exists to keep clear.
+            keyed_identity, recognised = await run_in_threadpool(_resolve_key, token)
+            if keyed_identity is not None:
+                identity = keyed_identity
+                limit = settings.rate_limit_keyed
+            elif not recognised:
+                # Refused below, after the count — never instead of it.
+                invalid = True
+            # Recognised but unidentified is D8: the database is down, so the
+            # request keeps the anonymous identity and allowance.
+
+        decision = limiter.check(identity, limit, now=clock())
+        if not decision.allowed:
+            # Identity, never the token: a refusal is worth a line, and one
+            # carrying a credential would be worse than no line at all.
+            logger.warning("api.rate_limited", identity=identity, path=path)
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content=error_envelope(
+                    "rate_limited",
+                    "Too many requests. Present an API key for a higher allowance.",
+                ),
+                headers={"Retry-After": str(decision.retry_after_seconds)},
+            )
+
+        if invalid:
+            logger.warning("api.invalid_api_key", identity=identity, path=path)
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content=error_envelope(
+                    "invalid_api_key", "That API key is not valid or has been revoked."
+                ),
+            )
+
+        return await call_next(request)
+
+    return rate_limit

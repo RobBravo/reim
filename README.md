@@ -456,6 +456,79 @@ API routers call rather than the API itself.
 
 Base URL `/api/v1`. OpenAPI at `/docs` and `/openapi.json`. Read-only.
 
+### API keys and rate limiting
+
+REIM publishes open data, so the API stays open: no key is required, and a
+missing key is never an error. A key does not gate access — **it raises your
+allowance**. This is the whole point of the increment that retired the "put a
+gateway in front" warning this README used to carry.
+
+Issue, list and revoke keys from the CLI — never over HTTP, since the API is
+read-only by design:
+
+```text
+reim key create --label "grafana"   # prints the token once; store it now
+reim key list                       # id, label, active/revoked, last used
+reim key revoke <key-id>            # immediate; the row is kept, not deleted
+```
+
+The token is shown **exactly once**, at creation. REIM stores only its
+SHA-256 hash, so a lost token cannot be recovered — create a new key and
+revoke the old one. `reim key list`'s "last used" column is refreshed at most
+once an hour per key, to keep an UPDATE off the path of every read; a key used
+seconds ago can still read as "never used" or show a timestamp up to an hour
+stale, and that is not a sign the key is dead.
+
+Present a key with the `X-API-Key` header:
+
+```text
+curl -s http://localhost:8000/api/v1/observations -H "X-API-Key: reim_xxxxx"
+```
+
+An unrecognised or revoked key gets `401` (`invalid_api_key`), not silent
+anonymous fallback. Exhausting an allowance gets `429` (`rate_limited`) with a
+`Retry-After` header carrying the seconds until the current window resets.
+
+Only paths under `/api/v1` are limited, which exempts `/health`, `/ready`,
+`/metrics`, the web pages (`/`, `/runs`, `/series`), `/static`, `/docs` and
+`/openapi.json` without enumerating any of them — a limiter that can throttle
+a liveness probe can restart a healthy container. `/api/v1/status` **is**
+limited even though it lives in the same prefix-less router as `/health`,
+because it is a real query over the observations table, not a probe. A
+browser's CORS preflight (`OPTIONS`) is answered before the limiter ever sees
+it, so sending `X-API-Key` from a browser never spends your allowance on the
+preflight it forces.
+
+Five settings govern this, all with the `REIM_` prefix:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `REIM_RATE_LIMIT_ENABLED` | `true` | Turn limiting off entirely |
+| `REIM_RATE_LIMIT_ANONYMOUS` | `60` | Requests per window with no key |
+| `REIM_RATE_LIMIT_KEYED` | `600` | Requests per window with a valid key |
+| `REIM_RATE_LIMIT_WINDOW_SECONDS` | `60` | Length of the fixed window, in seconds |
+| `REIM_TRUSTED_PROXY_HOPS` | `0` | See below |
+
+**`REIM_TRUSTED_PROXY_HOPS`** decides whose address a request is counted
+against when a reverse proxy sits in front of REIM. At the default of `0`,
+`X-Forwarded-For` is ignored entirely and every request is counted against the
+socket peer — the proxy's own address, if there is one. An operator running
+one reverse proxy in front of REIM sets this to `1`, which counts the last hop
+that proxy appended. **Setting it higher than the number of proxies you
+actually run lets a client choose its own identity and escape limiting
+altogether** — it hands the header back to whoever is attacker-controlled.
+That is the one mistake here that makes the limiter decorative rather than
+real.
+
+Counters are kept **in memory, per process**, not in the database — the
+shipped deployment is a single uvicorn worker (neither `Dockerfile` nor
+`docker-compose.yml` passes `--workers`), so this is exact as shipped. Running
+*N* workers behind your own gateway multiplies the effective limit by *N*,
+since each worker counts its own window independently; an operator who scales
+workers is already running something in front of them that can enforce a
+tighter bound. An app served under `REIM_API_ROOT_PATH` is still limited
+correctly — the limiter resolves the route the same way the router does.
+
 ### Endpoints
 
 ```text
@@ -839,8 +912,10 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   interest rates. **Belize is CEPAL-only**: it reports nothing to the IMF
   dataflow at any frequency and is not one of SIECA's six, so every figure REIM
   holds for it comes from CEPALSTAT.
-- **No authentication or rate limiting.** Do not expose this publicly without
-  putting a gateway in front and narrowing `REIM_CORS_ALLOW_ORIGINS`.
+- **REIM rate-limits `/api/v1` itself.** Anonymous callers get a per-minute
+  allowance and a key raises it — see [API keys and rate
+  limiting](#api-keys-and-rate-limiting). `REIM_CORS_ALLOW_ORIGINS` still wants
+  narrowing before exposing REIM publicly.
 - **Revisions are recorded, not reconciled.** REIM keeps the history but does
   not attempt to explain *why* a source revised a figure.
 - **Not investment advice.** REIM redistributes official figures with their
@@ -848,9 +923,9 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
 
 ## Roadmap
 
-More Central American countries, national primary sources, a web dashboard,
-economic news and event correlation, alerting, RAG and AI summaries, API keys, a
-Python SDK, a distributable CLI and an MCP server. See [ROADMAP.md](./ROADMAP.md).
+More Central American countries, national primary sources, economic news and
+event correlation, RAG and AI summaries, a Python SDK, a distributable CLI and
+an MCP server. See [ROADMAP.md](./ROADMAP.md).
 
 ## Contributing
 
