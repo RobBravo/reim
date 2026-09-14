@@ -77,7 +77,16 @@ def build_rate_limit_middleware(
     """
 
     async def rate_limit(request: Request, call_next: Handler) -> Response:
-        if not request.url.path.startswith(LIMITED_PREFIX):
+        # ``request.url.path`` still carries the ``root_path`` a proxy did not
+        # strip, while the router matches on the path with it removed. Test the
+        # same path the router will route, or an app behind
+        # ``REIM_API_ROOT_PATH`` serves every data route unlimited: the prefix
+        # would never match, and nothing would say so.
+        path = request.url.path
+        root = request.scope.get("root_path", "")
+        if root and path.startswith(root):
+            path = path[len(root) :] or "/"
+        if not path.startswith(LIMITED_PREFIX):
             return await call_next(request)
 
         identity: str | None = None
