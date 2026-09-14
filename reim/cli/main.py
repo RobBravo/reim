@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
@@ -34,6 +35,7 @@ from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.registry import ConnectorRegistry
 from reim.ingestion.runner import PipelineRunner
 from reim.repositories import pipeline_runs as run_repo
+from reim.repositories.api_keys import create_key, list_keys, revoke_key
 from reim.services.alerting import AlertDeliveryError, run_alert_check
 from reim.services.seeding import seed_all
 
@@ -50,12 +52,14 @@ app = typer.Typer(
 alert_app = typer.Typer(help="Evaluate and deliver operational alerts.", no_args_is_help=True)
 catalog_app = typer.Typer(help="Inspect and validate the source catalog.", no_args_is_help=True)
 db_app = typer.Typer(help="Database maintenance commands.", no_args_is_help=True)
+key_app = typer.Typer(help="Issue and revoke API keys.", no_args_is_help=True)
 pipeline_app = typer.Typer(help="List and execute ingestion pipelines.", no_args_is_help=True)
 quality_app = typer.Typer(help="Data-quality reporting.", no_args_is_help=True)
 
 app.add_typer(alert_app, name="alert")
 app.add_typer(catalog_app, name="catalog")
 app.add_typer(db_app, name="db")
+app.add_typer(key_app, name="key")
 app.add_typer(pipeline_app, name="pipeline")
 app.add_typer(quality_app, name="quality")
 
@@ -164,6 +168,75 @@ def db_seed() -> None:
         f"    indicators   +{report.indicators_created} ~{report.indicators_updated}\n"
         f"    sources      +{report.sources_created} ~{report.sources_updated}"
     )
+
+
+# --------------------------------------------------------------------------
+# key
+# --------------------------------------------------------------------------
+@key_app.command("create")
+def key_create(
+    label: Annotated[str, typer.Option("--label", help="What this key is for.")],
+) -> None:
+    """Issue an API key and print it once.
+
+    The token is shown here and nowhere else: only its hash is stored, so it
+    cannot be recovered. Losing it means creating another and revoking this one.
+    """
+    with session_scope() as session:
+        record, token = create_key(session, label=label, now=datetime.now(UTC))
+        key_id = record.id
+
+    typer.echo(f"key    {key_id}")
+    typer.echo(f"label  {label}")
+    typer.echo(f"token  {token}")
+    typer.echo("\nStore the token now — it is not recoverable.")
+    raise typer.Exit(EXIT_OK)
+
+
+@key_app.command("list")
+def key_list() -> None:
+    """List every key ever issued, newest first."""
+    with session_scope() as session:
+        keys = list_keys(session)
+        rows = [
+            (
+                str(key.id),
+                key.label,
+                "revoked" if key.revoked_at else "active",
+                key.last_used_at.isoformat() if key.last_used_at else "never used",
+            )
+            for key in keys
+        ]
+
+    if not rows:
+        typer.echo("No API keys have been issued.")
+        raise typer.Exit(EXIT_OK)
+
+    typer.echo(f"{'ID':38} {'LABEL':24} {'STATUS':8} LAST USED")
+    for key_id, label, status, last_used in rows:
+        typer.echo(f"{key_id:38} {label:24} {status:8} {last_used}")
+    raise typer.Exit(EXIT_OK)
+
+
+@key_app.command("revoke")
+def key_revoke(
+    key_id: Annotated[str, typer.Argument(help="Key id, from `reim key list`.")],
+) -> None:
+    """Revoke a key. It stops working immediately and is kept for the record."""
+    try:
+        parsed = uuid.UUID(key_id)
+    except ValueError:
+        err(f"✗ {key_id!r} is not a key id. Run `reim key list`.", err=True)
+        raise typer.Exit(EXIT_INVALID) from None
+
+    with session_scope() as session:
+        revoked = revoke_key(session, key_id=parsed, now=datetime.now(UTC))
+
+    if not revoked:
+        err("✗ No active key with that id.", err=True)
+        raise typer.Exit(EXIT_FAILURE)
+    typer.echo("Revoked.")
+    raise typer.Exit(EXIT_OK)
 
 
 # --------------------------------------------------------------------------
