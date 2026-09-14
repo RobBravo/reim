@@ -98,3 +98,32 @@ def test_run_all_with_unused_frequency_exits_zero(
 
     assert result.exit_code == 0
     assert capturing_runner.calls == []
+
+
+def test_schedule_emits_a_crontab_for_the_real_catalog() -> None:
+    result = runner.invoke(app, ["pipeline", "schedule"])
+
+    assert result.exit_code == 0
+    assert "pipeline run-all --frequency" in result.stdout
+    assert "alert check" in result.stdout
+
+
+def test_schedule_honours_the_working_directory() -> None:
+    result = runner.invoke(app, ["pipeline", "schedule", "--working-dir", "/srv/reim"])
+
+    assert result.exit_code == 0
+    assert "cd /srv/reim" in result.stdout
+
+
+def test_schedule_output_is_installable_as_written() -> None:
+    """Every non-comment line must be five schedule fields then a command.
+
+    This command exists to be piped into ``crontab -``; text that is merely
+    informative would be a different feature.
+    """
+    result = runner.invoke(app, ["pipeline", "schedule"])
+
+    for line in result.stdout.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        assert len(line.split(maxsplit=5)) == 6

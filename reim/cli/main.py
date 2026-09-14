@@ -28,6 +28,7 @@ from reim.core.exceptions import REIMError
 from reim.core.logging import configure_logging, get_logger
 from reim.database.session import check_database_connection, session_scope
 from reim.domain.pipelines.models import PipelineOutcome
+from reim.domain.pipelines.schedule import build_schedule, render_crontab
 from reim.domain.pipelines.scheduling import DEFAULT_CRON_BY_FREQUENCY
 from reim.domain.quality.rules import load_quality_rules
 from reim.domain.sources.catalog import load_catalog
@@ -261,6 +262,30 @@ def pipeline_run_all(
     failed = [outcome for outcome in outcomes if not outcome.succeeded]
     typer.echo(f"\n{len(outcomes) - len(failed)}/{len(outcomes)} pipeline(s) succeeded")
     raise typer.Exit(EXIT_FAILURE if failed else EXIT_OK)
+
+
+@pipeline_app.command("schedule")
+def pipeline_schedule(
+    working_dir: Annotated[
+        Path | None,
+        typer.Option("--working-dir", help="Directory the cron lines cd into."),
+    ] = None,
+) -> None:
+    """Print a crontab fragment scheduling each cadence, plus the alert check.
+
+    Nothing is installed and no file is written: the output goes to stdout for
+    the operator to review and pipe where they want it. A tool that edits a live
+    crontab is a tool that can silently delete one.
+    """
+    try:
+        catalog = load_catalog()
+    except REIMError as exc:
+        err(f"✗ {exc.message}", err=True)
+        raise typer.Exit(EXIT_INVALID) from exc
+
+    entries = build_schedule(catalog, working_dir=working_dir or Path.cwd())
+    typer.echo(render_crontab(entries), nl=False)
+    raise typer.Exit(EXIT_OK)
 
 
 @pipeline_app.command("status")

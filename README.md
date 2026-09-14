@@ -303,15 +303,37 @@ while `FP.CPI.TOTL.ZG` on the same host returned `200`.
 
 ### Scheduling
 
-The MVP has no built-in scheduler by design. `pipeline list` prints a suggested
-cron expression per source; wire the CLI into cron, a systemd timer or a
-scheduled CI job. `reim.domain.pipelines.scheduling.PipelineScheduler` is the
-interface a real scheduler would implement later.
+REIM has no built-in scheduler by design. `pipeline schedule` reads the
+catalog and prints a crontab fragment — one line per cadence the enabled
+catalog uses, plus the alert check — to stdout. It writes nothing and installs
+nothing; review the output, then pipe it into `crontab -` yourself:
 
-```cron
-# Annual World Bank series: check monthly, revisions land unpredictably
-0 13 5 * * cd /opt/reim && .venv/bin/python -m reim.cli pipeline run-all
+```bash
+python -m reim.cli pipeline schedule --working-dir /opt/reim
 ```
+
+```text
+# daily — 2 pipeline(s): banguat_exchange_rate, bcn_exchange_rate
+0 13 * * * cd /opt/reim && .venv/bin/python -m reim.cli pipeline run-all --frequency daily
+
+# monthly — 11 pipeline(s): cepalstat_cpi_monthly, cepalstat_exchange_rate_monthly, ...
+15 13 5 * * cd /opt/reim && .venv/bin/python -m reim.cli pipeline run-all --frequency monthly
+
+# Alerting — after the ingestion window, since staleness is only meaningful once the day's ingestion has finished.
+0 15 * * * cd /opt/reim && .venv/bin/python -m reim.cli alert check
+```
+
+Today's catalog uses four cadences — daily, monthly, quarterly and annual —
+so the full output has four ingestion blocks before the alert line; a fifth
+cadence would add a fifth block automatically, with no template to edit.
+Each block runs `pipeline run-all --frequency <cadence>`, which restricts that
+sweep to the sources published at that cadence. `--frequency` also works on
+its own, without going through `schedule`, when re-running just one cadence
+by hand — after a network problem, for instance:
+`pipeline run-all --frequency daily`.
+`reim.domain.pipelines.scheduling.PipelineScheduler` is the interface a real
+scheduler would implement later; it stays an unimplemented seam, since the
+operator's cron remains the scheduler.
 
 ### Operational alerts
 
@@ -374,12 +396,11 @@ The payload is JSON:
 }
 ```
 
-Schedule one alert check beside the ingestion jobs — the same timing works, but
-the check must run **after** the ingestion completes so staleness is visible:
-
-```cron
-0 14 5 * * cd /opt/reim && .venv/bin/python -m reim.cli alert check
-```
+The check must run **after** ingestion completes so staleness is visible.
+`pipeline schedule` (see [Scheduling](#scheduling)) already emits the alert
+line at the right time alongside the ingestion blocks, so there is one place
+that knows the schedule rather than a second cron line to keep in sync by
+hand.
 
 ---
 
