@@ -23,6 +23,8 @@ from datetime import UTC, datetime, timedelta
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from apps.api.errors import error_envelope
 from apps.api.ratelimit import FixedWindowLimiter, client_identity
@@ -68,8 +70,12 @@ def _resolve_key(token: str) -> tuple[str | None, bool]:
     demotes every keyed caller to the anonymous allowance, with one warning
     line to say so.
     """
-    session = get_session_factory()()
+    session: Session | None = None
     try:
+        # Inside the ``try``: the first call builds the engine, and a malformed
+        # ``REIM_DATABASE_URL`` raises ``ArgumentError`` — a ``SQLAlchemyError``
+        # — which outside it would escape as a 500 instead of downgrading.
+        session = get_session_factory()()
         record = find_by_token(session, token)
         if record is None:
             return None, False
@@ -87,9 +93,11 @@ def _resolve_key(token: str) -> tuple[str | None, bool]:
         logger.warning("api.key_lookup_unavailable")
         return None, True
     finally:
-        # A no-op after a commit; it discards the read transaction otherwise.
-        session.rollback()
-        session.close()
+        if session is not None:
+            # A no-op after a commit; it discards the read transaction
+            # otherwise. Guarded because the session may never have been made.
+            session.rollback()
+            session.close()
 
 
 def build_rate_limit_middleware(
@@ -132,7 +140,11 @@ def build_rate_limit_middleware(
 
         token = request.headers.get(API_KEY_HEADER)
         if token:
-            keyed_identity, recognised = _resolve_key(token)
+            # Offloaded: every route handler in REIM is a sync ``def`` that
+            # FastAPI already runs in a threadpool, and a blocking psycopg call
+            # left on the event loop stalls the whole process — including the
+            # liveness probe this prefix rule exists to keep clear.
+            keyed_identity, recognised = await run_in_threadpool(_resolve_key, token)
             if keyed_identity is not None:
                 identity = keyed_identity
                 limit = settings.rate_limit_keyed

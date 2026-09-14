@@ -14,6 +14,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from apps.api.dependencies import get_db
@@ -203,6 +204,75 @@ def test_a_revoked_key_is_rejected(client: TestClient, seeded_session: Session) 
     response = client.get("/api/v1/countries", headers={"X-API-Key": token})
 
     assert response.status_code == 401
+
+
+def _break_the_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The query fails: the database is reachable no longer."""
+
+    def raise_on_lookup(*_args: object, **_kwargs: object) -> None:
+        raise SQLAlchemyError("database is down")
+
+    monkeypatch.setattr("apps.api.middleware.find_by_token", raise_on_lookup)
+
+
+def _break_the_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Opening the session fails, which is what a bad URL or a dead pool does."""
+
+    def raise_on_connect() -> None:
+        raise SQLAlchemyError("could not connect")
+
+    monkeypatch.setattr("apps.api.middleware.get_session_factory", raise_on_connect)
+
+
+BROKEN_DATABASES = pytest.mark.parametrize(
+    "break_the_database",
+    [_break_the_lookup, _break_the_connection],
+    ids=["lookup", "connection"],
+)
+
+
+@requires_db
+@BROKEN_DATABASES
+def test_a_presented_key_is_served_when_the_database_is_down(
+    client: TestClient,
+    seeded_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    break_the_database: Callable[[pytest.MonkeyPatch], None],
+) -> None:
+    """D8: a 401 is a misleading way to say the database is unreachable.
+
+    The endpoint the request is heading for will report the outage in its own
+    terms; blaming the caller's credential for the server's problem would not.
+    """
+    _, token = create_key(seeded_session, label="test", now=datetime.now(UTC))
+    seeded_session.commit()
+    break_the_database(monkeypatch)
+
+    response = client.get("/api/v1/countries", headers={"X-API-Key": token})
+
+    assert response.status_code == 200
+
+
+@requires_db
+@BROKEN_DATABASES
+def test_a_key_whose_lookup_failed_gets_only_the_anonymous_allowance(
+    client: TestClient,
+    seeded_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    break_the_database: Callable[[pytest.MonkeyPatch], None],
+) -> None:
+    """Served, but *as anonymous*: an unverifiable key cannot raise a limit."""
+    _, token = create_key(seeded_session, label="test", now=datetime.now(UTC))
+    seeded_session.commit()
+    break_the_database(monkeypatch)
+    headers = {"X-API-Key": token}
+
+    for _ in range(ANONYMOUS_LIMIT):
+        assert client.get("/api/v1/countries", headers=headers).status_code == 200
+
+    # The keyed allowance is far higher, so a 429 here can only be the
+    # anonymous one.
+    assert client.get("/api/v1/countries", headers=headers).status_code == 429
 
 
 @requires_db
