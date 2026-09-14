@@ -9,8 +9,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from reim.database.models import ApiKey
 from reim.repositories.api_keys import (
     TOKEN_PREFIX,
     create_key,
@@ -32,7 +35,7 @@ def test_a_created_key_is_returned_once_and_stored_hashed(session: Session) -> N
     assert token.startswith(TOKEN_PREFIX)
     assert record.label == "grafana"
     assert record.token_hash == hash_token(token)
-    assert token not in record.token_hash
+    assert record.token_hash != token
 
 
 @requires_db
@@ -82,11 +85,29 @@ def test_revoking_a_key_twice_reports_the_second_as_a_no_op(session: Session) ->
 
 
 @requires_db
-def test_two_keys_never_share_a_token(session: Session) -> None:
+def test_each_created_key_gets_a_distinct_token(session: Session) -> None:
+    """The generator, not the constraint: two calls never collide in practice."""
     _, first = create_key(session, label="a", now=NOW)
     _, second = create_key(session, label="b", now=NOW)
 
     assert first != second
+
+
+@requires_db
+def test_the_database_refuses_two_keys_with_the_same_hash(session: Session) -> None:
+    """The constraint, not the generator.
+
+    ``secrets`` makes a duplicate hash vanishingly unlikely, which is exactly
+    why the generator cannot stand in for the constraint: a test that only
+    compares two generated tokens would pass with no unique index at all.
+    """
+    shared = hash_token("reim_whatever")
+    session.add(ApiKey(token_hash=shared, label="first", created_at=NOW))
+    session.flush()
+    session.add(ApiKey(token_hash=shared, label="second", created_at=NOW))
+
+    with pytest.raises(IntegrityError):
+        session.flush()
 
 
 @requires_db
