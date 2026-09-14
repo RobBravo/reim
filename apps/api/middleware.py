@@ -18,6 +18,7 @@ from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
+from apps.api.errors import error_envelope
 from apps.api.ratelimit import FixedWindowLimiter, client_identity
 from reim.core.config import Settings
 from reim.core.logging import get_logger
@@ -33,11 +34,6 @@ LIMITED_PREFIX = "/api/v1"
 API_KEY_HEADER = "X-API-Key"
 
 Handler = Callable[[Request], Awaitable[Response]]
-
-
-def _envelope(code: str, message: str) -> dict[str, object]:
-    """Match the shape ``apps/api/errors.py`` produces, so clients parse one."""
-    return {"error": {"code": code, "message": message, "details": {}}}
 
 
 def _resolve_key(token: str) -> tuple[str | None, bool]:
@@ -84,7 +80,7 @@ def build_rate_limit_middleware(
             if not recognised:
                 return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    content=_envelope(
+                    content=error_envelope(
                         "invalid_api_key", "That API key is not valid or has been revoked."
                     ),
                 )
@@ -102,7 +98,7 @@ def build_rate_limit_middleware(
         if not decision.allowed:
             return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                content=_envelope(
+                content=error_envelope(
                     "rate_limited",
                     "Too many requests. Present an API key for a higher allowance.",
                 ),

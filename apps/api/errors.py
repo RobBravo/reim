@@ -17,9 +17,15 @@ from reim.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-def _envelope(
+def error_envelope(
     code: str, message: str, details: dict[str, object] | None = None
 ) -> dict[str, object]:
+    """Return the one error shape REIM emits, from a handler or a middleware.
+
+    Public because the rate-limit middleware refuses requests before any
+    exception handler can run, and a second copy of this dict is a second
+    shape waiting to drift from this one.
+    """
     return {"error": {"code": code, "message": message, "details": details or {}}}
 
 
@@ -32,7 +38,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             logger.error("api.domain_error", code=exc.code, message=exc.message)
         return JSONResponse(
             status_code=exc.http_status,
-            content=_envelope(exc.code, exc.message, exc.details),
+            content=error_envelope(exc.code, exc.message, exc.details),
         )
 
     @app.exception_handler(RequestValidationError)
@@ -48,7 +54,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         ]
         return JSONResponse(
             status_code=422,  # Unprocessable Content
-            content=_envelope(
+            content=error_envelope(
                 "validation_error",
                 "One or more request parameters are invalid",
                 {"fields": fields},
@@ -65,7 +71,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         }
         return JSONResponse(
             status_code=exc.status_code,
-            content=_envelope(codes.get(exc.status_code, "http_error"), str(exc.detail)),
+            content=error_envelope(codes.get(exc.status_code, "http_error"), str(exc.detail)),
         )
 
     @app.exception_handler(Exception)
@@ -74,5 +80,5 @@ def register_exception_handlers(app: FastAPI) -> None:
         logger.exception("api.unhandled_error", error_type=type(exc).__name__)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=_envelope("internal_error", "An unexpected error occurred"),
+            content=error_envelope("internal_error", "An unexpected error occurred"),
         )
