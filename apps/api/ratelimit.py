@@ -20,8 +20,15 @@ from dataclasses import dataclass
 #:
 #: Without it, a client rotating source addresses grows the limiter without
 #: bound and turns the thing meant to shed load into a way to exhaust the
-#: process. When the ceiling is reached, entries from earlier windows are
-#: dropped; they were about to reset anyway.
+#: process. When the ceiling is reached, eviction happens in two stages:
+#: first, entries from earlier windows are dropped (they were about to reset
+#: anyway); second, if that is not enough, the oldest tracked entries from
+#: the current window are removed regardless of their state. An evicted
+#: identity starts counting again from zero on its next request. This is
+#: acceptable because the identity is normally the socket peer, which a
+#: caller cannot choose; forcing your own eviction requires generating
+#: distinct source addresses, which already grants an unthrottled bucket per
+#: address under any per-IP limiter.
 MAX_TRACKED_IDENTITIES = 10_000
 
 #: Fallback identity when the transport reports no peer.
@@ -74,7 +81,17 @@ class FixedWindowLimiter:
         return Decision(allowed=False, retry_after_seconds=max(1, int(remaining) + 1))
 
     def _prune(self, window_start: float) -> None:
-        """Drop identities from earlier windows; they were about to reset."""
+        """Enforce the tracked identity ceiling in two stages.
+
+        First, drop identities from earlier windows (they were about to reset).
+        Second, if the current window alone exceeds the ceiling, keep only the
+        most recently **inserted** identities. This FIFO eviction (not LRU) is
+        deliberately asymmetric: once the cap is reached within a window, older
+        tracked identities are evicted before newer ones, even if the newer
+        ones sent more requests. This is the simplest bounding strategy and is
+        safe because evicted identities start fresh; the attacker gains nothing
+        that distinct source addresses did not already give.
+        """
         self._counts = {
             identity: entry for identity, entry in self._counts.items() if entry[0] == window_start
         }

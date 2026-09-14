@@ -157,3 +157,26 @@ def test_a_missing_peer_still_yields_an_identity() -> None:
 
 def test_an_empty_forwarded_header_falls_back_to_the_peer() -> None:
     assert client_identity(PEER, "", trusted_proxy_hops=1) == PEER
+
+
+def test_an_evicted_identity_starts_counting_again() -> None:
+    """Evicted identities get a fresh allowance, not a penalty.
+
+    When the limiter exceeds its identity ceiling, the oldest entries in the
+    current window are removed to enforce the bound. This grants no lasting
+    advantage: forcing your own eviction requires source addresses, which
+    already buy you an unthrottled bucket each under any per-IP limiter.
+    """
+    limiter = FixedWindowLimiter(window_seconds=60)
+
+    # Exhaust identity "early"'s allowance
+    for _ in range(3):
+        limiter.check("early", 3, now=1000.0)
+    assert limiter.check("early", 3, now=1000.0).allowed is False
+
+    # Fill the limiter past its ceiling so "early" is evicted (FIFO)
+    for index in range(MAX_TRACKED_IDENTITIES):
+        limiter.check(f"fill-{index}", 10, now=1000.0)
+
+    # "early" has been evicted. Its next request should be allowed.
+    assert limiter.check("early", 3, now=1000.0).allowed
