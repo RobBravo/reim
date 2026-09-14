@@ -15,6 +15,7 @@ only writes down what to give it.
 
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,8 +57,16 @@ class ScheduleEntry:
     command: str
 
 
-def _stagger(frequency: Frequency) -> str:
-    """Return this cadence's expression with only its minute rewritten."""
+def stagger_expression(frequency: Frequency) -> str:
+    """Return this cadence's default expression with only its minute rewritten.
+
+    Public because ``pipeline list``'s ``SUGGESTED CRON`` column and the
+    crontab this module emits must show the same expression for a given
+    cadence — if the column kept reading ``DEFAULT_CRON_BY_FREQUENCY``
+    directly, it would teach an operator to hand-install the very 13:00
+    collision this module exists to remove. One function, called from both
+    places, is the only way they cannot drift apart.
+    """
     fields = DEFAULT_CRON_BY_FREQUENCY[frequency].split()
     fields[0] = str(FREQUENCY_MINUTES[frequency])
     return " ".join(fields)
@@ -78,9 +87,16 @@ def build_schedule(
     Only enabled sources are scheduled. Disabled sources are never included,
     because a crontab is unattended and ``disabled_reason`` may record a licence
     constraint that must not be silently bypassed.
+
+    ``working_dir`` is shell-quoted, so a path containing spaces still reaches
+    ``cd`` as one argument. A ``%`` in the path is a known limitation this does
+    not handle: cron treats an unescaped ``%`` as a newline inside the command
+    field, which would silently truncate everything after it. Quoting cannot
+    fix that — it is cron's own escaping rule, not the shell's — so a path
+    containing ``%`` still needs to be avoided or escaped by the operator.
     """
     sources = catalog.enabled_sources
-    prefix = f"cd {working_dir} && {python} -m reim.cli"
+    prefix = f"cd {shlex.quote(str(working_dir))} && {python} -m reim.cli"
 
     by_frequency: dict[Frequency, list[str]] = {}
     for source in sources:
@@ -89,7 +105,7 @@ def build_schedule(
     entries = [
         ScheduleEntry(
             comment=(f"{frequency.value} — {len(keys)} pipeline(s): {', '.join(sorted(keys))}"),
-            expression=_stagger(frequency),
+            expression=stagger_expression(frequency),
             command=f"{prefix} pipeline run-all --frequency {frequency.value}",
         )
         # Sorted by minute so the rendered crontab reads in the order it runs.

@@ -316,7 +316,7 @@ python -m reim.cli pipeline schedule --working-dir /opt/reim
 # daily — 2 pipeline(s): banguat_exchange_rate, bcn_exchange_rate
 0 13 * * * cd /opt/reim && .venv/bin/python -m reim.cli pipeline run-all --frequency daily
 
-# monthly — 11 pipeline(s): cepalstat_cpi_monthly, cepalstat_exchange_rate_monthly, ...
+# monthly — 11 pipeline(s): cepalstat_cpi_monthly, cepalstat_exchange_rate_monthly, ... (names truncated)
 15 13 5 * * cd /opt/reim && .venv/bin/python -m reim.cli pipeline run-all --frequency monthly
 
 # Alerting — after the ingestion window, since staleness is only meaningful once the day's ingestion has finished.
@@ -325,7 +325,12 @@ python -m reim.cli pipeline schedule --working-dir /opt/reim
 
 Today's catalog uses four cadences — daily, monthly, quarterly and annual —
 so the full output has four ingestion blocks before the alert line; a fifth
-cadence would add a fifth block automatically, with no template to edit.
+cadence would add a fifth block automatically, with no template to edit. That
+is true of the command's output, not of an installed crontab: the crontab is a
+snapshot of the catalog at the moment `pipeline schedule` ran. A `weekly`
+source added afterwards matches no line already installed and simply never
+runs, so re-run `pipeline schedule` and reinstall whenever a source arrives at
+a cadence not already listed, or nothing will schedule it.
 Each block runs `pipeline run-all --frequency <cadence>`, which restricts that
 sweep to the sources published at that cadence. `--frequency` also works on
 its own, without going through `schedule`, when re-running just one cadence

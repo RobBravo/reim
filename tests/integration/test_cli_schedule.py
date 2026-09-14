@@ -8,6 +8,8 @@ how it is computed, which ``tests/unit/test_schedule.py`` covers.
 
 from __future__ import annotations
 
+import re
+from itertools import pairwise
 from typing import ClassVar
 
 import pytest
@@ -113,6 +115,45 @@ def test_schedule_honours_the_working_directory() -> None:
 
     assert result.exit_code == 0
     assert "cd /srv/reim" in result.stdout
+
+
+_COMMENT_RE = re.compile(r"^# (\S+) — \d+ pipeline\(s\): (.+)$")
+_FREQUENCY_RE = re.compile(r"--frequency (\S+)")
+
+
+def test_each_blocks_comment_matches_what_its_frequency_selects() -> None:
+    """The comment naming a block's pipelines and the command's ``--frequency``
+    must agree, or the two can drift apart while a comment-only test and a
+    keys-only test both stay green. ``tests/unit/test_schedule.py`` already
+    asserts the comment names the right keys, and this file already asserts
+    ``--frequency`` hands ``run_all`` the right keys — neither crosses to the
+    other, which is exactly how ``include_disabled`` drifted before it was
+    removed from this branch.
+    """
+    result = runner.invoke(app, ["pipeline", "schedule", "--working-dir", "/opt/reim"])
+    assert result.exit_code == 0
+
+    lines = result.stdout.splitlines()
+    checked_cadences: set[str] = set()
+    for comment_line, command_line in pairwise(lines):
+        comment_match = _COMMENT_RE.match(comment_line)
+        frequency_match = _FREQUENCY_RE.search(command_line)
+        if comment_match is None or frequency_match is None:
+            continue
+
+        cadence = frequency_match.group(1)
+        assert comment_match.group(1) == cadence
+
+        keys_from_comment = {key.strip() for key in comment_match.group(2).split(",")}
+        frequency = Frequency(cadence)
+        expected = sorted(
+            entry.key for entry in get_catalog().enabled_sources if entry.frequency is frequency
+        )
+        assert keys_from_comment == set(expected)
+        checked_cadences.add(cadence)
+
+    # Guards against the parser silently matching nothing and the test passing vacuously.
+    assert checked_cadences
 
 
 def test_schedule_output_is_installable_as_written() -> None:

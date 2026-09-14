@@ -10,6 +10,7 @@ from reim.domain.pipelines.schedule import (
     ScheduleEntry,
     build_schedule,
     render_crontab,
+    stagger_expression,
 )
 from reim.domain.pipelines.scheduling import PipelineScheduler, ScheduledPipeline
 
@@ -23,4 +24,5 @@ __all__ = [
     "ScheduledPipeline",
     "build_schedule",
     "render_crontab",
+    "stagger_expression",
 ]

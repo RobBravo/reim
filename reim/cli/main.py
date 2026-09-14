@@ -28,8 +28,7 @@ from reim.core.exceptions import REIMError
 from reim.core.logging import configure_logging, get_logger
 from reim.database.session import check_database_connection, session_scope
 from reim.domain.pipelines.models import PipelineOutcome
-from reim.domain.pipelines.schedule import build_schedule, render_crontab
-from reim.domain.pipelines.scheduling import DEFAULT_CRON_BY_FREQUENCY
+from reim.domain.pipelines.schedule import build_schedule, render_crontab, stagger_expression
 from reim.domain.quality.rules import load_quality_rules
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.registry import ConnectorRegistry
@@ -188,7 +187,7 @@ def pipeline_list(
         if enabled_only and not entry.enabled:
             continue
         status = "enabled" if entry.enabled else "disabled"
-        cron = DEFAULT_CRON_BY_FREQUENCY[entry.frequency]
+        cron = stagger_expression(entry.frequency)
         typer.echo(
             f"{entry.key:32} {status:9} {entry.frequency.value:10} {cron:20} "
             f"{', '.join(entry.indicators)}"

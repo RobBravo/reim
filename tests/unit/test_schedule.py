@@ -10,6 +10,7 @@ catalog, for the one invariant worth pinning against real data.
 
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 
 from reim.core.constants import Frequency
@@ -91,7 +92,7 @@ def test_the_emitter_rewrites_the_minute_and_nothing_else() -> None:
     fields — fails here, which is the point: staggering is a minute-level
     concern and must not silently become a scheduling one.
     """
-    for frequency in (Frequency.DAILY, Frequency.WEEKLY, Frequency.MONTHLY, Frequency.QUARTERLY):
+    for frequency in Frequency:
         entries = _schedule(_entry("a", frequency))
         emitted = entries[0].expression.split()
         default = DEFAULT_CRON_BY_FREQUENCY[frequency].split()
@@ -107,6 +108,7 @@ def test_every_cadence_has_a_distinct_minute_inside_the_hour() -> None:
     assert len(set(minutes)) == len(minutes)
     assert all(0 <= minute < 60 for minute in minutes)
     assert set(FREQUENCY_MINUTES) == set(Frequency)
+    assert set(DEFAULT_CRON_BY_FREQUENCY) == set(Frequency)
 
 
 def test_daily_keeps_the_top_of_the_hour() -> None:
@@ -126,14 +128,24 @@ def test_each_block_names_the_pipelines_it_will_run() -> None:
 
 def test_disabled_sources_are_absent_rather_than_commented_out() -> None:
     """The catalog records why a source is off; a commented line invites
-    uncommenting it without reading that."""
-    entries = _schedule(
-        _entry("on", Frequency.MONTHLY), _entry("off", Frequency.WEEKLY, enabled=False)
-    )
-    text = render_crontab(entries)
+    uncommenting it without reading that.
 
-    assert "off" not in text
-    assert "weekly" not in text
+    Asserts against the ingestion block's own comment and command, not the
+    whole rendered text: a three-letter key like ``off`` would make a
+    whole-text substring check pass today and fail later for an unrelated
+    reason (``--working-dir /opt/office`` contains ``off`` too).
+    """
+    entries = _schedule(
+        _entry("on", Frequency.MONTHLY),
+        _entry("suppressed_source", Frequency.WEEKLY, enabled=False),
+    )
+
+    ingestion = [entry for entry in entries if "run-all" in entry.command]
+    assert len(ingestion) == 1
+    assert "monthly" in ingestion[0].command
+    assert "suppressed_source" not in ingestion[0].comment
+    assert "weekly" not in ingestion[0].comment
+    assert "weekly" not in ingestion[0].command
 
 
 def test_the_alert_check_is_emitted_last_and_after_the_ingestion_window() -> None:
@@ -171,6 +183,23 @@ def test_the_working_directory_reaches_every_command() -> None:
 
     for entry in entries:
         assert str(WORKING_DIR) in entry.command
+
+
+def test_a_working_directory_with_a_space_is_still_one_shell_argument() -> None:
+    """``--working-dir "/opt/my reim"`` must not split ``cd``'s argument in two.
+
+    Unquoted interpolation would emit ``cd /opt/my reim && ...``, which ``cd``
+    reads as two arguments and rejects.
+    """
+    entries = build_schedule(
+        _catalog(_entry("a", Frequency.DAILY)), working_dir=Path("/opt/my reim")
+    )
+
+    for entry in entries:
+        tokens = shlex.split(entry.command)
+        assert tokens[0] == "cd"
+        assert tokens[1] == "/opt/my reim"
+        assert tokens[2] == "&&"
 
 
 def test_every_frequency_the_real_catalog_uses_has_a_default_expression() -> None:
