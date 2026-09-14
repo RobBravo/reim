@@ -123,6 +123,25 @@ def test_a_key_raises_the_allowance(client: TestClient, seeded_session: Session)
 
 
 @requires_db
+def test_a_keyed_request_records_that_the_key_was_used(
+    client: TestClient, seeded_session: Session
+) -> None:
+    """Otherwise ``reim key list`` reports every key as never used.
+
+    Refreshed at most hourly, so this asserts the column is written at all —
+    not that it is written on every request, which it deliberately is not.
+    """
+    record, token = create_key(seeded_session, label="test", now=datetime.now(UTC))
+    seeded_session.commit()
+    assert record.last_used_at is None
+
+    client.get("/api/v1/countries", headers={"X-API-Key": token})
+
+    seeded_session.expire_all()
+    assert record.last_used_at is not None
+
+
+@requires_db
 def test_an_unknown_key_is_rejected(client: TestClient) -> None:
     """Presenting a credential that does not exist is worth telling someone."""
     response = client.get("/api/v1/countries", headers={"X-API-Key": "reim_nonsense"})

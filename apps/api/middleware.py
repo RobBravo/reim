@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
@@ -38,6 +39,15 @@ LIMITED_PREFIX = "/api/v1"
 #: Header a caller presents a key in.
 API_KEY_HEADER = "X-API-Key"
 
+#: How stale ``last_used_at`` may get before it is refreshed.
+#:
+#: The column exists so an operator can find a key nobody uses any more, and
+#: ``reim key list`` shows it — but writing it on every request would put an
+#: UPDATE in the path of a read-only API. An hour is far finer than the
+#: question it answers, and it costs at most one write per key per hour no
+#: matter how hard that key is used.
+LAST_USED_REFRESH = timedelta(hours=1)
+
 Handler = Callable[[Request], Awaitable[Response]]
 
 
@@ -49,22 +59,37 @@ def _resolve_key(token: str) -> tuple[str | None, bool]:
     allowance instead of being rejected. A 401 is a misleading way to say the
     database is down, and the endpoint the request is heading for will report
     the outage in its own terms.
+
+    ``last_used_at`` is refreshed at most once per ``LAST_USED_REFRESH`` per
+    key, so a key in heavy use costs one write an hour rather than one per
+    request. Without this the column would never be written at all and
+    ``reim key list`` would report every key as never used. The write shares
+    the ``except`` below, so a database that reads but cannot write silently
+    demotes every keyed caller to the anonymous allowance, with one warning
+    line to say so.
     """
     session = get_session_factory()()
     try:
         record = find_by_token(session, token)
-        # Capture the ID before closing the session
-        record_id = record.id if record is not None else None
+        if record is None:
+            return None, False
+
+        # Read the attributes here, not after the ``finally``: ``rollback()``
+        # expires every instance in the session and ``close()`` detaches them,
+        # so a later attribute access raises ``DetachedInstanceError``.
+        identity = f"key:{record.id}"
+        now = datetime.now(UTC)
+        if record.last_used_at is None or now - record.last_used_at > LAST_USED_REFRESH:
+            record.last_used_at = now
+            session.commit()
+        return identity, True
     except SQLAlchemyError:
         logger.warning("api.key_lookup_unavailable")
         return None, True
     finally:
+        # A no-op after a commit; it discards the read transaction otherwise.
         session.rollback()
         session.close()
-
-    if record_id is None:
-        return None, False
-    return f"key:{record_id}", True
 
 
 def build_rate_limit_middleware(
