@@ -76,6 +76,13 @@ class Settings(BaseSettings):
     alert_repeat_hours: int = Field(default=24, ge=1, le=720)
     alert_stuck_run_hours: int = Field(default=6, ge=1, le=168)
 
+    # -- API access -------------------------------------------------------
+    rate_limit_enabled: bool = True
+    rate_limit_anonymous: int = Field(default=60, ge=1)
+    rate_limit_keyed: int = Field(default=600, ge=1)
+    rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+    trusted_proxy_hops: int = Field(default=0, ge=0, le=8)
+
     @field_validator("cors_allow_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:

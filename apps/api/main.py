@@ -14,6 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from apps.api.errors import register_exception_handlers
+from apps.api.middleware import build_rate_limit_middleware
+from apps.api.ratelimit import FixedWindowLimiter
 from apps.api.routers import (
     comparison,
     countries,
@@ -123,6 +125,13 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "OPTIONS"],
         allow_headers=["*"],
     )
+
+    if settings.rate_limit_enabled:
+        limiter = FixedWindowLimiter(window_seconds=settings.rate_limit_window_seconds)
+        # Held on the app, not in a module global: each application — including
+        # each one a test builds — owns its own counters.
+        app.state.rate_limiter = limiter
+        app.middleware("http")(build_rate_limit_middleware(limiter, settings))
 
     register_exception_handlers(app)
 
