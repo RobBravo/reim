@@ -118,6 +118,18 @@ def create_app() -> FastAPI:
         contact={"name": "REIM", "url": "https://github.com/RobBravo/reim"},
     )
 
+    # Registered before CORS, which makes it the *inner* of the two: Starlette
+    # applies middleware in reverse registration order. Outside CORS, a 429 or
+    # a 401 would reach a browser as an opaque network error with no status and
+    # no ``Retry-After`` — and every keyed cross-origin request would spend an
+    # anonymous unit on the preflight that CORS now answers by itself.
+    if settings.rate_limit_enabled:
+        limiter = FixedWindowLimiter(window_seconds=settings.rate_limit_window_seconds)
+        # Held on the app, not in a module global: each application — including
+        # each one a test builds — owns its own counters.
+        app.state.rate_limiter = limiter
+        app.middleware("http")(build_rate_limit_middleware(limiter, settings))
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allow_origins,
@@ -125,13 +137,6 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "OPTIONS"],
         allow_headers=["*"],
     )
-
-    if settings.rate_limit_enabled:
-        limiter = FixedWindowLimiter(window_seconds=settings.rate_limit_window_seconds)
-        # Held on the app, not in a module global: each application — including
-        # each one a test builds — owns its own counters.
-        app.state.rate_limiter = limiter
-        app.middleware("http")(build_rate_limit_middleware(limiter, settings))
 
     register_exception_handlers(app)
 

@@ -317,3 +317,57 @@ def test_the_limiter_still_counts_behind_a_root_path(
             assert test_client.get("/reim/api/v1/countries").status_code == 200
 
         assert test_client.get("/reim/api/v1/countries").status_code == 429
+
+
+ALLOWED_ORIGIN = "https://dashboard.example.org"
+
+#: JSON, because the env source parses a list field before the settings
+#: validator that accepts a comma-separated spelling ever sees it.
+ALLOWED_ORIGINS_ENV = f'["{ALLOWED_ORIGIN}"]'
+
+
+@requires_db
+def test_a_refusal_is_readable_by_a_browser(build_app: Callable[..., FastAPI]) -> None:
+    """A refusal without CORS headers is an opaque network error, not an answer.
+
+    Starlette applies middleware in reverse registration order, so a limiter
+    registered after CORS sits outside it and its responses never pass through
+    the CORS path. The one response whose whole purpose is to say "back off,
+    and for this long" would be the one a cross-origin caller cannot read.
+    """
+    app = build_app(REIM_CORS_ALLOW_ORIGINS=ALLOWED_ORIGINS_ENV)
+    headers = {"Origin": ALLOWED_ORIGIN}
+
+    with TestClient(app) as test_client:
+        for _ in range(ANONYMOUS_LIMIT):
+            test_client.get("/api/v1/countries", headers=headers)
+        response = test_client.get("/api/v1/countries", headers=headers)
+
+    assert response.status_code == 429
+    assert response.headers["access-control-allow-origin"] == ALLOWED_ORIGIN
+    assert int(response.headers["Retry-After"]) >= 1
+
+
+@requires_db
+def test_a_preflight_does_not_spend_the_anonymous_allowance(
+    build_app: Callable[..., FastAPI],
+) -> None:
+    """``X-API-Key`` is not CORS-safelisted, so a keyed browser request is
+    always preceded by an ``OPTIONS`` preflight — and a preflight never carries
+    the key. Counted, it would spend the anonymous allowance the key was meant
+    to raise, so a 600/min key holder would still be cut off at 60/min. With
+    CORS outermost, CORS answers the preflight and the limiter never sees it.
+    """
+    app = build_app(REIM_CORS_ALLOW_ORIGINS=ALLOWED_ORIGINS_ENV)
+    preflight = {
+        "Origin": ALLOWED_ORIGIN,
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "x-api-key",
+    }
+
+    with TestClient(app) as test_client:
+        for _ in range(ANONYMOUS_LIMIT * 2):
+            assert test_client.options("/api/v1/countries", headers=preflight).status_code == 200
+
+        # Untouched: the data request that follows is the first one counted.
+        assert test_client.get("/api/v1/countries").status_code == 200
