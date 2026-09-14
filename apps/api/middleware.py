@@ -12,6 +12,11 @@ Every request under the prefix is counted, and *then* a refusal reason is
 chosen. Deciding the other way round — refusing an invalid key before counting
 it — leaves the one request that costs a database read as the only one nothing
 bounds.
+
+CORS is registered outside this middleware, so a browser preflight is answered
+before the limiter sees it and costs nobody an allowance: accepted, because a
+preflight reaches no route, no key lookup and no database, and counting it
+would spend the anonymous allowance a key exists to raise.
 """
 
 from __future__ import annotations
@@ -25,6 +30,10 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
+
+# Re-exported by ``starlette.routing`` rather than declared there, which is why
+# mypy needs telling; it is the module the router itself imports it from.
+from starlette.routing import get_route_path  # type: ignore[attr-defined]
 
 from apps.api.errors import error_envelope
 from apps.api.ratelimit import FixedWindowLimiter, client_identity
@@ -116,14 +125,12 @@ def build_rate_limit_middleware(
 
     async def rate_limit(request: Request, call_next: Handler) -> Response:
         # ``request.url.path`` still carries the ``root_path`` a proxy did not
-        # strip, while the router matches on the path with it removed. Test the
-        # same path the router will route, or an app behind
-        # ``REIM_API_ROOT_PATH`` serves every data route unlimited: the prefix
-        # would never match, and nothing would say so.
-        path = request.url.path
-        root = request.scope.get("root_path", "")
-        if root and path.startswith(root):
-            path = path[len(root) :] or "/"
+        # strip, while the router matches on the path with it removed, so an app
+        # behind ``REIM_API_ROOT_PATH`` would serve every data route unlimited
+        # and nothing would say so. ``get_route_path`` is the function the
+        # router itself calls: one implementation of the rule, so the two cannot
+        # disagree about where a request is going.
+        path = get_route_path(request.scope)
         if not path.startswith(LIMITED_PREFIX):
             return await call_next(request)
 

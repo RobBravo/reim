@@ -335,8 +335,20 @@ def test_a_forged_forwarded_header_does_not_buy_a_fresh_allowance(
 
 
 @requires_db
+@pytest.mark.parametrize(
+    ("root_path", "url"),
+    [
+        ("/reim", "/reim/api/v1/countries"),
+        # A root path the proxy does not prepend to this URL at all. The router
+        # strips only on a segment boundary, so it routes this normally — and a
+        # middleware stripping by length alone would leave "i/v1/countries",
+        # miss the prefix, and exempt every data route in the deployment.
+        ("/ap", "/api/v1/countries"),
+    ],
+    ids=["prepended", "not-a-segment-prefix"],
+)
 def test_the_limiter_still_counts_behind_a_root_path(
-    build_app: Callable[..., FastAPI],
+    build_app: Callable[..., FastAPI], root_path: str, url: str
 ) -> None:
     """``root_path`` must not exempt every data route from the limiter.
 
@@ -346,13 +358,13 @@ def test_the_limiter_still_counts_behind_a_root_path(
     counted by nothing — the limiter reporting healthy while enforcing nothing,
     in the deployment most likely to need it.
     """
-    app = build_app(REIM_API_ROOT_PATH="/reim")
+    app = build_app(REIM_API_ROOT_PATH=root_path)
 
-    with TestClient(app, root_path="/reim") as test_client:
+    with TestClient(app, root_path=root_path) as test_client:
         for _ in range(ANONYMOUS_LIMIT):
-            assert test_client.get("/reim/api/v1/countries").status_code == 200
+            assert test_client.get(url).status_code == 200
 
-        assert test_client.get("/reim/api/v1/countries").status_code == 429
+        assert test_client.get(url).status_code == 429
 
 
 ALLOWED_ORIGIN = "https://dashboard.example.org"
