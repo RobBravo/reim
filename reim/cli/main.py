@@ -23,12 +23,12 @@ import typer
 
 from reim import __version__
 from reim.core.config import get_settings
-from reim.core.constants import CheckSeverity, CheckStatus, PipelineStatus
+from reim.core.constants import CheckSeverity, CheckStatus, Frequency, PipelineStatus
 from reim.core.exceptions import REIMError
 from reim.core.logging import configure_logging, get_logger
 from reim.database.session import check_database_connection, session_scope
 from reim.domain.pipelines.models import PipelineOutcome
-from reim.domain.pipelines.scheduling import DEFAULT_CRON_BY_FREQUENCY
+from reim.domain.pipelines.schedule import build_schedule, render_crontab, stagger_expression
 from reim.domain.quality.rules import load_quality_rules
 from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.registry import ConnectorRegistry
@@ -187,7 +187,7 @@ def pipeline_list(
         if enabled_only and not entry.enabled:
             continue
         status = "enabled" if entry.enabled else "disabled"
-        cron = DEFAULT_CRON_BY_FREQUENCY[entry.frequency]
+        cron = stagger_expression(entry.frequency)
         typer.echo(
             f"{entry.key:32} {status:9} {entry.frequency.value:10} {cron:20} "
             f"{', '.join(entry.indicators)}"
@@ -226,21 +226,65 @@ def pipeline_run_all(
     include_disabled: Annotated[
         bool, typer.Option("--include-disabled", help="Also run disabled pipelines.")
     ] = False,
+    frequency: Annotated[
+        Frequency | None,
+        typer.Option("--frequency", help="Only run pipelines published at this cadence."),
+    ] = None,
 ) -> None:
-    """Run every enabled pipeline. Exits 1 if any of them fails."""
+    """Run every enabled pipeline. Exits 1 if any of them fails.
+
+    ``--frequency`` restricts the run to one cadence, which is what the crontab
+    emitted by ``pipeline schedule`` installs — and what an operator wants when
+    re-running just the daily sources after a network problem, rather than
+    sweeping all 23.
+    """
     try:
         registry = ConnectorRegistry(load_catalog())
     except REIMError as exc:
         err(f"✗ {exc.message}", err=True)
         raise typer.Exit(EXIT_INVALID) from exc
 
-    outcomes = asyncio.run(PipelineRunner(registry).run_all(enabled_only=not include_disabled))
+    keys: list[str] | None = None
+    if frequency is not None:
+        entries = registry.catalog.sources if include_disabled else registry.catalog.enabled_sources
+        keys = [entry.key for entry in entries if entry.frequency is frequency]
+        if not keys:
+            typer.echo(f"No pipelines are published at {frequency.value} cadence.")
+            raise typer.Exit(EXIT_OK)
+
+    outcomes = asyncio.run(
+        PipelineRunner(registry).run_all(enabled_only=not include_disabled, keys=keys)
+    )
     for outcome in outcomes:
         _print_outcome(outcome)
 
     failed = [outcome for outcome in outcomes if not outcome.succeeded]
     typer.echo(f"\n{len(outcomes) - len(failed)}/{len(outcomes)} pipeline(s) succeeded")
     raise typer.Exit(EXIT_FAILURE if failed else EXIT_OK)
+
+
+@pipeline_app.command("schedule")
+def pipeline_schedule(
+    working_dir: Annotated[
+        Path | None,
+        typer.Option("--working-dir", help="Directory the cron lines cd into."),
+    ] = None,
+) -> None:
+    """Print a crontab fragment scheduling each cadence, plus the alert check.
+
+    Nothing is installed and no file is written: the output goes to stdout for
+    the operator to review and pipe where they want it. A tool that edits a live
+    crontab is a tool that can silently delete one.
+    """
+    try:
+        catalog = load_catalog()
+    except REIMError as exc:
+        err(f"✗ {exc.message}", err=True)
+        raise typer.Exit(EXIT_INVALID) from exc
+
+    entries = build_schedule(catalog, working_dir=working_dir or Path.cwd())
+    typer.echo(render_crontab(entries), nl=False)
+    raise typer.Exit(EXIT_OK)
 
 
 @pipeline_app.command("status")

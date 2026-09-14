@@ -6,6 +6,12 @@ from reim.domain.pipelines.models import (
     QualityResult,
     RawDataset,
 )
+from reim.domain.pipelines.schedule import (
+    ScheduleEntry,
+    build_schedule,
+    render_crontab,
+    stagger_expression,
+)
 from reim.domain.pipelines.scheduling import PipelineScheduler, ScheduledPipeline
 
 __all__ = [
@@ -14,5 +20,9 @@ __all__ = [
     "PipelineScheduler",
     "QualityResult",
     "RawDataset",
+    "ScheduleEntry",
     "ScheduledPipeline",
+    "build_schedule",
+    "render_crontab",
+    "stagger_expression",
 ]

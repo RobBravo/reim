@@ -342,7 +342,17 @@ and the tenth — the national central banks — has its first country.
   "resolved" notice when it clears. State is recorded only after a successful
   webhook delivery, so transient HTTP failures cost repetition rather than a
   lost alert.
-- **Scheduler integration** behind the existing `PipelineScheduler` interface.
+- ~~**Scheduler integration**~~ ✅ **done** — `pipeline schedule` reads the
+  catalog and prints an installable crontab fragment, one line per cadence in
+  use plus the alert check, rather than implementing a scheduler: the
+  operator's cron stays the scheduler, as this document has said since the
+  MVP. Cadences come from the catalog instead of a single blanket cron line,
+  so the two daily exchange-rate sources stop waiting on a monthly sweep and
+  the eight annual series stop being fetched twelve times a year. The emitter
+  rewrites only each cadence's minute field, staggering cadences that would
+  otherwise all start at 13:00 from `DEFAULT_CRON_BY_FREQUENCY` and collide.
+  `PipelineScheduler` remains an unimplemented seam, deliberately: this gives
+  cron something correct to run, not a runtime that replaces it.
 - ~~**Prometheus metrics**~~ ✅ **done** — `/metrics` now exports per-pipeline
   volumes, run durations and freshness gauges alongside `reim_database_up`,
   one series per catalog entry, on top of the process-level defaults it
