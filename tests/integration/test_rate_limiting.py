@@ -30,7 +30,10 @@ ANONYMOUS_LIMIT = 3
 #: one cannot be mistaken for a request served anonymously.
 KEYED_LIMIT = 100
 
-#: The instant every request in this module is counted at.
+#: The window every test in this module is limited over.
+WINDOW_SECONDS = 60
+
+#: The instant every request in this module starts out counted at.
 #:
 #: Windows are aligned to the wall clock, so a test that read the real clock
 #: could straddle a boundary, see the counter reset, and pass while the limiter
@@ -38,10 +41,43 @@ KEYED_LIMIT = 100
 #: passing, which is the direction that matters for a limiter.
 FROZEN_NOW = 1_000_000.0
 
+#: What a refusal at ``FROZEN_NOW`` must report.
+#:
+#: The window holding that instant began at 999_960, so 20 seconds of it remain
+#: and the limiter ceils. Asserting the number rather than ``>= 1`` is the
+#: point: ``>= 1`` is true of every refusal the limiter can produce, including
+#: one computed from a clock that never moves.
+RETRY_AFTER_AT_FROZEN_NOW = 21
+
+
+class Clock:
+    """The instant the middleware counts at, moved only by a test.
+
+    A frozen clock cannot catch a middleware that stops advancing time — one
+    that read the clock once would pass every test here and, in production,
+    lock every identity out for good once its first window filled. So the tests
+    own the clock and one of them drives it across a boundary.
+    """
+
+    def __init__(self, now: float) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+@pytest.fixture
+def clock() -> Clock:
+    """The clock the application under test counts by."""
+    return Clock(FROZEN_NOW)
+
 
 @pytest.fixture
 def build_app(
-    seeded_session: Session, engine: Engine, monkeypatch: pytest.MonkeyPatch
+    seeded_session: Session, engine: Engine, clock: Clock, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[Callable[..., FastAPI]]:
     """Build apps with a tiny anonymous allowance and a pinned clock.
 
@@ -58,12 +94,13 @@ def build_app(
     """
     monkeypatch.setenv("REIM_RATE_LIMIT_ANONYMOUS", str(ANONYMOUS_LIMIT))
     monkeypatch.setenv("REIM_RATE_LIMIT_KEYED", str(KEYED_LIMIT))
+    monkeypatch.setenv("REIM_RATE_LIMIT_WINDOW_SECONDS", str(WINDOW_SECONDS))
 
     test_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     monkeypatch.setattr("apps.api.middleware.get_session_factory", lambda: test_factory)
     monkeypatch.setattr(
         "apps.api.main.build_rate_limit_middleware",
-        functools.partial(build_rate_limit_middleware, clock=lambda: FROZEN_NOW),
+        functools.partial(build_rate_limit_middleware, clock=clock),
     )
 
     def build(**environment: str) -> FastAPI:
@@ -100,7 +137,24 @@ def test_the_request_past_the_limit_is_refused_with_retry_after(client: TestClie
 
     assert response.status_code == 429
     assert response.json()["error"]["code"] == "rate_limited"
-    assert int(response.headers["Retry-After"]) >= 1
+    assert int(response.headers["Retry-After"]) == RETRY_AFTER_AT_FROZEN_NOW
+
+
+@requires_db
+def test_the_allowance_returns_when_the_window_rolls(client: TestClient, clock: Clock) -> None:
+    """The middleware must read the clock on every request, not once.
+
+    Nothing else here would notice a middleware that stopped advancing time:
+    every other test is answered inside one window. In production that
+    middleware would refuse every identity for ever, one allowance in.
+    """
+    for _ in range(ANONYMOUS_LIMIT):
+        assert client.get("/api/v1/countries").status_code == 200
+    assert client.get("/api/v1/countries").status_code == 429
+
+    clock.advance(WINDOW_SECONDS)
+
+    assert client.get("/api/v1/countries").status_code == 200
 
 
 #: Every surface spec §2 names as exempt, in its order.
@@ -393,7 +447,7 @@ def test_a_refusal_is_readable_by_a_browser(build_app: Callable[..., FastAPI]) -
 
     assert response.status_code == 429
     assert response.headers["access-control-allow-origin"] == ALLOWED_ORIGIN
-    assert int(response.headers["Retry-After"]) >= 1
+    assert int(response.headers["Retry-After"]) == RETRY_AFTER_AT_FROZEN_NOW
 
 
 @requires_db
