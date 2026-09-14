@@ -103,12 +103,48 @@ def test_the_request_past_the_limit_is_refused_with_retry_after(client: TestClie
     assert int(response.headers["Retry-After"]) >= 1
 
 
+#: Every surface spec §2 names as exempt, in its order.
+EXEMPT_PATHS = [
+    "/health",
+    "/ready",
+    "/metrics",
+    "/",
+    "/runs",
+    "/series",
+    "/static/reim.css",
+    "/docs",
+    "/openapi.json",
+]
+
+
 @requires_db
-def test_exempt_paths_are_never_limited(client: TestClient) -> None:
-    """A limiter that can throttle a liveness probe can restart a container."""
+@pytest.mark.parametrize("path", EXEMPT_PATHS)
+def test_exempt_paths_are_never_limited(client: TestClient, path: str) -> None:
+    """A limiter that can throttle a liveness probe can restart a container.
+
+    The assertion is "not refused" rather than "200": ``/metrics`` answers 404
+    when ``REIM_METRICS_ENABLED`` is off, and this test should not fail for a
+    reason that has nothing to do with limiting.
+    """
     for _ in range(ANONYMOUS_LIMIT * 3):
-        assert client.get("/health").status_code == 200
-        assert client.get("/metrics").status_code == 200
+        assert client.get(path).status_code != 429
+
+
+@requires_db
+def test_the_status_endpoint_is_limited_even_though_it_is_a_system_route(
+    client: TestClient,
+) -> None:
+    """The positive half of the prefix rule, which §2 names explicitly.
+
+    ``/api/v1/status`` lives in the prefix-less system router for historical
+    reasons, so its exemption or otherwise rests entirely on the literal path
+    it is declared with. It is a data endpoint, and not a cheap one — it counts
+    over the observations table — so it is limited.
+    """
+    for _ in range(ANONYMOUS_LIMIT):
+        assert client.get("/api/v1/status").status_code == 200
+
+    assert client.get("/api/v1/status").status_code == 429
 
 
 @requires_db
