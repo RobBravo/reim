@@ -7,6 +7,8 @@ the app instance precisely so a limit cannot leak between tests.
 from __future__ import annotations
 
 import functools
+import logging
+import threading
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 
@@ -17,6 +19,7 @@ from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
+from apps.api import middleware
 from apps.api.dependencies import get_db
 from apps.api.main import create_app
 from apps.api.middleware import build_rate_limit_middleware
@@ -157,6 +160,81 @@ def test_the_allowance_returns_when_the_window_rolls(client: TestClient, clock: 
     assert client.get("/api/v1/countries").status_code == 200
 
 
+@requires_db
+def test_the_key_lookup_runs_off_the_event_loop(
+    client: TestClient, seeded_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lookup is a blocking psycopg call; the loop must not be holding it.
+
+    Every route handler in REIM is a sync ``def`` that FastAPI offloads. If
+    this one call is left on the loop, the process serves nothing else for its
+    duration — including the liveness probe the prefix rule exists to keep
+    clear, which measured 0.66 s behind two lookups before the offload.
+
+    ``client_identity`` runs in the middleware coroutine itself, so the thread
+    it sees is the loop's; the lookup's must be a different one.
+    """
+    threads: dict[str, threading.Thread] = {}
+    resolve_key = middleware._resolve_key
+    identify = middleware.client_identity
+
+    def recording_identity(*args: object, **kwargs: object) -> str:
+        threads["loop"] = threading.current_thread()
+        return identify(*args, **kwargs)  # type: ignore[arg-type]
+
+    def recording_resolve(token: str) -> tuple[str | None, bool]:
+        threads["lookup"] = threading.current_thread()
+        return resolve_key(token)
+
+    monkeypatch.setattr("apps.api.middleware.client_identity", recording_identity)
+    monkeypatch.setattr("apps.api.middleware._resolve_key", recording_resolve)
+    _, token = create_key(seeded_session, label="test", now=datetime.now(UTC))
+    seeded_session.commit()
+
+    assert client.get("/api/v1/countries", headers={"X-API-Key": token}).status_code == 200
+
+    assert threads.keys() == {"loop", "lookup"}
+    assert threads["lookup"] is not threads["loop"]
+
+
+#: Presented by the logging test. Shaped like a key, and is not one.
+PLACEHOLDER_TOKEN = "reim_placeholder_that_is_not_a_key"
+
+
+@requires_db
+def test_both_refusals_are_logged_without_the_token(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An operator needs to see refusals; nobody needs to see a credential.
+
+    Silent refusals mean no signal that the limiter is working, that a caller
+    is being throttled, or that someone is walking the key space. The line
+    carries the identity and the path for that, and carries no part of the
+    presented token at any level, which is the whole reason it is shaped this
+    way rather than logging the request.
+    """
+    headers = {"X-API-Key": PLACEHOLDER_TOKEN}
+
+    with caplog.at_level(logging.WARNING, logger="apps.api.middleware"):
+        for _ in range(ANONYMOUS_LIMIT):
+            assert client.get("/api/v1/countries", headers=headers).status_code == 401
+        assert client.get("/api/v1/countries", headers=headers).status_code == 429
+
+    unauthorized = [r for r in caplog.records if "api.invalid_api_key" in r.getMessage()]
+    limited = [r for r in caplog.records if "api.rate_limited" in r.getMessage()]
+
+    assert len(unauthorized) == ANONYMOUS_LIMIT
+    assert len(limited) == 1
+    for record in unauthorized + limited:
+        assert "identity=" in record.getMessage()
+        assert "/api/v1/countries" in record.getMessage()
+
+    # Every spelling of the token, not just the whole of it: a line carrying
+    # half a credential is a line carrying a credential.
+    assert PLACEHOLDER_TOKEN not in caplog.text
+    assert PLACEHOLDER_TOKEN.removeprefix("reim_") not in caplog.text
+
+
 #: Every surface spec §2 names as exempt, in its order.
 EXEMPT_PATHS = [
     "/health",
@@ -226,7 +304,9 @@ def test_a_keyed_request_records_that_the_key_was_used(
     seeded_session.commit()
     assert record.last_used_at is None
 
-    client.get("/api/v1/countries", headers={"X-API-Key": token})
+    # Asserted, because the write happens before the refusal decision: a keyed
+    # request that started 401ing or 500ing would still set the column.
+    assert client.get("/api/v1/countries", headers={"X-API-Key": token}).status_code == 200
 
     seeded_session.expire_all()
     assert record.last_used_at is not None
@@ -362,6 +442,47 @@ def test_a_key_whose_lookup_failed_gets_only_the_anonymous_allowance(
 
     # The keyed allowance is far higher, so a 429 here can only be the
     # anonymous one.
+    assert client.get("/api/v1/countries", headers=headers).status_code == 429
+
+
+def _break_the_write(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The ``SELECT`` succeeds and the ``last_used_at`` ``UPDATE`` does not.
+
+    A read-only replica, a full disk, a grant somebody narrowed.
+    """
+    make_session = middleware.get_session_factory()
+
+    def raise_on_commit() -> None:
+        raise SQLAlchemyError("cannot write to a read-only database")
+
+    def read_only_session() -> Session:
+        session = make_session()
+        monkeypatch.setattr(session, "commit", raise_on_commit)
+        return session
+
+    monkeypatch.setattr("apps.api.middleware.get_session_factory", lambda: read_only_session)
+
+
+@requires_db
+def test_a_key_whose_use_cannot_be_recorded_is_served_anonymously(
+    client: TestClient, seeded_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The demotion the docstring describes, measured.
+
+    The ``last_used_at`` write shares the lookup's ``except SQLAlchemyError``,
+    so a database that reads but cannot write does not reject a keyed caller —
+    it quietly hands them the anonymous allowance. Surprising enough to be
+    worth a test saying it is deliberate.
+    """
+    _, token = create_key(seeded_session, label="test", now=datetime.now(UTC))
+    seeded_session.commit()
+    _break_the_write(monkeypatch)
+    headers = {"X-API-Key": token}
+
+    for _ in range(ANONYMOUS_LIMIT):
+        assert client.get("/api/v1/countries", headers=headers).status_code == 200
+
+    # The keyed allowance is far higher, so this can only be the anonymous one.
     assert client.get("/api/v1/countries", headers=headers).status_code == 429
 
 
