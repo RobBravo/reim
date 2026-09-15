@@ -1,0 +1,34 @@
+# Caddy obtains and renews the certificate for REIM_DOMAIN by itself.
+#
+# It also writes X-Forwarded-For — measured, not assumed: Caddy was recreated
+# once with REIM_TRUSTED_PROXY_HOPS=2 and sent one forged entry. Reading it at
+# entries[-2] would have surfaced the forged value if Caddy had appended to
+# what the client sent; instead the logged identity was Caddy's own peer
+# again, which is only possible if the header reaching the api held exactly
+# one entry. Caddy OVERWRITES X-Forwarded-For with the peer address it sees —
+# it does not append to whatever a client sent, and nothing a client sends
+# survives into it at all. That is the whole reason REIM_TRUSTED_PROXY_HOPS=1
+# is correct in the compose file: entries[-1] is always Caddy's own peer, not
+# a client-chosen value. Do not raise this past the number of proxies you
+# actually run on the theory that a second hop would preserve a client's
+# entry — overwriting, not appending, is what every hop here does.
+
+{$REIM_DOMAIN} {
+	encode zstd gzip
+
+	# The Prometheus scrape endpoint carries no authentication by design; the
+	# metrics design put that out of scope on the grounds that a scrape
+	# endpoint is restricted at the network. This is that restriction. Remove
+	# it only if you have another way to keep it off the public internet.
+	handle /metrics {
+		respond 404
+	}
+
+	handle /metrics/ {
+		respond 404
+	}
+
+	handle {
+		reverse_proxy api:8000
+	}
+}

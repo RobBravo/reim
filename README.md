@@ -161,6 +161,10 @@ Full rationale: [docs/implementation-plan.md](./docs/implementation-plan.md).
 
 ## Quick start
 
+This section is for trying REIM on your own machine. To run it as a service —
+your own host, a domain, TLS, hardening — see
+[`docs/deployment.md`](./docs/deployment.md) instead.
+
 ### With Docker Compose (recommended)
 
 ```bash
@@ -923,8 +927,11 @@ Stated plainly, because a data platform that hides its gaps is worse than none:
   holds for it comes from CEPALSTAT.
 - **REIM rate-limits `/api/v1` itself.** Anonymous callers get a per-minute
   allowance and a key raises it — see [API keys and rate
-  limiting](#api-keys-and-rate-limiting). `REIM_CORS_ALLOW_ORIGINS` still wants
-  narrowing before exposing REIM publicly.
+  limiting](#api-keys-and-rate-limiting). The Quick start's `docker compose up`
+  still defaults `REIM_CORS_ALLOW_ORIGINS` to a wildcard; narrow it before
+  exposing that stack publicly. [`docs/deployment.md`](./docs/deployment.md)
+  documents the production deployment, which refuses to start without an
+  explicit origin.
 - **Revisions are recorded, not reconciled.** REIM keeps the history but does
   not attempt to explain *why* a source revised a figure.
 - **Not investment advice.** REIM redistributes official figures with their

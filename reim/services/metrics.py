@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from reim.core.constants import PipelineStatus
 from reim.database.models import PipelineRun
+from reim.domain.quality.freshness import freshness_threshold
 from reim.domain.quality.rules import QualityRuleSet, get_quality_rules
 from reim.domain.sources.catalog import SourceCatalog, SourceEntry, get_catalog
 from reim.repositories import observations as observation_repo
@@ -110,29 +111,6 @@ def _fold_aggregates(rows: list[RunStatusAggregate]) -> dict[str, _PipelineTotal
     }
 
 
-def _freshness_threshold(entry: SourceEntry, rules: QualityRuleSet) -> int | None:
-    """Return the strictest freshness threshold across a pipeline's indicators.
-
-    Freshness is per source — ``latest_period_end`` is keyed on ``source_id`` —
-    but thresholds are per indicator, and 14 of the 23 catalog entries declare
-    more than one. None of them disagree today, so this is the same number
-    ``build_pipeline_summaries`` derives from ``indicators[0]``
-    (``reim/services/status.py:53``). When they do disagree the strictest wins:
-    a freshness gauge that fires early beats one that never fires.
-
-    An indicator with no threshold is skipped rather than read as zero, so "no
-    policy here" cannot silence a sibling indicator that does have one.
-    """
-    configured = [
-        threshold
-        for threshold in (
-            rules.for_indicator(code).freshness_max_age_days for code in entry.indicators
-        )
-        if threshold is not None
-    ]
-    return min(configured) if configured else None
-
-
 def _pipeline_metrics(
     *,
     entry: SourceEntry,
@@ -163,7 +141,7 @@ def _pipeline_metrics(
         enabled=entry.enabled,
         observations=volume.observations if volume is not None else 0,
         data_age_days=age,
-        freshness_max_age_days=_freshness_threshold(entry, rules),
+        freshness_max_age_days=freshness_threshold(entry, rules),
         last_run_at=last_run.started_at if last_run is not None else None,
         last_success_at=last_success.started_at if last_success is not None else None,
         last_run_duration_ms=last_run.duration_ms if last_run is not None else None,

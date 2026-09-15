@@ -1,0 +1,112 @@
+# REIM in production. Stands alone — do NOT combine with docker-compose.yml,
+# which is the development environment and publishes ports this file exists to
+# close. Compose concatenates ports when merging files, so an overlay could not
+# close them.
+#
+#   podman compose -f deploy/docker-compose.prod.yml up -d
+#
+# Copy deploy/.env.prod.example to .env beside this file and fill it in first.
+# Ingestion is not automatic; see docs/deployment.md.
+
+name: reim-prod
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-reim}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a real password in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-reim}
+      # Deterministic collation so ORDER BY does not depend on the host locale.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    # No published port. Development publishes 5432 so psql works from the
+    # host; here the database is reachable only from this network. For a shell:
+    #   podman compose -f deploy/docker-compose.prod.yml exec postgres psql -U reim
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reim} -d ${POSTGRES_DB:-reim}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - reim
+
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      REIM_DATABASE_URL: >-
+        postgresql+psycopg://${POSTGRES_USER:-reim}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-reim}
+      REIM_ENVIRONMENT: production
+      REIM_LOG_LEVEL: ${REIM_LOG_LEVEL:-INFO}
+      REIM_LOG_JSON: "true"
+      # No default on purpose: state the origins that may call this API.
+      REIM_CORS_ALLOW_ORIGINS: ${REIM_CORS_ALLOW_ORIGINS:?set the allowed origins}
+      # Exactly one proxy sits in front, and it is the caddy service below.
+      # Higher than the number you actually run lets a client choose its own
+      # identity and escape rate limiting entirely.
+      REIM_TRUSTED_PROXY_HOPS: "1"
+      # Defaults match reim.core.config.Settings, so leaving these unset in
+      # .env changes nothing. Set them there to tune the allowance without
+      # editing this file.
+      REIM_RATE_LIMIT_ANONYMOUS: ${REIM_RATE_LIMIT_ANONYMOUS:-60}
+      REIM_RATE_LIMIT_KEYED: ${REIM_RATE_LIMIT_KEYED:-600}
+      REIM_RATE_LIMIT_WINDOW_SECONDS: ${REIM_RATE_LIMIT_WINDOW_SECONDS:-60}
+      # Same reasoning, one subsystem over: unset in .env changes nothing.
+      # REIM_ALERT_WEBHOOK_URL has no application default (alerting still
+      # evaluates and reports with it unset; it just delivers nothing), so
+      # it defaults to empty here rather than to a value — empty and unset
+      # are the same "not configured" to reim/services/alerting.py.
+      REIM_ALERT_WEBHOOK_URL: ${REIM_ALERT_WEBHOOK_URL:-}
+      REIM_ALERT_SEVERITY_FLOOR: ${REIM_ALERT_SEVERITY_FLOOR:-error}
+      REIM_ALERT_REPEAT_HOURS: ${REIM_ALERT_REPEAT_HOURS:-24}
+      REIM_ALERT_STUCK_RUN_HOURS: ${REIM_ALERT_STUCK_RUN_HOURS:-6}
+    # No published port either: caddy is the only way in, so there is no second
+    # door on 8000 that skips TLS and the proxy the limiter assumes.
+    command: >-
+      sh -c "alembic upgrade head
+      && python -m reim.cli db seed
+      && uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - reim
+
+  caddy:
+    image: docker.io/library/caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      REIM_DOMAIN: ${REIM_DOMAIN:?set the domain this deployment serves}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro,z
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - reim
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  reim:
+    driver: bridge

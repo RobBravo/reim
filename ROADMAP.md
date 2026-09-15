@@ -382,7 +382,15 @@ and the tenth — the national central banks — has its first country.
   interval. A database outage still answers `reim_database_up 0` at status
   200 rather than a failed scrape, because the scrape that matters most is
   the one taken during the outage.
-- Public deployment guide with hardening notes.
+- ~~**Public deployment guide with hardening notes**~~ ✅ **done** — the
+  deployment ships as files under `deploy/` rather than as prose, because a
+  file can be started and measured and a fenced code block cannot;
+  `docs/deployment.md` was written while standing that stack up under Podman.
+  Caddy terminates TLS and writes `X-Forwarded-For`, which is what makes
+  `REIM_TRUSTED_PROXY_HOPS=1` correct; `/metrics` is closed at the proxy
+  rather than left to the application; and the rate limit counts requests,
+  not bytes, so `/api/v1/observations/export.csv`'s row cap is a separate
+  concern the guide states plainly.
 
 ## v0.6.0 — Context
 
