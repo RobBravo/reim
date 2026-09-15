@@ -119,3 +119,24 @@ def test_metrics_is_not_reachable_from_outside() -> None:
     assert "reverse_proxy" not in handler_body, (
         "/metrics handler must not reverse_proxy; found 'reverse_proxy' in its body"
     )
+
+
+def test_the_production_command_keeps_uvicorn_out_of_the_identity_decision(
+    production: dict,
+) -> None:
+    """``--no-proxy-headers`` must survive every edit to this command.
+
+    uvicorn's own proxy-header handling is enabled by default and trusts
+    127.0.0.1, so without this flag it rewrites the client address from a
+    caller-supplied ``X-Forwarded-For`` before REIM's limiter runs — and
+    ``REIM_TRUSTED_PROXY_HOPS`` decides nothing. The ``Dockerfile``'s ``CMD``
+    carries the same flag and an explanation, but this ``command:`` overrides
+    that ``CMD`` entirely, so the Dockerfile's copy protects nothing here.
+    """
+    command = production["services"]["api"]["command"]
+
+    assert "uvicorn" in command, "the api service no longer runs uvicorn; this test needs rewriting"
+    assert "--no-proxy-headers" in command, (
+        "docker-compose.prod.yml runs uvicorn without --no-proxy-headers, so a "
+        "client-supplied X-Forwarded-For header decides its own rate-limit identity"
+    )

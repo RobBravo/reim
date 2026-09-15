@@ -342,6 +342,7 @@ cannot silently drift apart. Running that file confirms every row at once:
 | **Close `/metrics` at the proxy.** The Caddyfile's `/metrics` handler responds `404` directly; it never reaches `reverse_proxy`. | `test_metrics_is_not_reachable_from_outside`, and at runtime: `curl` against `/metrics` through Caddy returned `404` (see "Verify it" above). |
 | **Proxy to the API by its compose service name, never a published port.** The Caddyfile reverse-proxies to `api:8000` over the compose network. | `test_caddy_proxies_to_the_api_service_by_name`, and at runtime: the data route through Caddy worked while port 8000 was unreachable from the host. |
 | **Make the rate limits and the alert settings configurable without editing the compose file.** `REIM_RATE_LIMIT_ANONYMOUS`, `REIM_RATE_LIMIT_KEYED`, `REIM_RATE_LIMIT_WINDOW_SECONDS`, `REIM_ALERT_WEBHOOK_URL`, `REIM_ALERT_SEVERITY_FLOOR`, `REIM_ALERT_REPEAT_HOURS` and `REIM_ALERT_STUCK_RUN_HOURS` are all read from `deploy/.env` through the `api` service's environment block. | `test_rate_limit_is_configurable_without_editing_the_compose_file`, drilled by removing one variable from the compose file and confirming the test fails, then restoring it and confirming the test passes again. |
+| **Keep `--no-proxy-headers` in the `uvicorn` command.** uvicorn's `ProxyHeadersMiddleware` is on by default and trusts 127.0.0.1, so without this flag it rewrites the client address from a caller-supplied `X-Forwarded-For` before REIM's rate limiter runs, letting anyone who sets that header choose their own identity and escape the limit. The `Dockerfile`'s `CMD` has the flag with an explanation, but `docker-compose.prod.yml`'s `command:` overrides that `CMD` entirely. | `test_the_production_command_keeps_uvicorn_out_of_the_identity_decision`, and at runtime: three requests through Caddy with different forged `X-Forwarded-For` headers, sent while the anonymous allowance was already exhausted, were all refused with `429` — no bypass. |
 
 ## The limit counts requests, not bytes
 
@@ -358,7 +359,10 @@ provide it.
 
 - **One `uvicorn` worker.** Neither `Dockerfile` nor `docker-compose.prod.yml`
   passes `--workers`, so the rate-limit counters, which live in memory per
-  process, are exact as shipped. Running *N* workers behind your own gateway
+  process, are exact as shipped. To run *N* workers, add `--workers N` to the
+  `uvicorn` command in `docker-compose.prod.yml`'s `api` service — but
+  **preserve `--no-proxy-headers` when you do**, since the `command:` overrides
+  the `Dockerfile`'s `CMD` entirely. Running *N* workers behind your own gateway
   multiplies the effective limit by *N*, since each worker counts its own
   window independently — an operator who scales workers needs a limiter in
   their own gateway, not this one.
