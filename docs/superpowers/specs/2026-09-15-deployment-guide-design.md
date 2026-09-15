@@ -41,9 +41,17 @@ therefore asserted about files that exist, at paths the guide names (D1).
 
 ### 2.1 `deploy/docker-compose.prod.yml`
 
-An overlay over the existing `docker-compose.yml`, not a replacement — the base
-file stays the development environment it is. It differs in exactly the ways a
-public deployment differs:
+**A standalone file, not an overlay over `docker-compose.yml`** (D8). That was
+the intended design until it was measured: Compose *concatenates* multi-value
+options when merging files, so an overlay declaring `ports: []` leaves the base
+file's published ports in the merged configuration. Measured with podman — a
+base publishing `5432:5432` merged with an overlay declaring `ports: []` still
+publishes 5432. An overlay therefore cannot close a door the base file opens,
+which is most of what this file exists to do.
+
+The base file stays the development environment it is, untouched. The
+production file states the whole deployment, and differs from development in
+exactly these ways:
 
 * **Postgres publishes no port.** Development publishes 5432 so `psql` works
   from the host. In production the database is reachable only from the compose
@@ -149,7 +157,10 @@ rejected with the CLI's usual exit code (D6).
 ## 5. Testing
 
 * **The artifacts are exercised, not just written.** The stack comes up under
-  podman and the guide's verification commands run against it.
+  podman and the guide's verification commands run against it. The port
+  assertions are made against the configuration Compose resolves, per D9 — a
+  test that reads the file alone proved able to pass while the deployment was
+  wrong.
 * **The proxy's header handling is measured**, per D2: a forged
   `X-Forwarded-For` through Caddy, asserting the identity REIM counts against.
 * **The freshness threshold** gets the divergent-indicator case the catalog
@@ -171,7 +182,8 @@ rejected with the CLI's usual exit code (D6).
 | **D5** | `status.py` adopts the metrics snapshot's strictest-threshold rule | Two reports of the same pipeline's staleness that can disagree is a bug waiting for the first catalog entry that disagrees (§4.1) |
 | **D6** | An empty `--label` is rejected | A label is the only way an operator identifies a key to revoke (§4.2) |
 | **D7** | Caddy rather than nginx | It writes `X-Forwarded-For` itself and obtains certificates without a second tool; its config is short enough that the one mistake that matters is hard to make |
-| **D8** | The production compose is an overlay, not a replacement | The base file is the development environment and stays that |
+| **D8** | The production compose is a standalone file, not an overlay | Compose concatenates `ports` when merging, so an overlay cannot remove a published port — measured, not assumed (§2.1). Duplicating the service definitions is the price of being able to close a port at all |
+| **D9** | The artifacts are asserted against the *effective* configuration, not the file's own text | A test reading the overlay would have passed while the merged deployment published the database. The artifact under test is what Compose resolves, which for a standalone file is the file — one more reason it is standalone (§5) |
 
 ## 7. Out of scope
 
