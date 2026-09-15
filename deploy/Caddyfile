@@ -1,0 +1,22 @@
+# Caddy obtains and renews the certificate for REIM_DOMAIN by itself.
+#
+# It also writes X-Forwarded-For, which is the whole reason
+# REIM_TRUSTED_PROXY_HOPS=1 is correct in the compose file: REIM reads the last
+# entry, the one this proxy appended. Whatever a client sent sits to the left
+# of it and is never read.
+
+{$REIM_DOMAIN} {
+	encode zstd gzip
+
+	# The Prometheus scrape endpoint carries no authentication by design; the
+	# metrics design put that out of scope on the grounds that a scrape
+	# endpoint is restricted at the network. This is that restriction. Remove
+	# it only if you have another way to keep it off the public internet.
+	handle /metrics {
+		respond 404
+	}
+
+	handle {
+		reverse_proxy api:8000
+	}
+}
