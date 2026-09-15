@@ -520,6 +520,15 @@ altogether** — it hands the header back to whoever is attacker-controlled.
 That is the one mistake here that makes the limiter decorative rather than
 real.
 
+**If you run uvicorn yourself, pass `--no-proxy-headers`**, as `Dockerfile` and
+`docker-compose.yml` both do. uvicorn ships its own proxy-header handling
+enabled by default, trusting `127.0.0.1` — so without that flag it rewrites the
+client address from a caller-supplied `X-Forwarded-For` before REIM's limiter
+runs, and `REIM_TRUSTED_PROXY_HOPS` decides nothing. A reverse proxy on the
+same host is exactly the case where uvicorn trusts the header, so the setting
+above is only meaningful once uvicorn has stopped competing with it. Leave that
+decision in one place.
+
 Counters are kept **in memory, per process**, not in the database — the
 shipped deployment is a single uvicorn worker (neither `Dockerfile` nor
 `docker-compose.yml` passes `--workers`), so this is exact as shipped. Running

@@ -54,4 +54,9 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl --fail --silent http://localhost:8000/health || exit 1
 
-CMD ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --no-proxy-headers: uvicorn's own ProxyHeadersMiddleware is enabled by
+# default and trusts 127.0.0.1, so it would rewrite the client address from a
+# caller-supplied X-Forwarded-For header before REIM ever sees the request.
+# REIM_TRUSTED_PROXY_HOPS is the one place that decision belongs; two
+# implementations of it means the stricter one does not hold.
+CMD ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

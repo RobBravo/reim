@@ -58,7 +58,7 @@ services:
     command: >-
       sh -c "alembic upgrade head
       && python -m reim.cli db seed
-      && uvicorn apps.api.main:app --host 0.0.0.0 --port 8000"
+      && uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers"
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:8000/health || exit 1"]
       interval: 30s
