@@ -6,6 +6,7 @@ so. These tests are what keeps the two from drifting apart.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -78,9 +79,17 @@ def test_metrics_is_not_reachable_from_outside() -> None:
     scrape endpoint is restricted at the network. This is that restriction."""
     text = CADDYFILE.read_text(encoding="utf-8")
 
-    # Assertion must verify the restriction mechanism, not just that /metrics appears.
-    # A Caddyfile that proxied /metrics through would contain the substring but fail the
-    # actual restriction. This test checks for the response 404 that blocks it.
-    assert "handle /metrics" in text and "respond 404" in text, (
-        "the Caddyfile must block /metrics with respond 404, not proxy it through"
+    # Structural check: the /metrics handler block must respond, not proxy.
+    # Extract the handler block content and verify it responds rather than proxies.
+    # This is not satisfied by having "respond 404" anywhere in the file — it must
+    # be inside the /metrics handler block specifically.
+    match = re.search(r"handle\s+/metrics\s*\{([^}]+)\}", text)
+    assert match, "handle /metrics block not found in Caddyfile"
+
+    handler_body = match.group(1)
+    assert "respond" in handler_body, (
+        "/metrics handler must respond, but found no 'respond' directive in its body"
+    )
+    assert "reverse_proxy" not in handler_body, (
+        "/metrics handler must not reverse_proxy; found 'reverse_proxy' in its body"
     )
