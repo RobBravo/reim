@@ -11,6 +11,7 @@ from reim import __version__
 from reim.core.config import get_settings
 from reim.database.models import Country, Indicator, Observation, PipelineRun
 from reim.database.session import check_database_connection
+from reim.domain.quality.freshness import freshness_threshold
 from reim.domain.quality.rules import QualityRuleSet, get_quality_rules
 from reim.domain.sources.catalog import SourceCatalog, get_catalog
 from reim.repositories import pipeline_runs as run_repo
@@ -50,7 +51,7 @@ def build_pipeline_summaries(
         stale: bool | None = None
         if newest is not None:
             age_days = (today - newest).days
-            threshold = resolved_rules.for_indicator(entry.indicators[0]).freshness_max_age_days
+            threshold = freshness_threshold(entry, resolved_rules)
             stale = age_days > threshold if threshold is not None else None
 
         summaries.append(
