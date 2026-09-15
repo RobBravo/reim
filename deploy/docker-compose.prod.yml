@@ -60,6 +60,15 @@ services:
       REIM_RATE_LIMIT_ANONYMOUS: ${REIM_RATE_LIMIT_ANONYMOUS:-60}
       REIM_RATE_LIMIT_KEYED: ${REIM_RATE_LIMIT_KEYED:-600}
       REIM_RATE_LIMIT_WINDOW_SECONDS: ${REIM_RATE_LIMIT_WINDOW_SECONDS:-60}
+      # Same reasoning, one subsystem over: unset in .env changes nothing.
+      # REIM_ALERT_WEBHOOK_URL has no application default (alerting still
+      # evaluates and reports with it unset; it just delivers nothing), so
+      # it defaults to empty here rather than to a value — empty and unset
+      # are the same "not configured" to reim/services/alerting.py.
+      REIM_ALERT_WEBHOOK_URL: ${REIM_ALERT_WEBHOOK_URL:-}
+      REIM_ALERT_SEVERITY_FLOOR: ${REIM_ALERT_SEVERITY_FLOOR:-error}
+      REIM_ALERT_REPEAT_HOURS: ${REIM_ALERT_REPEAT_HOURS:-24}
+      REIM_ALERT_STUCK_RUN_HOURS: ${REIM_ALERT_STUCK_RUN_HOURS:-6}
     # No published port either: caddy is the only way in, so there is no second
     # door on 8000 that skips TLS and the proxy the limiter assumes.
     command: >-

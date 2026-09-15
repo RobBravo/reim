@@ -272,25 +272,47 @@ elsewhere in this guide).
 
 `REIM_ALERT_WEBHOOK_URL` is the setting (see `reim/core/config.py`); unset,
 alerting still evaluates and reports on every run, it just delivers
-nothing.
+nothing. Three more settings tune it: `REIM_ALERT_SEVERITY_FLOOR` (default
+`error`), `REIM_ALERT_REPEAT_HOURS` (default `24`) and
+`REIM_ALERT_STUCK_RUN_HOURS` (default `6`).
 
-**As shipped, `deploy/docker-compose.prod.yml`'s `api` service does not pass
-`REIM_ALERT_WEBHOOK_URL` — or `REIM_ALERT_SEVERITY_FLOOR`,
-`REIM_ALERT_REPEAT_HOURS`, `REIM_ALERT_STUCK_RUN_HOURS` — through to the
-container at all.** Setting any of them in `deploy/.env` has no effect,
-silently, the same way `REIM_RATE_LIMIT_ANONYMOUS` did until it was added to
-the `environment:` block. Until that is fixed, the only way to point
-alerting at a webhook is to add the line yourself to the `api` service's
-`environment:` block in `deploy/docker-compose.prod.yml`:
+All four are wired through the `api` service's `environment:` block in
+`deploy/docker-compose.prod.yml`, so setting one in `deploy/.env` reaches the
+container — `tests/unit/test_deploy_artifacts.py` pins this, the same way it
+already pinned the rate-limit settings. Uncomment the ones you want in
+`deploy/.env.prod.example`:
 
 ```text
-REIM_ALERT_WEBHOOK_URL: ${REIM_ALERT_WEBHOOK_URL:?set the alert webhook}
+# Webhook REIM posts alert digests to. A Slack or Discord webhook carries its
+# posting credential in the URL's own path, so this is a secret — left empty
+# here on purpose; never fill in a real URL, and never fill in a
+# plausible-looking fake one someone might paste unchanged into a real
+# deployment. Unset (empty), alerting still evaluates and reports every run —
+# it just delivers nothing.
+# REIM_ALERT_WEBHOOK_URL=
+
+# Minimum severity that reaches the webhook: info | warning | error | critical.
+# REIM_ALERT_SEVERITY_FLOOR=error
+
+# Hours to wait before repeating a standing alert about the same condition on
+# the same pipeline.
+# REIM_ALERT_REPEAT_HOURS=24
+
+# Hours a pipeline run may sit in 'running' before it's flagged as stuck.
+# REIM_ALERT_STUCK_RUN_HOURS=6
 ```
 
-then set `REIM_ALERT_WEBHOOK_URL` in `deploy/.env`, and recreate `api`.
+then recreate `api` so it picks up the new environment:
+
+```text
+podman compose -f deploy/docker-compose.prod.yml --env-file deploy/.env \
+  up -d --force-recreate api
+```
 
 What was actually run and observed, with the webhook unset (the only variant
-exercised in this guide's own verification):
+exercised in this guide's own verification — the wiring above is a verified
+property of the compose file and its test, not a run with delivery actually
+firing):
 
 ```text
 podman compose -f deploy/docker-compose.prod.yml --env-file deploy/.env \
@@ -299,8 +321,7 @@ podman compose -f deploy/docker-compose.prod.yml --env-file deploy/.env \
 No alert conditions are firing.
 ```
 
-Exit 0. A run with a webhook configured, and delivery actually firing, was
-not exercised here.
+Exit 0.
 
 ## Hardening
 
@@ -320,7 +341,7 @@ cannot silently drift apart. Running that file confirms every row at once:
 | **Refuse a CORS wildcard.** `REIM_CORS_ALLOW_ORIGINS` has no default in the compose file (`${REIM_CORS_ALLOW_ORIGINS:?set the allowed origins}`) — the stack does not start until you state an origin. | `test_compose_file_declares_no_cors_wildcard_default`. |
 | **Close `/metrics` at the proxy.** The Caddyfile's `/metrics` handler responds `404` directly; it never reaches `reverse_proxy`. | `test_metrics_is_not_reachable_from_outside`, and at runtime: `curl` against `/metrics` through Caddy returned `404` (see "Verify it" above). |
 | **Proxy to the API by its compose service name, never a published port.** The Caddyfile reverse-proxies to `api:8000` over the compose network. | `test_caddy_proxies_to_the_api_service_by_name`, and at runtime: the data route through Caddy worked while port 8000 was unreachable from the host. |
-| **Make the rate limits configurable without editing the compose file.** `REIM_RATE_LIMIT_ANONYMOUS`, `REIM_RATE_LIMIT_KEYED` and `REIM_RATE_LIMIT_WINDOW_SECONDS` are all read from `deploy/.env` through the `api` service's environment block. | `test_rate_limit_is_configurable_without_editing_the_compose_file`, drilled by removing one variable from the compose file and confirming the test fails, then restoring it and confirming the test passes again. |
+| **Make the rate limits and the alert settings configurable without editing the compose file.** `REIM_RATE_LIMIT_ANONYMOUS`, `REIM_RATE_LIMIT_KEYED`, `REIM_RATE_LIMIT_WINDOW_SECONDS`, `REIM_ALERT_WEBHOOK_URL`, `REIM_ALERT_SEVERITY_FLOOR`, `REIM_ALERT_REPEAT_HOURS` and `REIM_ALERT_STUCK_RUN_HOURS` are all read from `deploy/.env` through the `api` service's environment block. | `test_rate_limit_is_configurable_without_editing_the_compose_file`, drilled by removing one variable from the compose file and confirming the test fails, then restoring it and confirming the test passes again. |
 
 ## The limit counts requests, not bytes
 

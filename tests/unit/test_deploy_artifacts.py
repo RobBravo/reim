@@ -60,7 +60,11 @@ def test_rate_limit_is_configurable_without_editing_the_compose_file(production:
     Each of these must be referenced in the api service's environment block so
     that setting it in .env actually reaches the container. Their absence here
     is exactly what let ``REIM_RATE_LIMIT_ANONYMOUS`` through unconfigurable
-    until this test existed.
+    until this test existed. Alerting had the identical gap, one subsystem
+    over: none of the four settings below had a path through this file either,
+    which meant an operator following the deployment guide's own instructions
+    could not point alerting at a webhook without hand-editing the file we
+    shipped them.
     """
     environment = production["services"]["api"]["environment"]
 
@@ -68,6 +72,10 @@ def test_rate_limit_is_configurable_without_editing_the_compose_file(production:
         "REIM_RATE_LIMIT_ANONYMOUS",
         "REIM_RATE_LIMIT_KEYED",
         "REIM_RATE_LIMIT_WINDOW_SECONDS",
+        "REIM_ALERT_WEBHOOK_URL",
+        "REIM_ALERT_SEVERITY_FLOOR",
+        "REIM_ALERT_REPEAT_HOURS",
+        "REIM_ALERT_STUCK_RUN_HOURS",
     ):
         assert variable in environment, f"{variable} has no path through docker-compose.prod.yml"
 
