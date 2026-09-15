@@ -72,12 +72,25 @@ services:
     # No published port either: caddy is the only way in, so there is no second
     # door on 8000 that skips TLS and the proxy the limiter assumes.
     # This command REPLACES the Dockerfile's CMD, including the comment there
-    # explaining --no-proxy-headers. Keep the flag: uvicorn's own
-    # ProxyHeadersMiddleware is on by default and trusts 127.0.0.1, so without
-    # it uvicorn rewrites the client address from a caller-supplied
-    # X-Forwarded-For before REIM's limiter runs, and REIM_TRUSTED_PROXY_HOPS
-    # stops meaning anything. If you edit this line — to add --workers, say —
-    # the flag goes with it.
+    # explaining --no-proxy-headers. Keep the flag anyway. Measured in this
+    # exact topology (caddy and api as separate containers on this compose
+    # file's own bridge network): removing it changed nothing — a forged
+    # X-Forwarded-For through Caddy was refused identically with and without
+    # the flag, at REIM_TRUSTED_PROXY_HOPS=1 (shipped, below) and at 0. The
+    # api container's peer is never uvicorn's default-trusted 127.0.0.1 here,
+    # so its ProxyHeadersMiddleware would not act on the flag's absence even
+    # if hops were 0; at hops=1 the header decides identity and the peer is
+    # never consulted at all. What the flag is measured to protect is a
+    # different topology: uvicorn's immediate TCP peer actually at 127.0.0.1
+    # — e.g. run directly, without this compose file's Caddy and bridge
+    # network in front. There, without the flag, three forged
+    # X-Forwarded-For headers each bought a fresh rate-limit allowance; with
+    # it, all three were refused. Keep it regardless of what this shipped
+    # topology needs today: it is uvicorn's correct default, it costs
+    # nothing, and a later change to how this command is run (a different
+    # network mode, FORWARDED_ALLOW_IPS, a bare invocation) could make it
+    # load-bearing again without anyone revisiting this comment. If you edit
+    # this line — to add --workers, say — the flag goes with it.
     command: >-
       sh -c "alembic upgrade head
       && python -m reim.cli db seed
