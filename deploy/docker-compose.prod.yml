@@ -54,6 +54,12 @@ services:
       # Higher than the number you actually run lets a client choose its own
       # identity and escape rate limiting entirely.
       REIM_TRUSTED_PROXY_HOPS: "1"
+      # Defaults match reim.core.config.Settings, so leaving these unset in
+      # .env changes nothing. Set them there to tune the allowance without
+      # editing this file.
+      REIM_RATE_LIMIT_ANONYMOUS: ${REIM_RATE_LIMIT_ANONYMOUS:-60}
+      REIM_RATE_LIMIT_KEYED: ${REIM_RATE_LIMIT_KEYED:-600}
+      REIM_RATE_LIMIT_WINDOW_SECONDS: ${REIM_RATE_LIMIT_WINDOW_SECONDS:-60}
     # No published port either: caddy is the only way in, so there is no second
     # door on 8000 that skips TLS and the proxy the limiter assumes.
     command: >-

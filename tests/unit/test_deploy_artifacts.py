@@ -54,6 +54,24 @@ def test_exactly_one_trusted_proxy_hop(production: dict) -> None:
     assert str(environment["REIM_TRUSTED_PROXY_HOPS"]) == "1"
 
 
+def test_rate_limit_is_configurable_without_editing_the_compose_file(production: dict) -> None:
+    """An operator's most likely tuning need must not require editing this file.
+
+    Each of these must be referenced in the api service's environment block so
+    that setting it in .env actually reaches the container. Their absence here
+    is exactly what let ``REIM_RATE_LIMIT_ANONYMOUS`` through unconfigurable
+    until this test existed.
+    """
+    environment = production["services"]["api"]["environment"]
+
+    for variable in (
+        "REIM_RATE_LIMIT_ANONYMOUS",
+        "REIM_RATE_LIMIT_KEYED",
+        "REIM_RATE_LIMIT_WINDOW_SECONDS",
+    ):
+        assert variable in environment, f"{variable} has no path through docker-compose.prod.yml"
+
+
 def test_compose_file_declares_no_cors_wildcard_default(production: dict) -> None:
     """The compose file declares no wildcard default and requires the operator to supply origins.
 
