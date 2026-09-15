@@ -20,6 +20,13 @@
 - `ruff format` silently rewrites any ` ```python ` block in Markdown that is not a valid standalone module. Fence shell, YAML, Caddyfile and cron samples as ` ```text `, then run `.venv/bin/ruff format .` and confirm no change to any Markdown file.
 - **A correction is only correct if it matches what was measured.** `.superpowers/sdd/2026-09-15-deployment-guide/measurements.md` holds the observations; the audit holds what it reproduced. Where this plan and either of those disagree, they win — say so rather than following the plan.
 - Do not write a real password, token, webhook URL or ACME email into any file.
+- **Every measurement names its rival hypothesis before it runs.** State what
+  the negation of your claim would predict. If it predicts the same output you
+  are about to observe, the measurement decides nothing — redesign it rather
+  than run it. A multi-cell probe must have at least one cell where the two
+  hypotheses diverge, and you say which cell that is. This is the design-time
+  half of the mutation drills; the drills check the implementation, this checks
+  the instrument.
 
 ---
 
