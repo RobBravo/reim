@@ -16,6 +16,10 @@
 		respond 404
 	}
 
+	handle /metrics/ {
+		respond 404
+	}
+
 	handle {
 		reverse_proxy api:8000
 	}

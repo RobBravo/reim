@@ -53,8 +53,12 @@ def test_exactly_one_trusted_proxy_hop(production: dict) -> None:
     assert str(environment["REIM_TRUSTED_PROXY_HOPS"]) == "1"
 
 
-def test_cors_is_not_a_wildcard(production: dict) -> None:
-    """A wildcard is a development convenience; the operator must state an origin."""
+def test_compose_file_declares_no_cors_wildcard_default(production: dict) -> None:
+    """The compose file declares no wildcard default and requires the operator to supply origins.
+
+    PyYAML does not resolve ${VAR}, so this checks the file's declared default, not the
+    operator's runtime value — which is the right check for the regression that motivated it.
+    """
     environment = production["services"]["api"]["environment"]
     value = str(environment.get("REIM_CORS_ALLOW_ORIGINS", ""))
 
@@ -74,7 +78,9 @@ def test_metrics_is_not_reachable_from_outside() -> None:
     scrape endpoint is restricted at the network. This is that restriction."""
     text = CADDYFILE.read_text(encoding="utf-8")
 
-    assert "/metrics" in text, (
-        "the Caddyfile must say something about /metrics; leaving it unmentioned "
-        "publishes it to the internet"
+    # Assertion must verify the restriction mechanism, not just that /metrics appears.
+    # A Caddyfile that proxied /metrics through would contain the substring but fail the
+    # actual restriction. This test checks for the response 404 that blocks it.
+    assert "handle /metrics" in text and "respond 404" in text, (
+        "the Caddyfile must block /metrics with respond 404, not proxy it through"
     )
