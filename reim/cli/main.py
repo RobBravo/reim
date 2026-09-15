@@ -182,6 +182,9 @@ def key_create(
     The token is shown here and nowhere else: only its hash is stored, so it
     cannot be recovered. Losing it means creating another and revoking this one.
     """
+    if not label.strip():
+        typer.echo("A key needs a label: it is how you identify which key to revoke.", err=True)
+        raise typer.Exit(EXIT_INVALID)
     with session_scope() as session:
         record, token = create_key(session, label=label, now=datetime.now(UTC))
         key_id = record.id

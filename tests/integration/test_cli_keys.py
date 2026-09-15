@@ -56,6 +56,29 @@ def test_create_requires_a_label() -> None:
 
 
 @requires_db
+def test_create_rejects_an_empty_label(cli_session: Session) -> None:
+    """An empty label is as unusable as a missing one, and gets in further.
+
+    ``--label ""`` satisfies Typer's required-option check, so nothing else
+    stops it: the key is minted and appears in ``key list`` as a blank column
+    nobody can match to a consumer.
+    """
+    result = runner.invoke(app, ["key", "create", "--label", ""])
+
+    assert result.exit_code != 0
+    assert list_keys(cli_session) == []
+
+
+@requires_db
+def test_create_rejects_a_whitespace_label(cli_session: Session) -> None:
+    """Whitespace is the same problem wearing a disguise."""
+    result = runner.invoke(app, ["key", "create", "--label", "   "])
+
+    assert result.exit_code != 0
+    assert list_keys(cli_session) == []
+
+
+@requires_db
 def test_key_create_with_label(cli_session: Session) -> None:
     """Create exits 0, prints a token beginning reim_, and persists the key."""
     result = runner.invoke(app, ["key", "create", "--label", "grafana"])
