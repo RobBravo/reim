@@ -6,6 +6,7 @@ so. These tests are what keeps the two from drifting apart.
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
 import subprocess
@@ -19,6 +20,111 @@ from reim.core.config import Settings
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PRODUCTION = REPO_ROOT / "deploy" / "docker-compose.prod.yml"
 CADDYFILE = REPO_ROOT / "deploy" / "Caddyfile"
+ENV_EXAMPLE = REPO_ROOT / "deploy" / ".env.prod.example"
+
+#: ``${REIM_X:-value}`` — a variable an operator may set, with a fallback.
+DEFAULTED = re.compile(r"^\$\{(REIM_[A-Z0-9_]+):-(.*)\}$")
+#: ``REIM_X=`` at the start of a line in ``.env.prod.example``, commented or not.
+ENV_EXAMPLE_ASSIGNMENT = re.compile(r"^#?\s*(REIM_[A-Z0-9_]+)=", re.MULTILINE)
+
+#: Fields of ``Settings`` given no path through ``docker-compose.prod.yml`` at
+#: all, each with the reason it is not an operator's to set.
+#:
+#: This mapping is half of a partition, not a note: every field of ``Settings``
+#: is either reachable from the api service's environment block or named here,
+#: and ``test_every_setting_is_wired_or_deliberately_excluded`` fails on any
+#: field that is neither. That is what stops the gap this file already caught
+#: three times — the rate limits, then the alert settings, then
+#: ``max_export_rows``, each shipped unreachable and each found only because
+#: somebody happened to look — from happening a fourth time when the next field
+#: is added to ``reim/core/config.py``.
+#:
+#: Adding a field means deciding, here, whether an operator of a public
+#: deployment would reach for it. Wire it, or write down why not.
+EXCLUDED_FROM_COMPOSE: dict[str, str] = {
+    "database_echo": (
+        "Logs every SQL statement. A development affordance: in production it "
+        "floods the log and can put query parameters into it."
+    ),
+    "http_user_agent": (
+        "Identifies the software to the data providers we fetch from, not the "
+        "deployment, and already carries a project URL so they can attribute "
+        "our traffic. Letting each deployment rewrite it defeats the field."
+    ),
+    "catalog_path": (
+        "A path to a file baked into the image (sources/catalog.yml). Set from "
+        ".env it would name a path that does not exist in the container, since "
+        "this compose file mounts no volume there — a trap, not a knob."
+    ),
+    "quality_rules_path": "Same as catalog_path, for sources/quality_rules.yml.",
+    "api_title": ("Cosmetic OpenAPI title with no operational consequence either way."),
+    "api_root_path": (
+        "Only meaningful when the API is served under a path prefix, and the "
+        "shipped Caddyfile serves it at the domain root. Setting it alone makes "
+        "FastAPI generate /prefix/openapi.json and /prefix/docs URLs that Caddy "
+        "does not serve, so the operator gets broken docs rather than a no-op."
+    ),
+    "cors_allow_credentials": (
+        "REIM authenticates on the X-API-Key header (apps/api/middleware.py), "
+        'never a cookie, and allow_headers=["*"] already covers that header, '
+        "so credentialed CORS buys nothing — while true alongside a loose "
+        "origin list is a real exposure."
+    ),
+}
+
+#: Fields that *are* in the api service's environment block but fixed there, so
+#: an operator cannot change them from ``deploy/.env``, each with the reason.
+#:
+#: ``test_the_pinned_settings_are_not_reachable_from_env`` checks both
+#: directions: that each of these really is fixed, and that nothing else in the
+#: block is fixed without a reason recorded here.
+PINNED_IN_COMPOSE: dict[str, str] = {
+    "database_url": (
+        "Composed from POSTGRES_USER/PASSWORD/DB and pointed at the postgres "
+        "service on this compose network. An override would aim the API at a "
+        "database this stack does not create, migrate or back up, while the "
+        "same command: still runs alembic upgrade head and db seed against it."
+    ),
+    "environment": (
+        "Pinned to production. Settings.is_production gates the debug "
+        "affordances, so a settable value lets an operator turn them back on "
+        "in a public deployment by accident."
+    ),
+    "log_json": (
+        "Pinned true. Structured logs are the point of shipping this in a "
+        "container; the human renderer is the local-development mode."
+    ),
+    "trusted_proxy_hops": (
+        "Pinned to 1, matching the one caddy in front. This is the single "
+        "setting that decides whether the rate limiter can be bypassed, and "
+        ".env is the operator-editable file, so it does not belong there. "
+        "Putting another proxy (a CDN, a load balancer) in front of caddy "
+        "means editing this compose file and re-measuring."
+    ),
+}
+
+#: The variables an operator is meant to be able to tune from ``deploy/.env``.
+#: Kept explicit rather than derived, so that a variable silently dropped from
+#: the compose file fails by name.
+OPERATOR_SETTABLE = (
+    "REIM_RATE_LIMIT_ENABLED",
+    "REIM_RATE_LIMIT_ANONYMOUS",
+    "REIM_RATE_LIMIT_KEYED",
+    "REIM_RATE_LIMIT_WINDOW_SECONDS",
+    "REIM_ALERT_WEBHOOK_URL",
+    "REIM_ALERT_SEVERITY_FLOOR",
+    "REIM_ALERT_REPEAT_HOURS",
+    "REIM_ALERT_STUCK_RUN_HOURS",
+    "REIM_DEFAULT_PAGE_SIZE",
+    "REIM_MAX_PAGE_SIZE",
+    "REIM_MAX_EXPORT_ROWS",
+    "REIM_METRICS_ENABLED",
+    "REIM_DATABASE_POOL_SIZE",
+    "REIM_DATABASE_MAX_OVERFLOW",
+    "REIM_HTTP_TIMEOUT_SECONDS",
+    "REIM_HTTP_MAX_RETRIES",
+    "REIM_HTTP_RETRY_BACKOFF_SECONDS",
+)
 
 
 @pytest.fixture
@@ -72,32 +178,16 @@ def test_the_settings_an_operator_tunes_reach_the_container(production: dict) ->
     So this list is no longer the subsystem somebody last noticed. It is the
     result of enumerating every field of ``reim.core.config.Settings`` against
     this block and keeping the ones an operator of a public deployment would
-    plausibly set; the settings deliberately left out (``REIM_ENVIRONMENT``,
-    ``REIM_DATABASE_URL``, ``REIM_CATALOG_PATH`` and the rest) are listed with
-    their reasons in the task report beside this change. Adding a field to
-    ``Settings`` that an operator would reach for means adding it here too.
+    plausibly set. The other two classes — fixed in the compose file, and given
+    no path at all — are ``PINNED_IN_COMPOSE`` and ``EXCLUDED_FROM_COMPOSE``
+    above, each entry with its reason, and
+    ``test_every_setting_is_wired_or_deliberately_excluded`` is what makes a new
+    field belong to one of the three rather than to nobody. This tuple stays
+    explicit so a variable dropped from the compose file fails by name.
     """
     environment = production["services"]["api"]["environment"]
 
-    for variable in (
-        "REIM_RATE_LIMIT_ENABLED",
-        "REIM_RATE_LIMIT_ANONYMOUS",
-        "REIM_RATE_LIMIT_KEYED",
-        "REIM_RATE_LIMIT_WINDOW_SECONDS",
-        "REIM_ALERT_WEBHOOK_URL",
-        "REIM_ALERT_SEVERITY_FLOOR",
-        "REIM_ALERT_REPEAT_HOURS",
-        "REIM_ALERT_STUCK_RUN_HOURS",
-        "REIM_DEFAULT_PAGE_SIZE",
-        "REIM_MAX_PAGE_SIZE",
-        "REIM_MAX_EXPORT_ROWS",
-        "REIM_METRICS_ENABLED",
-        "REIM_DATABASE_POOL_SIZE",
-        "REIM_DATABASE_MAX_OVERFLOW",
-        "REIM_HTTP_TIMEOUT_SECONDS",
-        "REIM_HTTP_MAX_RETRIES",
-        "REIM_HTTP_RETRY_BACKOFF_SECONDS",
-    ):
+    for variable in OPERATOR_SETTABLE:
         assert variable in environment, f"{variable} has no path through docker-compose.prod.yml"
 
 
@@ -120,6 +210,202 @@ def test_every_wired_variable_names_a_real_setting(production: dict) -> None:
         f"these keys are set on the api service but no field of Settings reads them, "
         f"so they are silently ignored: {unknown}"
     )
+
+
+def _wired_fields(production: dict) -> set[str]:
+    """``Settings`` fields the api service's environment block mentions at all."""
+    environment = production["services"]["api"]["environment"]
+    return {name for name in Settings.model_fields if f"REIM_{name.upper()}" in environment}
+
+
+def test_every_setting_is_wired_or_deliberately_excluded(production: dict) -> None:
+    """A new ``Settings`` field must be classified before the suite goes green.
+
+    This is the test the three previous instances of this gap needed and did not
+    have. Both of the tests above mutate in the wrong direction: they catch a
+    variable removed from the compose file, and a compose key that names no
+    field. Neither notices the case that actually happened three times — a field
+    added to ``reim/core/config.py`` that nobody wired — because a hardcoded
+    list of what to check cannot grow by itself.
+
+    Partitioning does grow by itself. Every field is wired, or it is in
+    ``EXCLUDED_FROM_COMPOSE`` with a reason; a field in neither fails here,
+    naming itself. The reason lives in this file rather than in a design
+    document because this file is what runs.
+    """
+    wired = _wired_fields(production)
+    excluded = set(EXCLUDED_FROM_COMPOSE)
+
+    unclassified = sorted(set(Settings.model_fields) - wired - excluded)
+    assert not unclassified, (
+        f"these Settings fields are neither wired into the api service's environment "
+        f"block nor listed in EXCLUDED_FROM_COMPOSE: {unclassified}. Decide whether an "
+        f"operator of a public deployment would set them from deploy/.env: wire the "
+        f"ones that they would, and record the others in EXCLUDED_FROM_COMPOSE with "
+        f"the reason they are not theirs to set."
+    )
+
+    both = sorted(excluded & wired)
+    assert not both, (
+        f"these fields are wired into the compose file *and* listed as excluded from "
+        f"it, so the recorded reason no longer describes what ships: {both}"
+    )
+
+    stale = sorted(excluded - set(Settings.model_fields))
+    assert not stale, (
+        f"EXCLUDED_FROM_COMPOSE names fields that Settings no longer has, so their "
+        f"reasons are about settings that do not exist: {stale}"
+    )
+
+    missing_reasons = sorted(field for field, reason in EXCLUDED_FROM_COMPOSE.items() if not reason)
+    assert not missing_reasons, (
+        f"an exclusion without a reason is just an omission somebody wrote down: {missing_reasons}"
+    )
+
+
+def test_the_pinned_settings_are_not_reachable_from_env(production: dict) -> None:
+    """Some settings are in the block precisely so an operator cannot change them.
+
+    ``REIM_TRUSTED_PROXY_HOPS`` is the one that matters: it decides whether the
+    rate limiter can be bypassed, and ``deploy/.env`` is the file the guide
+    invites operators to edit. A literal value with no ``${...}`` around it is
+    what makes it unreachable — the ``environment:`` block is the only channel
+    by which any variable reaches this container, since the service declares no
+    ``env_file:``, and ``--env-file deploy/.env`` feeds compose's own
+    interpolation rather than the container's environment.
+
+    Checked in both directions, so that neither a pin that quietly becomes
+    settable nor a new pin nobody justified passes silently.
+    """
+    environment = production["services"]["api"]["environment"]
+    assert "env_file" not in production["services"]["api"], (
+        "the api service now declares env_file:, which is a second channel into the "
+        "container's environment that this test cannot see; the pins below are only "
+        "unreachable while the environment: block is the only one"
+    )
+
+    for field, reason in PINNED_IN_COMPOSE.items():
+        key = f"REIM_{field.upper()}"
+        assert key in environment, f"{key} is recorded as pinned but is not in the block"
+        assert reason, f"{key} is pinned without a recorded reason"
+        assert f"${{{key}" not in str(environment[key]), (
+            f"{key} is recorded as pinned, with a reason it must not be settable from "
+            f".env, but its value now interpolates {key}: {environment[key]!r}"
+        )
+
+    unrecorded = sorted(
+        key
+        for key, value in environment.items()
+        if key.startswith("REIM_")
+        and f"${{{key}" not in str(value)
+        and key.removeprefix("REIM_").lower() not in PINNED_IN_COMPOSE
+    )
+    assert not unrecorded, (
+        f"these variables are fixed in the compose file, so no .env can change them, "
+        f"but no reason for that is recorded in PINNED_IN_COMPOSE: {unrecorded}"
+    )
+
+
+def test_each_compose_default_is_the_application_default(
+    production: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rule the environment block states about itself, actually checked.
+
+    The block's comment promises ``the default here is Settings' own default,
+    so leaving one unset in .env changes nothing``. Nothing enforced it. Change
+    ``default_page_size`` in ``reim/core/config.py`` and every deployment would
+    keep running the compose file's stale copy while the code documented the new
+    one — and both of the tests above would stay green, because the key is still
+    present and still names a real field.
+
+    Each default is fed through the environment, not the constructor, because
+    the environment source is the path a ``deploy/.env`` value actually takes
+    and it parses differently (``tests/unit/test_config.py`` exists because of
+    exactly that difference).
+    """
+    for name in [key for key in os.environ if key.startswith("REIM_")]:
+        monkeypatch.delenv(name)
+    defaults = Settings(_env_file=None)
+
+    environment = production["services"]["api"]["environment"]
+    checked = 0
+    for key, raw in environment.items():
+        match = DEFAULTED.match(str(raw))
+        if match is None or match.group(1) != key:
+            continue
+        field = key.removeprefix("REIM_").lower()
+        if field not in Settings.model_fields:
+            continue
+
+        monkeypatch.setenv(key, match.group(2))
+        actual = getattr(Settings(_env_file=None), field)
+        monkeypatch.delenv(key)
+        expected = getattr(defaults, field)
+
+        # ``${REIM_ALERT_WEBHOOK_URL:-}`` is the one entry whose compose default
+        # is the empty string against an application default of ``None``. That
+        # is deliberate and not drift: ``reim/services/alerting.py`` gates on
+        # ``not url``, so unset and empty are the same "not configured".
+        if expected is None and actual == "":
+            actual = None
+
+        assert actual == expected, (
+            f"{key}'s default in docker-compose.prod.yml is {match.group(2)!r}, which "
+            f"parses to {actual!r}, but Settings.{field} defaults to {expected!r}. A "
+            f"fresh deployment would silently run the compose file's value."
+        )
+        checked += 1
+
+    assert checked == len(OPERATOR_SETTABLE) + 1, (
+        f"expected to check every operator-settable default plus REIM_LOG_LEVEL, "
+        f"but matched {checked}; the ${{VAR:-default}} form may have changed"
+    )
+
+
+def test_the_env_example_documents_what_the_compose_file_reads(production: dict) -> None:
+    """The file operators copy and edit, checked against the one that reads it.
+
+    ``.env.prod.example`` is the file a stranger edits, and a misspelled name in
+    it is inert by the same ``extra="ignore"`` mechanism as everywhere else in
+    this file — except that here nothing would ever raise, in any deployment
+    made from it. The compose keys are written once under review; these are
+    copied by everyone.
+    """
+    documented = set(ENV_EXAMPLE_ASSIGNMENT.findall(ENV_EXAMPLE.read_text(encoding="utf-8")))
+    reachable = {
+        key
+        for service in production["services"].values()
+        for key in (service.get("environment") or {})
+        if key.startswith("REIM_")
+    }
+
+    unreachable = sorted(documented - reachable)
+    assert not unreachable, (
+        f"deploy/.env.prod.example documents these variables, but no service in "
+        f"docker-compose.prod.yml reads them, so setting one would do nothing: "
+        f"{unreachable}"
+    )
+
+    undocumented = sorted(set(OPERATOR_SETTABLE) - documented)
+    assert not undocumented, (
+        f"these are tunable from deploy/.env but the example an operator copies "
+        f"never mentions them: {undocumented}"
+    )
+
+
+def test_the_rate_limiter_is_on_unless_an_operator_turns_it_off(production: dict) -> None:
+    """``REIM_RATE_LIMIT_ENABLED`` is newly settable, and ``false`` is a real footgun.
+
+    Wiring it was right — the guide's own scaling note tells an operator running
+    several workers to move limiting into their gateway, and this is the switch
+    that lets them. But ``apps/api/main.py`` adds no limiter middleware at all
+    when it is false, so what ships must be on, and that is worth a test rather
+    than a comment.
+    """
+    environment = production["services"]["api"]["environment"]
+
+    assert Settings.model_fields["rate_limit_enabled"].default is True
+    assert str(environment["REIM_RATE_LIMIT_ENABLED"]) == "${REIM_RATE_LIMIT_ENABLED:-true}"
 
 
 def test_compose_file_declares_no_cors_wildcard_default(production: dict) -> None:

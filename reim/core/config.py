@@ -115,6 +115,29 @@ class Settings(BaseSettings):
             return [item.strip() for item in stripped.split(",") if item.strip()]
         return value
 
+    @field_validator("alert_severity_floor", mode="before")
+    @classmethod
+    def _normalize_severity_floor(cls, value: object) -> object:
+        """Accept ``ERROR`` as well as ``error``.
+
+        ``CheckSeverity``'s members are lower-case, so an operator who wrote
+        ``REIM_ALERT_SEVERITY_FLOOR=ERROR`` in ``deploy/.env`` used to take the
+        API container down: the value fails validation, ``Settings()`` raises at
+        import, uvicorn never binds, and ``caddy`` waits on a healthcheck that
+        never passes. ``log_level`` two lines down already normalises case, and
+        nothing about the two settings, sitting in the same file and written the
+        same way, tells an operator that one forgives and the other does not.
+
+        Normalising is the choice here rather than only documenting it, because
+        documentation cannot undo the outage for the operator who did not read
+        it, and ``.strip().lower()`` cannot turn a legal value into a different
+        legal one — every member is already lower-case and free of whitespace.
+        A genuinely unknown value still raises, naming the four that are legal.
+        """
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
     @field_validator("log_level")
     @classmethod
     def _normalize_log_level(cls, value: str) -> str:

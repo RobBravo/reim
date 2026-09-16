@@ -291,14 +291,17 @@ already pinned the rate-limit settings. Uncomment the ones you want in
 # it just delivers nothing.
 # REIM_ALERT_WEBHOOK_URL=
 
-# Minimum severity that reaches the webhook: info | warning | error | critical.
+# Minimum severity that reaches the webhook: one of info, warning, error,
+# critical. Case is normalised, so ERROR is accepted too; any other word is
+# not, and stops the container.
 # REIM_ALERT_SEVERITY_FLOOR=error
 
 # Hours to wait before repeating a standing alert about the same condition on
-# the same pipeline.
+# the same pipeline. Whole number, 1 to 720 (30 days).
 # REIM_ALERT_REPEAT_HOURS=24
 
 # Hours a pipeline run may sit in 'running' before it's flagged as stuck.
+# Whole number, 1 to 168 (7 days).
 # REIM_ALERT_STUCK_RUN_HOURS=6
 ```
 
@@ -342,6 +345,7 @@ cannot silently drift apart. Running that file confirms every row at once:
 | **Close `/metrics` at the proxy.** The Caddyfile's `/metrics` handler responds `404` directly; it never reaches `reverse_proxy`. | `test_metrics_is_not_reachable_from_outside`, and at runtime: `curl` against `/metrics` through Caddy returned `404` (see "Verify it" above). |
 | **Proxy to the API by its compose service name, never a published port.** The Caddyfile reverse-proxies to `api:8000` over the compose network. | `test_caddy_proxies_to_the_api_service_by_name`, and at runtime: the data route through Caddy worked while port 8000 was unreachable from the host. |
 | **Make the rate limits and the alert settings configurable without editing the compose file.** `REIM_RATE_LIMIT_ANONYMOUS`, `REIM_RATE_LIMIT_KEYED`, `REIM_RATE_LIMIT_WINDOW_SECONDS`, `REIM_ALERT_WEBHOOK_URL`, `REIM_ALERT_SEVERITY_FLOOR`, `REIM_ALERT_REPEAT_HOURS` and `REIM_ALERT_STUCK_RUN_HOURS` are all read from `deploy/.env` through the `api` service's environment block. | `test_the_settings_an_operator_tunes_reach_the_container`, drilled by removing one variable from the compose file and confirming the test fails, then restoring it and confirming the test passes again. |
+| **Ship the rate limiter on, and know that `.env` can switch it off.** `REIM_RATE_LIMIT_ENABLED` defaults to `true` in the compose file, so what ships is limited. But `false` in `deploy/.env` now reaches the container, and `apps/api/main.py` then adds no limiter middleware at all — every allowance named in this guide stops existing, silently and without an error anywhere. The switch is deliberate: it is how an operator who has moved limiting into their own gateway (see "Limits of this deployment" on running several workers) turns REIM's off. Setting it without that gateway in place leaves the API unlimited. | `test_the_rate_limiter_is_on_unless_an_operator_turns_it_off`, which pins both halves: `Settings.rate_limit_enabled` defaults to `True`, and the compose entry is `${REIM_RATE_LIMIT_ENABLED:-true}`. |
 | **Keep `--no-proxy-headers` in the `uvicorn` command**, as the `Dockerfile`'s own `CMD` already does — but `docker-compose.prod.yml`'s `command:` overrides that `CMD` entirely, so this copy of the flag is the one that actually runs. Measured, not assumed: in this compose file's own topology (`caddy` and `api` as separate containers on the compose network, one `X-Forwarded-For` entry Caddy itself writes), removing the flag changed nothing — a forged header through Caddy was refused identically with and without it, at both `REIM_TRUSTED_PROXY_HOPS=0` and the shipped `=1`. The `api` container's peer is never uvicorn's default-trusted `127.0.0.1` here, and at hops=1 the header's own value decides identity, never the peer. The flag's measured effect is on a different topology: uvicorn run with its immediate TCP peer actually at `127.0.0.1` (no Caddy, no bridge network in front) — there, a caller-supplied `X-Forwarded-For` bought a fresh allowance without the flag. Keep it regardless: it is uvicorn's correct default, costs nothing, and a later change to how this command runs could make it load-bearing again in this topology too. | `test_the_production_command_keeps_uvicorn_out_of_the_identity_decision`. Runtime, this compose file's topology: three forged `X-Forwarded-For` headers through Caddy were refused identically at `REIM_TRUSTED_PROXY_HOPS=0` and `=1`, with the flag present and with it removed — four configurations, one result. Runtime, bare `uvicorn --host 127.0.0.1` (peer = uvicorn's trusted `127.0.0.1`): the same three forged headers each bought a fresh `200` without the flag; all three were refused with it. |
 
 ## The limit counts requests, not bytes
@@ -357,12 +361,15 @@ provide it.
 
 ## A bad value takes the site down
 
-Every `REIM_*` variable is validated when the application is imported, against
-the `ge=`/`le=` bounds on the matching field in `reim/core/config.py` — the
-same bounds `deploy/.env.prod.example` now states beside each line. A value
-outside them **is not ignored, is not clamped, and does not fall back to the
-default.** It raises, and it raises before `uvicorn` has an application to
-serve.
+A `REIM_*` variable whose **name** matches a field of
+`reim.core.config.Settings` is validated when the application is imported —
+against that field's type, and against its `ge=`/`le=` bounds where it has them,
+which is what `deploy/.env.prod.example` states beside each line. (Not every
+field has bounds: `REIM_LOG_LEVEL` and `REIM_ALERT_SEVERITY_FLOOR` are checked
+against a list of accepted words instead, and `REIM_CORS_ALLOW_ORIGINS` only
+has to parse.) A value the field rejects **is not ignored, is not clamped, and
+does not fall back to the default.** It raises, and it raises before `uvicorn`
+has an application to serve.
 
 Measured in this repository, two cells. The rival hypothesis is the comfortable
 one — that pydantic-settings treats an out-of-range value as absent and uses
@@ -399,16 +406,54 @@ because nothing is listening on 8000; and `caddy` declares
   certificate renewal.** One mistyped number in `.env` is the whole site,
   TLS included.
 
-There is no partial-failure mode here and no warning in between. The check that
-avoids it is one command:
+For a bad value there is no partial-failure mode and no warning in between. The
+check that catches it is one command:
 
 ```text
 podman compose -f deploy/docker-compose.prod.yml --env-file deploy/.env logs api
 ```
 
-A validation failure is at the end of that output, naming the field and the
-bound it broke — the same `ValidationError` as the cell above. Run it after
-every `.env` change and restart, and read it before you walk away.
+A validation failure is at the end of that output, naming the field and what it
+rejected — the same `ValidationError` as the cell above. Run it after every
+`.env` change and restart, and read it before you walk away.
+
+### A bad *name* does the opposite: nothing at all
+
+That command is necessary and it is not sufficient, because the likeliest
+mistake in a `.env` file is not a bad value, it is a misspelled variable name —
+and `Settings` is configured with `extra="ignore"`. An unknown `REIM_*` name is
+not an error. It is read by nobody, the setting you meant to change stays at its
+default, the stack comes up healthy, and `logs api` says nothing, because
+nothing went wrong as far as the application is concerned.
+
+Two cells again, and the rival hypothesis is the one most people assume — that
+an unknown `REIM_*` name is rejected the way a bad value is. It predicts a
+raise; what happens is a boot:
+
+```text
+REIM_MAX_EXPORT_ROWS=5000 → 5000
+REIM_MAX_EXPORT_ROW=5000  → 100000        # name typo'd: silently the default
+```
+
+Inside this repository the corresponding mistake is caught —
+`test_every_wired_variable_names_a_real_setting` fails on any `REIM_*` key in
+`docker-compose.prod.yml` that no `Settings` field reads, and
+`test_the_env_example_documents_what_the_compose_file_reads` does the same for
+`deploy/.env.prod.example`. **Nothing checks your `deploy/.env`**, because it is
+yours and it never reaches us. So the check for a name is not "did the container
+come up" but "is the value what I set":
+
+```text
+podman compose -f deploy/docker-compose.prod.yml --env-file deploy/.env \
+  exec api python -c \
+  "from reim.core.config import get_settings; print(get_settings().max_export_rows)"
+```
+
+That prints what the running application actually resolved, which is the only
+thing that settles it. Substitute the field name — the lower-case form of the
+variable without its `REIM_` prefix — for whichever setting you changed. Run it
+once after an edit; a number you did not set is a typo in the name, not a
+setting that refused to apply.
 
 ## Limits of this deployment
 
