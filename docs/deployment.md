@@ -331,7 +331,7 @@ cannot silently drift apart. Running that file confirms every row at once:
 
 ```text
 .venv/bin/pytest tests/unit/test_deploy_artifacts.py -q
-→ 7 passed
+→ 8 passed
 ```
 
 | Do this | How it's verified |
@@ -341,7 +341,7 @@ cannot silently drift apart. Running that file confirms every row at once:
 | **Refuse a CORS wildcard.** `REIM_CORS_ALLOW_ORIGINS` has no default in the compose file (`${REIM_CORS_ALLOW_ORIGINS:?set the allowed origins}`) — the stack does not start until you state an origin. | `test_compose_file_declares_no_cors_wildcard_default`. |
 | **Close `/metrics` at the proxy.** The Caddyfile's `/metrics` handler responds `404` directly; it never reaches `reverse_proxy`. | `test_metrics_is_not_reachable_from_outside`, and at runtime: `curl` against `/metrics` through Caddy returned `404` (see "Verify it" above). |
 | **Proxy to the API by its compose service name, never a published port.** The Caddyfile reverse-proxies to `api:8000` over the compose network. | `test_caddy_proxies_to_the_api_service_by_name`, and at runtime: the data route through Caddy worked while port 8000 was unreachable from the host. |
-| **Make the rate limits and the alert settings configurable without editing the compose file.** `REIM_RATE_LIMIT_ANONYMOUS`, `REIM_RATE_LIMIT_KEYED`, `REIM_RATE_LIMIT_WINDOW_SECONDS`, `REIM_ALERT_WEBHOOK_URL`, `REIM_ALERT_SEVERITY_FLOOR`, `REIM_ALERT_REPEAT_HOURS` and `REIM_ALERT_STUCK_RUN_HOURS` are all read from `deploy/.env` through the `api` service's environment block. | `test_rate_limit_is_configurable_without_editing_the_compose_file`, drilled by removing one variable from the compose file and confirming the test fails, then restoring it and confirming the test passes again. |
+| **Make the rate limits and the alert settings configurable without editing the compose file.** `REIM_RATE_LIMIT_ANONYMOUS`, `REIM_RATE_LIMIT_KEYED`, `REIM_RATE_LIMIT_WINDOW_SECONDS`, `REIM_ALERT_WEBHOOK_URL`, `REIM_ALERT_SEVERITY_FLOOR`, `REIM_ALERT_REPEAT_HOURS` and `REIM_ALERT_STUCK_RUN_HOURS` are all read from `deploy/.env` through the `api` service's environment block. | `test_the_settings_an_operator_tunes_reach_the_container`, drilled by removing one variable from the compose file and confirming the test fails, then restoring it and confirming the test passes again. |
 | **Keep `--no-proxy-headers` in the `uvicorn` command**, as the `Dockerfile`'s own `CMD` already does — but `docker-compose.prod.yml`'s `command:` overrides that `CMD` entirely, so this copy of the flag is the one that actually runs. Measured, not assumed: in this compose file's own topology (`caddy` and `api` as separate containers on the compose network, one `X-Forwarded-For` entry Caddy itself writes), removing the flag changed nothing — a forged header through Caddy was refused identically with and without it, at both `REIM_TRUSTED_PROXY_HOPS=0` and the shipped `=1`. The `api` container's peer is never uvicorn's default-trusted `127.0.0.1` here, and at hops=1 the header's own value decides identity, never the peer. The flag's measured effect is on a different topology: uvicorn run with its immediate TCP peer actually at `127.0.0.1` (no Caddy, no bridge network in front) — there, a caller-supplied `X-Forwarded-For` bought a fresh allowance without the flag. Keep it regardless: it is uvicorn's correct default, costs nothing, and a later change to how this command runs could make it load-bearing again in this topology too. | `test_the_production_command_keeps_uvicorn_out_of_the_identity_decision`. Runtime, this compose file's topology: three forged `X-Forwarded-For` headers through Caddy were refused identically at `REIM_TRUSTED_PROXY_HOPS=0` and `=1`, with the flag present and with it removed — four configurations, one result. Runtime, bare `uvicorn --host 127.0.0.1` (peer = uvicorn's trusted `127.0.0.1`): the same three forged headers each bought a fresh `200` without the flag; all three were refused with it. |
 
 ## The limit counts requests, not bytes
@@ -354,6 +354,61 @@ extract far more data than "60" suggests: sixty CSV exports a minute, each
 up to 100,000 rows, is a request-shaped limit, not a byte-shaped one. If you
 need a byte budget, set one at the proxy — REIM's own limiter does not
 provide it.
+
+## A bad value takes the site down
+
+Every `REIM_*` variable is validated when the application is imported, against
+the `ge=`/`le=` bounds on the matching field in `reim/core/config.py` — the
+same bounds `deploy/.env.prod.example` now states beside each line. A value
+outside them **is not ignored, is not clamped, and does not fall back to the
+default.** It raises, and it raises before `uvicorn` has an application to
+serve.
+
+Measured in this repository, two cells. The rival hypothesis is the comfortable
+one — that pydantic-settings treats an out-of-range value as absent and uses
+the field default — and it predicts the same output as the claim in the first
+cell, so only the second decides anything:
+
+```text
+REIM_MAX_EXPORT_ROWS=5000 .venv/bin/python -c "import apps.api.main; \
+  from reim.core.config import get_settings; print(get_settings().max_export_rows)"
+→ 5000
+
+REIM_MAX_EXPORT_ROWS=0 .venv/bin/python -c "import apps.api.main"
+→ pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+  max_export_rows
+    Input should be greater than or equal to 1 [type=greater_than_equal, ...]
+```
+
+The second cell raises rather than printing `100000`, which is what the rival
+hypothesis would have produced.
+
+Read off `docker-compose.prod.yml`, that failure does not stay inside the `api`
+container. The service carries `restart: unless-stopped`, so a container that
+dies at import is started again, and again; its healthcheck never passes
+because nothing is listening on 8000; and `caddy` declares
+`depends_on: api: condition: service_healthy`. So:
+
+- If you recreated only `api` — `up -d --force-recreate api`, the command this
+  guide gives for picking up a changed `.env` — `caddy` is already running and
+  keeps its certificate, but every request it proxies reaches a container that
+  is not there. The site answers `502`.
+- On the next `up -d` from a stopped stack, or the next reboot of the host,
+  `caddy` never starts at all, because the condition it waits on is never
+  satisfied. Nothing listens on 80 or 443: no HTTP, **no HTTPS, and no
+  certificate renewal.** One mistyped number in `.env` is the whole site,
+  TLS included.
+
+There is no partial-failure mode here and no warning in between. The check that
+avoids it is one command:
+
+```text
+podman compose -f deploy/docker-compose.prod.yml --env-file deploy/.env logs api
+```
+
+A validation failure is at the end of that output, naming the field and the
+bound it broke — the same `ValidationError` as the cell above. Run it after
+every `.env` change and restart, and read it before you walk away.
 
 ## Limits of this deployment
 

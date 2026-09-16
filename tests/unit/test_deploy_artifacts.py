@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from reim.core.config import Settings
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PRODUCTION = REPO_ROOT / "deploy" / "docker-compose.prod.yml"
 CADDYFILE = REPO_ROOT / "deploy" / "Caddyfile"
@@ -56,21 +58,29 @@ def test_exactly_one_trusted_proxy_hop(production: dict) -> None:
     assert str(environment["REIM_TRUSTED_PROXY_HOPS"]) == "1"
 
 
-def test_rate_limit_is_configurable_without_editing_the_compose_file(production: dict) -> None:
-    """An operator's most likely tuning need must not require editing this file.
+def test_the_settings_an_operator_tunes_reach_the_container(production: dict) -> None:
+    """An operator's tuning must not require editing the file we shipped them.
 
     Each of these must be referenced in the api service's environment block so
-    that setting it in .env actually reaches the container. Their absence here
+    that setting it in .env actually reaches the container. Their absence there
     is exactly what let ``REIM_RATE_LIMIT_ANONYMOUS`` through unconfigurable
     until this test existed. Alerting had the identical gap, one subsystem
-    over: none of the four settings below had a path through this file either,
-    which meant an operator following the deployment guide's own instructions
-    could not point alerting at a webhook without hand-editing the file we
-    shipped them.
+    over, and then ``REIM_MAX_EXPORT_ROWS`` had it a third time while
+    ``docs/deployment.md`` named it as the export budget to tune — three
+    instances found one at a time, each because somebody happened to look.
+
+    So this list is no longer the subsystem somebody last noticed. It is the
+    result of enumerating every field of ``reim.core.config.Settings`` against
+    this block and keeping the ones an operator of a public deployment would
+    plausibly set; the settings deliberately left out (``REIM_ENVIRONMENT``,
+    ``REIM_DATABASE_URL``, ``REIM_CATALOG_PATH`` and the rest) are listed with
+    their reasons in the task report beside this change. Adding a field to
+    ``Settings`` that an operator would reach for means adding it here too.
     """
     environment = production["services"]["api"]["environment"]
 
     for variable in (
+        "REIM_RATE_LIMIT_ENABLED",
         "REIM_RATE_LIMIT_ANONYMOUS",
         "REIM_RATE_LIMIT_KEYED",
         "REIM_RATE_LIMIT_WINDOW_SECONDS",
@@ -78,8 +88,38 @@ def test_rate_limit_is_configurable_without_editing_the_compose_file(production:
         "REIM_ALERT_SEVERITY_FLOOR",
         "REIM_ALERT_REPEAT_HOURS",
         "REIM_ALERT_STUCK_RUN_HOURS",
+        "REIM_DEFAULT_PAGE_SIZE",
+        "REIM_MAX_PAGE_SIZE",
+        "REIM_MAX_EXPORT_ROWS",
+        "REIM_METRICS_ENABLED",
+        "REIM_DATABASE_POOL_SIZE",
+        "REIM_DATABASE_MAX_OVERFLOW",
+        "REIM_HTTP_TIMEOUT_SECONDS",
+        "REIM_HTTP_MAX_RETRIES",
+        "REIM_HTTP_RETRY_BACKOFF_SECONDS",
     ):
         assert variable in environment, f"{variable} has no path through docker-compose.prod.yml"
+
+
+def test_every_wired_variable_names_a_real_setting(production: dict) -> None:
+    """The other half of the same gap: a key here that no ``Settings`` field reads.
+
+    ``SettingsConfigDict(extra="ignore")`` means a misspelled or renamed
+    ``REIM_*`` key is not an error — it is simply never read, which looks
+    exactly like the setting being wired. The test above cannot see that:
+    ``REIM_MAX_EXPORT_ROW`` would satisfy nothing and fail loudly, but
+    ``REIM_MAX_EXPORT_ROWS`` surviving a later rename of the field itself would
+    leave a line here that reaches nothing and a test that still passes.
+    """
+    environment = production["services"]["api"]["environment"]
+    known = {f"REIM_{name.upper()}" for name in Settings.model_fields}
+
+    unknown = sorted(key for key in environment if key.startswith("REIM_") and key not in known)
+
+    assert not unknown, (
+        f"these keys are set on the api service but no field of Settings reads them, "
+        f"so they are silently ignored: {unknown}"
+    )
 
 
 def test_compose_file_declares_no_cors_wildcard_default(production: dict) -> None:
