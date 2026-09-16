@@ -24,6 +24,12 @@ ENV_EXAMPLE = REPO_ROOT / "deploy" / ".env.prod.example"
 
 #: ``${REIM_X:-value}`` — a variable an operator may set, with a fallback.
 DEFAULTED = re.compile(r"^\$\{(REIM_[A-Z0-9_]+):-(.*)\}$")
+#: ``${REIM_X:?message}`` — a variable an operator *must* set; compose refuses
+#: to render the file at all when it is missing, so there is no default to pin.
+REQUIRED = re.compile(r"^\$\{(REIM_[A-Z0-9_]+):\?(.*)\}$")
+#: The shortest exclusion or pinning reason a reader could act on. Crude, and
+#: deliberately so: no test can judge prose, but ``"TODO"`` is not a decision.
+MIN_REASON = 40
 #: ``REIM_X=`` at the start of a line in ``.env.prod.example``, commented or not.
 ENV_EXAMPLE_ASSIGNMENT = re.compile(r"^#?\s*(REIM_[A-Z0-9_]+)=", re.MULTILINE)
 
@@ -72,29 +78,29 @@ EXCLUDED_FROM_COMPOSE: dict[str, str] = {
     ),
 }
 
-#: Fields that *are* in the api service's environment block but fixed there, so
-#: an operator cannot change them from ``deploy/.env``, each with the reason.
+#: Variables that *are* in the api service's environment block but fixed there,
+#: so an operator cannot change them from ``deploy/.env``, each with the reason.
 #:
 #: ``test_the_pinned_settings_are_not_reachable_from_env`` checks both
 #: directions: that each of these really is fixed, and that nothing else in the
 #: block is fixed without a reason recorded here.
 PINNED_IN_COMPOSE: dict[str, str] = {
-    "database_url": (
+    "REIM_DATABASE_URL": (
         "Composed from POSTGRES_USER/PASSWORD/DB and pointed at the postgres "
         "service on this compose network. An override would aim the API at a "
         "database this stack does not create, migrate or back up, while the "
         "same command: still runs alembic upgrade head and db seed against it."
     ),
-    "environment": (
+    "REIM_ENVIRONMENT": (
         "Pinned to production. Settings.is_production gates the debug "
         "affordances, so a settable value lets an operator turn them back on "
         "in a public deployment by accident."
     ),
-    "log_json": (
+    "REIM_LOG_JSON": (
         "Pinned true. Structured logs are the point of shipping this in a "
         "container; the human renderer is the local-development mode."
     ),
-    "trusted_proxy_hops": (
+    "REIM_TRUSTED_PROXY_HOPS": (
         "Pinned to 1, matching the one caddy in front. This is the single "
         "setting that decides whether the rate limiter can be bypassed, and "
         ".env is the operator-editable file, so it does not belong there. "
@@ -103,9 +109,43 @@ PINNED_IN_COMPOSE: dict[str, str] = {
     ),
 }
 
-#: The variables an operator is meant to be able to tune from ``deploy/.env``.
-#: Kept explicit rather than derived, so that a variable silently dropped from
-#: the compose file fails by name.
+#: Variables the compose file *requires* an operator to supply — the
+#: ``${VAR:?message}`` form, which makes compose refuse to render the file at
+#: all rather than fall back to anything — each with the reason it is demanded
+#: rather than defaulted.
+#:
+#: These have no default to pin, so ``test_each_compose_default_is_the_application_default``
+#: cannot see them and ``OPERATOR_SETTABLE`` does not cover them. That is the
+#: gap this mapping closes: a setting wired this way is the most deliberate
+#: kind there is, and would otherwise reach no file an operator reads while
+#: passing every other test here.
+REQUIRED_IN_COMPOSE: dict[str, str] = {
+    "REIM_CORS_ALLOW_ORIGINS": (
+        "The origins allowed to call this API from a browser. Every default "
+        "worth having is either a wildcard, which undoes the reason this "
+        "deployment exists, or a guess at somebody's domain. Refusing to start "
+        "is the correct behaviour: there is no safe value we can pick for them."
+    ),
+}
+
+#: Variables that are operator-settable in fact but deliberately absent from
+#: ``OPERATOR_SETTABLE``, each with the reason — so that the difference is a
+#: named decision rather than an off-by-one in an arithmetic guard.
+OPERATOR_SETTABLE_BUT_UNDOCUMENTED: dict[str, str] = {
+    "REIM_LOG_LEVEL": (
+        "Reachable from .env as ${REIM_LOG_LEVEL:-INFO}, but documenting it in "
+        "deploy/.env.prod.example is Task 4 Step 3's work in the deployment "
+        "corrections increment, and asserting it here would either fail or do "
+        "their job for them. When it is documented, move it into "
+        "OPERATOR_SETTABLE and delete this entry — the two are checked as one "
+        "set, so moving it across changes nothing else."
+    ),
+}
+
+#: The variables an operator is meant to be able to tune from ``deploy/.env``
+#: *and* find documented in ``deploy/.env.prod.example``. Kept explicit rather
+#: than derived, so that a variable silently dropped from the compose file
+#: fails by name.
 OPERATOR_SETTABLE = (
     "REIM_RATE_LIMIT_ENABLED",
     "REIM_RATE_LIMIT_ANONYMOUS",
@@ -212,6 +252,25 @@ def test_every_wired_variable_names_a_real_setting(production: dict) -> None:
     )
 
 
+def assert_reasons_are_usable(reasons: dict[str, str], name: str) -> None:
+    """A reason is the artifact that makes these mappings worth having.
+
+    ``if not reason`` catches only the empty string, so ``"TODO"``, ``"n/a"``
+    and ``"see the report"`` all passed — which reintroduces, through the door
+    this file built, exactly the undecided setting it exists to catch. No test
+    can judge prose, so this is a length floor and nothing more: every reason
+    actually written here runs from 52 to 311 characters, and a placeholder
+    written in a hurry does not reach forty.
+    """
+    too_short = sorted(key for key, reason in reasons.items() if len(reason.strip()) < MIN_REASON)
+    assert not too_short, (
+        f"{name} entries for {too_short} have no reason a reader could act on. This is a "
+        f"crude length check ({MIN_REASON} characters) standing in for one nobody can "
+        f"write: say what the setting does and why it is in this class, the way the "
+        f"entries beside it do."
+    )
+
+
 def _wired_fields(production: dict) -> set[str]:
     """``Settings`` fields the api service's environment block mentions at all."""
     environment = production["services"]["api"]["environment"]
@@ -257,10 +316,7 @@ def test_every_setting_is_wired_or_deliberately_excluded(production: dict) -> No
         f"reasons are about settings that do not exist: {stale}"
     )
 
-    missing_reasons = sorted(field for field, reason in EXCLUDED_FROM_COMPOSE.items() if not reason)
-    assert not missing_reasons, (
-        f"an exclusion without a reason is just an omission somebody wrote down: {missing_reasons}"
-    )
+    assert_reasons_are_usable(EXCLUDED_FROM_COMPOSE, "EXCLUDED_FROM_COMPOSE")
 
 
 def test_the_pinned_settings_are_not_reachable_from_env(production: dict) -> None:
@@ -284,10 +340,9 @@ def test_the_pinned_settings_are_not_reachable_from_env(production: dict) -> Non
         "unreachable while the environment: block is the only one"
     )
 
-    for field, reason in PINNED_IN_COMPOSE.items():
-        key = f"REIM_{field.upper()}"
+    assert_reasons_are_usable(PINNED_IN_COMPOSE, "PINNED_IN_COMPOSE")
+    for key in PINNED_IN_COMPOSE:
         assert key in environment, f"{key} is recorded as pinned but is not in the block"
-        assert reason, f"{key} is pinned without a recorded reason"
         assert f"${{{key}" not in str(environment[key]), (
             f"{key} is recorded as pinned, with a reason it must not be settable from "
             f".env, but its value now interpolates {key}: {environment[key]!r}"
@@ -298,7 +353,7 @@ def test_the_pinned_settings_are_not_reachable_from_env(production: dict) -> Non
         for key, value in environment.items()
         if key.startswith("REIM_")
         and f"${{{key}" not in str(value)
-        and key.removeprefix("REIM_").lower() not in PINNED_IN_COMPOSE
+        and key not in PINNED_IN_COMPOSE
     )
     assert not unrecorded, (
         f"these variables are fixed in the compose file, so no .env can change them, "
@@ -328,7 +383,20 @@ def test_each_compose_default_is_the_application_default(
     defaults = Settings(_env_file=None)
 
     environment = production["services"]["api"]["environment"]
-    checked = 0
+    # Derived from the file rather than counted by hand: everything in the block
+    # that is neither pinned to a literal nor demanded of the operator has a
+    # default, and every one of those must be checked here. An earlier version
+    # asserted a hardcoded total and blamed the regex when it did not match,
+    # which sent the reader to the wrong file for the two likeliest causes — a
+    # variable added to the block, or one reclassified.
+    should_check = {
+        key
+        for key, raw in environment.items()
+        if key.startswith("REIM_")
+        and key not in PINNED_IN_COMPOSE
+        and key not in REQUIRED_IN_COMPOSE
+    }
+    checked = set()
     for key, raw in environment.items():
         match = DEFAULTED.match(str(raw))
         if match is None or match.group(1) != key:
@@ -354,11 +422,78 @@ def test_each_compose_default_is_the_application_default(
             f"parses to {actual!r}, but Settings.{field} defaults to {expected!r}. A "
             f"fresh deployment would silently run the compose file's value."
         )
-        checked += 1
+        checked.add(key)
 
-    assert checked == len(OPERATOR_SETTABLE) + 1, (
-        f"expected to check every operator-settable default plus REIM_LOG_LEVEL, "
-        f"but matched {checked}; the ${{VAR:-default}} form may have changed"
+    unchecked = sorted(should_check - checked)
+    assert not unchecked, (
+        f"{unchecked} are in the api service's environment block but this test never "
+        f"compared their defaults. Either they were added without a default (use the "
+        f"${{VAR:-value}} form, or record them in PINNED_IN_COMPOSE or "
+        f"REQUIRED_IN_COMPOSE with the reason), or the ${{VAR:-value}} form itself has "
+        f"changed and this test now silently checks less than it claims."
+    )
+
+
+def test_the_compose_block_is_a_partition_too(production: dict) -> None:
+    """Closure over the file, not only over ``Settings``.
+
+    ``test_every_setting_is_wired_or_deliberately_excluded`` partitions the
+    application's fields, which closes the gap where a setting is unreachable.
+    It cannot close the mirror image: a variable that reaches the container but
+    reaches no file an operator reads.
+
+    The ``${VAR:?message}`` form is where that hides. It has no default, so the
+    defaults test has nothing to compare; it is not a literal, so the pins test
+    ignores it; and ``OPERATOR_SETTABLE`` is hand-kept, so nothing forced it to
+    be listed. A setting wired that way refuses to let the stack start — loudly,
+    not silently — but it refuses over a variable no shipped document names,
+    which is a worse first experience than the gap this file already fixed. So
+    every key in the block belongs to exactly one of the four classes, and
+    ``REQUIRED_IN_COMPOSE``'s members must be documented like the rest.
+    """
+    environment = production["services"]["api"]["environment"]
+    assert_reasons_are_usable(REQUIRED_IN_COMPOSE, "REQUIRED_IN_COMPOSE")
+    assert_reasons_are_usable(
+        OPERATOR_SETTABLE_BUT_UNDOCUMENTED, "OPERATOR_SETTABLE_BUT_UNDOCUMENTED"
+    )
+
+    classes = {
+        "OPERATOR_SETTABLE": set(OPERATOR_SETTABLE),
+        "OPERATOR_SETTABLE_BUT_UNDOCUMENTED": set(OPERATOR_SETTABLE_BUT_UNDOCUMENTED),
+        "PINNED_IN_COMPOSE": set(PINNED_IN_COMPOSE),
+        "REQUIRED_IN_COMPOSE": set(REQUIRED_IN_COMPOSE),
+    }
+    classified: set[str] = set()
+    for name, members in classes.items():
+        overlap = sorted(classified & members)
+        assert not overlap, f"{overlap} are in {name} and in an earlier class as well"
+        classified |= members
+
+    keys = {key for key in environment if key.startswith("REIM_")}
+
+    unclassified = sorted(keys - classified)
+    assert not unclassified, (
+        f"{unclassified} reach the api container but belong to none of the four classes "
+        f"in this file, so nothing says whether an operator may set them, must set them, "
+        f"or cannot. Put each in OPERATOR_SETTABLE (and document it in "
+        f"deploy/.env.prod.example), OPERATOR_SETTABLE_BUT_UNDOCUMENTED, PINNED_IN_COMPOSE "
+        f"or REQUIRED_IN_COMPOSE, with the reason."
+    )
+
+    phantom = sorted(classified - keys)
+    assert not phantom, (
+        f"{phantom} are classified in this file but are not in the api service's "
+        f"environment block at all, so the recorded reasoning is about variables that "
+        f"no longer reach the container"
+    )
+
+    not_required = sorted(
+        key for key in REQUIRED_IN_COMPOSE if not REQUIRED.match(str(environment[key]))
+    )
+    assert not not_required, (
+        f"{not_required} are recorded as demanded of the operator, with a reason no "
+        f"default is safe to pick, but no longer use the ${{VAR:?message}} form: "
+        f"{[str(environment[key]) for key in not_required]}"
     )
 
 
@@ -386,10 +521,12 @@ def test_the_env_example_documents_what_the_compose_file_reads(production: dict)
         f"{unreachable}"
     )
 
-    undocumented = sorted(set(OPERATOR_SETTABLE) - documented)
+    # ``REQUIRED_IN_COMPOSE`` is included because a variable the stack refuses to
+    # start without is the one an operator most needs to find written down.
+    undocumented = sorted((set(OPERATOR_SETTABLE) | set(REQUIRED_IN_COMPOSE)) - documented)
     assert not undocumented, (
-        f"these are tunable from deploy/.env but the example an operator copies "
-        f"never mentions them: {undocumented}"
+        f"these must be set, or may be tuned, from deploy/.env, but the example an "
+        f"operator copies never mentions them: {undocumented}"
     )
 
 

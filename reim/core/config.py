@@ -133,6 +133,16 @@ class Settings(BaseSettings):
         it, and ``.strip().lower()`` cannot turn a legal value into a different
         legal one — every member is already lower-case and free of whitespace.
         A genuinely unknown value still raises, naming the four that are legal.
+
+        ``environment`` is the other lower-case ``StrEnum`` in this class and is
+        deliberately *not* normalised, so the argument above is about
+        reachability rather than symmetry: ``REIM_ALERT_SEVERITY_FLOOR`` is
+        ``${...:-error}`` in ``deploy/docker-compose.prod.yml`` and squarely an
+        operator's to set, while ``REIM_ENVIRONMENT`` is pinned there and in the
+        ``Dockerfile``, so no operator of that deployment reaches it from
+        ``.env``. ``REIM_ENVIRONMENT=PRODUCTION`` does still raise, which is a
+        live edge for a developer or a staging deployment writing its own
+        ``.env``; it is recorded rather than fixed here.
         """
         if isinstance(value, str):
             return value.strip().lower()
