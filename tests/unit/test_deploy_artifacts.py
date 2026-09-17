@@ -124,11 +124,10 @@ PINNED_IN_COMPOSE: dict[str, str] = {
 #: passing every other test here.
 REQUIRED_IN_COMPOSE: dict[str, str] = {
     "REIM_DOMAIN": (
-        "The domain this deployment serves, on the caddy service. There is no "
-        "default worth having: Caddy uses it as the site address, so a guess "
-        "would make the stack request a certificate for somebody else's name. "
-        "Compose refuses to render the file without it, which is the loudest "
-        "and earliest failure available and better than a wrong certificate."
+        "The domain this deployment serves, on the caddy service. Caddy uses "
+        "it as the site address, so any default we picked would request a "
+        "certificate for somebody else's name. Refusing to render the compose "
+        "file is the earliest failure available, and the right one."
     ),
     "REIM_CORS_ALLOW_ORIGINS": (
         "The origins allowed to call this API from a browser. Every default "
