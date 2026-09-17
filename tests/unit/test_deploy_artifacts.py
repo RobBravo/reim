@@ -717,6 +717,38 @@ def test_metrics_is_not_reachable_from_outside() -> None:
     )
 
 
+def test_hsts_ships_on_and_its_policy_is_pinned() -> None:
+    """A commitment made in every visitor's browser, so it gets a test.
+
+    ``Strict-Transport-Security`` is not a Caddy default; this deployment adds
+    it deliberately. Unlike everything else in the hardening table it cannot be
+    withdrawn by redeploying — a browser that has seen it refuses plain HTTP to
+    the domain, and with ``includeSubDomains`` to every subdomain of it, until
+    the max-age elapses. That makes the two parameters a policy decision an
+    operator inherits, and a silent change to either one is the kind that
+    surfaces months later on somebody else's subdomain.
+
+    So this pins the whole directive rather than its presence: a shortened
+    max-age, a dropped ``includeSubDomains``, or a ``preload`` added (which is
+    effectively irreversible) all fail here and have to be argued for.
+    """
+    text = CADDYFILE.read_text(encoding="utf-8")
+
+    match = re.search(r'header\s+Strict-Transport-Security\s+"([^"]*)"', text)
+    assert match, (
+        "deploy/Caddyfile no longer sets Strict-Transport-Security. If that was "
+        "deliberate, docs/deployment.md's hardening table has a row about it that "
+        "must go too"
+    )
+
+    assert match.group(1) == "max-age=31536000; includeSubDomains", (
+        f"the HSTS policy changed to {match.group(1)!r}. This is not an ordinary "
+        f"config edit: browsers cache it for max-age and it cannot be withdrawn by "
+        f"redeploying. Update docs/deployment.md's hardening row in the same commit, "
+        f"and note that adding `preload` is close to irreversible."
+    )
+
+
 def _api_command_argv(production: dict) -> list[str]:
     """Return the argv the container's entrypoint would actually receive.
 
