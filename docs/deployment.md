@@ -44,6 +44,16 @@ output below:
   production, against a limit that is far more forgiving. Remove it once a
   staging certificate issues successfully, then let the real run happen
   against the production endpoint.
+- **The contact address, and the fallback CA that comes with it.** Set
+  `REIM_ACME_EMAIL` before that first real run. It ships commented out in
+  `deploy/.env.prod.example`, and empty is supported — Caddy issues and renews
+  without it — but empty costs more than a contact address. `caddy adapt` on
+  the shipped `deploy/Caddyfile`, against the pinned `caddy:2.11.4-alpine`
+  build, configures **one** issuer with the field empty and **two** with it
+  populated: ZeroSSL's issuer needs an account address, so with the field empty
+  Caddy does not configure it at all. Empty therefore also means no second
+  certificate authority to fall back to — in exactly the rate-limited
+  first-issuance scenario the point above is about.
 
 If you run rootless Podman, `podman compose` also needs its API socket
 running (`systemctl --user start podman.socket`) before it will do anything —
@@ -101,12 +111,17 @@ changes nothing — uncomment a line only to tune it. That now covers far more
 than the original three rate-limit settings: alerting, request paging, export
 size, the database pool and outbound HTTP configuration all work the same way, each
 value matching `reim.core.config.Settings`'s own default, and so does
-`REIM_LOG_LEVEL` (default `INFO`). Two more variables follow the same
-"commented out changes nothing" rule but are not `Settings` fields at all —
+`REIM_LOG_LEVEL` (default `INFO`). Three variables follow the same
+"commented out changes nothing" rule but are not `Settings` fields at all, and
+`deploy/.env.prod.example` groups them above their own divider so the list
+stays checkable against the file rather than against this sentence:
 `POSTGRES_USER` and `POSTGRES_DB` (both default `reim`) are read by the
-official `postgres` image itself, not validated by REIM. Change either one
+official `postgres` image itself, not validated by REIM — change either one
 and also change the `pg_dump` command under "Backups and teardown" below,
-which hardcodes `reim` for both.
+which hardcodes `reim` for both — and `REIM_ACME_EMAIL`, which despite the
+`REIM_` prefix is read by `deploy/Caddyfile` as a Caddy substitution and by
+nothing under `reim/`. See "The certificate" above for what leaving it empty
+actually costs.
 
 ## Bring it up
 
@@ -139,18 +154,38 @@ seeding and `uvicorn`'s own "Application startup complete" all finish around
 only at ~30.4 seconds — a gap of about 24 seconds during which the app was
 already serving. `api`'s healthcheck in `deploy/docker-compose.prod.yml` sets
 `interval: 30s`, `timeout: 5s`, `retries: 3`, `start_period: 20s`, and declares
-no `start_interval`. Without one, Docker's/Podman's healthcheck does not probe
-at container start — its first probe fires `interval` seconds in, and every
-`interval` after that. So the first (and, here, only) probe lands at ~30s
-regardless of when the app becomes ready, finds it already listening, and
-reports healthy immediately (~30.4s, the extra tenths being the check
-command's own runtime). `start_period` never comes into play in this run: it
-only forgives a *failing* probe during that window so it does not count
-against `retries`, and the one probe that actually happens here succeeds on
-first try. `caddy`, which waits on `api`'s healthcheck, is delayed by that
-same margin. This is healthcheck cadence, not a failure — the whole
-three-service stack (network and volume creation, both healthchecks, `caddy`
-starting) took 37 seconds wall-clock on a rerun with the image already built.
+no `start_interval`.
+
+What the engine actually does — observed, in an isolated container with the
+same healthcheck shape and a check hardcoded to fail, so that the schedule is
+the only thing the log can be showing:
+
+```text
+container started              02:03:24.038
+probe 1  02:03:24.108  exit=1  FailingStreak 0   # t+70ms, inside start_period
+probe 2  02:03:54.323  exit=1  FailingStreak 1   # t+30.2s, one interval later
+```
+
+So the first probe fires **at container start**, not `interval` seconds in, and
+every `interval` after that. For the real `api` container that first probe
+lands ~0.08 s in and *fails* — migrations and seeding are still running and
+nothing is listening yet. `start_period` is what makes that harmless: it
+forgives failures inside its window so they do not count against `retries`,
+which is visible above as `FailingStreak` staying 0 for the probe inside the
+window and becoming 1 for the identical failure after it. The container is then
+healthy at the second probe, one full interval after the first — ~30.4 s — by
+which time it has been serving for about 24 seconds.
+
+That makes `start_period` load-bearing today rather than idle, and it makes
+`interval` the lever on the gap: halve it, or add a `start_interval` (which
+sets a separate, shorter cadence for probes inside `start_period`), and the
+container is marked healthy nearer the 6.5 s it is actually ready. Raising
+`start_period` does the opposite of what its name suggests here — it does not
+make the engine probe sooner. `caddy`, which waits on `api`'s healthcheck, is
+delayed by whatever margin is left. This is healthcheck cadence, not a
+failure — the whole three-service stack (network and volume creation, both
+healthchecks, `caddy` starting) took 37 seconds wall-clock on a rerun with the
+image already built.
 
 ## Verify it
 
@@ -406,9 +441,10 @@ cannot silently drift apart. Running that file confirms every row at once:
 | **Demand an explicit CORS decision.** `REIM_CORS_ALLOW_ORIGINS` has no default in the compose file (`${REIM_CORS_ALLOW_ORIGINS:?set the allowed origins}`) — the stack refuses to start until you state a value. That does not reject a wildcard: `REIM_CORS_ALLOW_ORIGINS=*` boots fine and resolves to `['*']`. It makes the wildcard a decision an operator has to type, not a default nobody chose. | `test_compose_file_declares_no_cors_wildcard_default`, which checks the file's declared default (there is none), not what an operator sets at runtime. |
 | **Close `/metrics` at the proxy.** The Caddyfile's `/metrics` handler responds `404` directly; it never reaches `reverse_proxy`. | `test_metrics_is_not_reachable_from_outside`, and at runtime: `curl` against `/metrics` through Caddy returned `404` (see "Verify it" above). |
 | **Proxy to the API by its compose service name, never a published port.** The Caddyfile reverse-proxies to `api:8000` over the compose network. | `test_caddy_proxies_to_the_api_service_by_name`, and at runtime: the data route through Caddy worked while port 8000 was unreachable from the host. |
-| **Make every setting an operator would plausibly tune configurable without editing the compose file.** Not just the rate limits and the alert settings any more — `OPERATOR_SETTABLE` in `tests/unit/test_deploy_artifacts.py` covers rate limiting and its own on/off switch, alerting, request paging, export size, whether `/metrics` is served, the database pool, outbound HTTP configuration, and log level, and every one of them is read from `deploy/.env` through the `api` service's environment block rather than fixed in the file you'd otherwise have to edit. | `test_the_settings_an_operator_tunes_reach_the_container`, which checks every name in `OPERATOR_SETTABLE` against the block, drilled by removing one variable from the compose file and confirming the test fails, then restoring it and confirming the test passes again. |
+| **Make every setting an operator would plausibly tune configurable without editing the compose file.** Not just the rate limits and the alert settings any more — `OPERATOR_SETTABLE` in `tests/unit/test_deploy_artifacts.py` is the list, and reading it there rather than re-listing it here is deliberate — a copy in this guide is a copy that goes stale. It spans rate limiting and its own on/off switch, alerting, request paging, export size, whether `/metrics` is served, the database pool, outbound HTTP configuration, log level, and the ACME contact address; every one is read from `deploy/.env` through the environment block of the service that uses it (the `api` service for all but `REIM_ACME_EMAIL`, which `caddy` reads) rather than fixed in a file you'd otherwise have to edit. | `test_the_settings_an_operator_tunes_reach_the_container`, which checks every name in `OPERATOR_SETTABLE` against the block, drilled by removing one variable from the compose file and confirming the test fails, then restoring it and confirming the test passes again. |
 | **Ship the rate limiter on, and know that `.env` can switch it off.** `REIM_RATE_LIMIT_ENABLED` defaults to `true` in the compose file, so what ships is limited. But `false` in `deploy/.env` now reaches the container, and `apps/api/main.py` then adds no limiter middleware at all — every allowance named in this guide stops existing, silently and without an error anywhere. The switch is deliberate: it is how an operator who has moved limiting into their own gateway (see "Limits of this deployment" on running several workers) turns REIM's off. Setting it without that gateway in place leaves the API unlimited. | `test_the_rate_limiter_is_on_unless_an_operator_turns_it_off`, which pins both halves: `Settings.rate_limit_enabled` defaults to `True`, and the compose entry is `${REIM_RATE_LIMIT_ENABLED:-true}`. |
 | **Keep `--no-proxy-headers` in the `uvicorn` command**, as the `Dockerfile`'s own `CMD` already does — but `docker-compose.prod.yml`'s `command:` overrides that `CMD` entirely, so this copy of the flag is the one that actually runs. Measured, not assumed: in this compose file's own topology (`caddy` and `api` as separate containers on the compose network, one `X-Forwarded-For` entry Caddy itself writes), removing the flag changed nothing — a forged header through Caddy was refused identically with and without it, at both `REIM_TRUSTED_PROXY_HOPS=0` and the shipped `=1`. The `api` container's peer is never uvicorn's default-trusted `127.0.0.1` here, and at hops=1 the header's own value decides identity, never the peer. The flag's measured effect is on a different topology: uvicorn run with its immediate TCP peer actually at `127.0.0.1` (no Caddy, no bridge network in front) — there, a caller-supplied `X-Forwarded-For` bought a fresh allowance without the flag. Keep it regardless: it is uvicorn's correct default, costs nothing, and a later change to how this command runs could make it load-bearing again in this topology too. | `test_the_production_command_keeps_uvicorn_out_of_the_identity_decision`. Runtime, this compose file's topology: three forged `X-Forwarded-For` headers through Caddy were refused identically at `REIM_TRUSTED_PROXY_HOPS=0` and `=1`, with the flag present and with it removed — four configurations, one result. Runtime, bare `uvicorn --host 127.0.0.1` (peer = uvicorn's trusted `127.0.0.1`): the same three forged headers each bought a fresh `200` without the flag; all three were refused with it. |
+| **Ship HSTS on, for a year, including subdomains.** `deploy/Caddyfile`'s catch-all `handle` block sets `Strict-Transport-Security: max-age=31536000; includeSubDomains` on every proxied response. Caddy does not add this itself. Unlike every other row here, it cannot be withdrawn by redeploying: a browser that has seen the header refuses plain HTTP to `REIM_DOMAIN` — and, because of `includeSubDomains`, to every subdomain of it — until the year elapses. If you serve anything else on a subdomain over plain HTTP, decide about this **before** the first visitor arrives, not after. To narrow it, edit that `header` line: drop `includeSubDomains` to scope it to the apex, shorten `max-age`, or delete the line to stop sending it (already-served browsers keep honouring it until their cached copy expires). Do not add `preload`, which is close to irreversible. | `test_hsts_ships_on_and_its_policy_is_pinned`, which pins the exact directive rather than its presence, and `caddy adapt` on the pinned `caddy:2.11.4-alpine` build, which places the header handler ahead of `reverse_proxy` in the catch-all subroute — so it is on every proxied response. |
 
 ### What is public and unlimited
 
@@ -417,16 +453,31 @@ The rate limiter only inspects `/api/v1` — `LIMITED_PREFIX` in
 start with it never reaches the limiter at all. Everything else Caddy
 proxies through is public and carries no allowance of REIM's own: the web
 pages under `apps/web/routes.py` (`/`, `/runs`, `/runs/{run_id}` and
-`/series`), `/static` (served by `StaticFiles`), and FastAPI's own `/docs`
-and `/openapi.json`.
+`/series`), `/static` (served by `StaticFiles`), and FastAPI's own docs
+endpoints. There are **four** of those, not two — `create_app()` disables
+none of FastAPI's defaults, so a route inventory of the built app shows
+`/openapi.json`, `/docs`, `/docs/oauth2-redirect` and `/redoc` outside
+`/api/v1`, and all four answer `200`. `/redoc` is a second, complete
+interactive rendering of the same schema.
 
 This is the documented design, not a gap — the web UI and the interactive
 API docs are meant to work without a key — but an operator reading only this
 section would not know it without being told here. If you do not want the
 docs published, close them at the proxy the same way `deploy/Caddyfile`
-already closes `/metrics`: add a `handle /docs`, `/openapi.json` (and
-`/static`, `/runs*`, `/series` if you want the API alone reachable) block
-that `respond`s `404` before the catch-all `reverse_proxy`.
+already closes `/metrics`: add a `handle /docs*`, `/redoc`, `/openapi.json`
+(and `/static`, `/runs*`, `/series` if you want the API alone reachable)
+block that `respond`s `404` before the catch-all `reverse_proxy`. Closing
+`/docs` alone is the mistake to avoid: it leaves the same documentation
+served at `/redoc`, and the `/docs*` form is what also catches
+`/docs/oauth2-redirect`.
+
+`/health` and `/ready` are outside `/api/v1` too, and so also unlimited.
+That is deliberate — an uptime check that could be rate-limited into
+reporting an outage is worse than no check (`apps/api/middleware.py` says so
+at the top) — but note that `/ready` opens a database connection per call,
+so it is the one unlimited endpoint that does real work. Leave both open;
+they are what `depends_on: condition: service_healthy` and any external
+monitor rely on.
 
 ## The limit counts requests, not bytes
 
@@ -435,21 +486,33 @@ that `respond`s `404` before the catch-all `reverse_proxy`.
 allowance** — the same one unit a single-row request to `/api/v1/countries`
 costs. An anonymous caller at the default 60 requests a minute can therefore
 extract far more data than "60" suggests: sixty CSV exports a minute, each
-up to 100,000 rows, is a request-shaped limit, not a byte-shaped one. If you
-need a byte budget, set one at the proxy — REIM's own limiter does not
-provide it. `deploy/Caddyfile` ships the directive for that, commented out,
-in the catch-all `handle` block: Caddy's `request_body` directive, whose
-`max_size` subdirective (`request_body { max_size 10MB }`) caps a request
-body before Caddy forwards it — verified for syntax against the pinned
-`docker.io/library/caddy:2.11.4-alpine` build (`caddy validate`; `caddy
-list-modules` on that build shows `http.handlers.request_body` present and
-no other body- or size-related handler). Read that cap correctly: it bounds
-what a client *sends*, not what a response *returns*, so it does nothing for
-`export.csv` specifically — a `GET` with no body — and this build ships no
-core directive that caps response size or egress bandwidth at all. Left
-commented for the same reason it is accepted rather than fixed (the spec's
-§3.2): enabling it is a policy decision about a public data platform, and
-picking a size is yours to make, not this guide's.
+up to 100,000 rows, is a request-shaped limit, not a byte-shaped one.
+
+**You cannot fix that at the proxy, and the stock advice to do so does not
+apply here.** Caddy ships no directive that caps a response's size or a
+connection's egress bandwidth. Measured on the pinned build:
+
+```text
+podman run --rm docker.io/library/caddy:2.11.4-alpine caddy list-modules \
+  | grep -iE "body|size|limit|bandwidth|throttl"
+→ http.handlers.request_body
+```
+
+One match, and it is the wrong direction: `request_body` and its `max_size`
+subdirective bound what a client *sends*, before Caddy forwards it. A
+`export.csv` request is a `GET` with no body, so that cap does nothing for it
+whatever value you pick. `deploy/Caddyfile` does ship `request_body` commented
+out in the catch-all `handle` block — verified for syntax against that same
+build with `caddy validate` — and it is worth enabling against large uploads
+if you ever accept any. It is not a byte budget for this endpoint, and it is
+left commented because enabling it is a policy decision about a public data
+platform that is yours to make, not this guide's.
+
+**The only byte lever this deployment actually has is
+`REIM_MAX_EXPORT_ROWS`.** It bounds the rows in the response rather than the
+bytes, but it is the one setting that changes how much data a single unit of
+rate-limit allowance can buy. Lower it if sixty exports a minute is more
+egress than you intend to serve.
 
 ## A bad value takes the site down
 

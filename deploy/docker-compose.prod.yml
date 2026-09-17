@@ -159,9 +159,14 @@ services:
       REIM_DOMAIN: ${REIM_DOMAIN:?set the domain this deployment serves}
       # Contact address the CA (Let's Encrypt by default) uses to warn about
       # certificate problems or upcoming expiry. Optional — Caddy issues and
-      # renews without it — but empty means the CA has no way to reach you
-      # before an automated renewal starts failing. See deploy/Caddyfile's
-      # global `email` option, which reads this.
+      # renews without it — but empty costs two things, and the second is the
+      # one nobody expects. `caddy adapt` on this Caddyfile, against the pinned
+      # 2.11.4 build: empty configures ONE issuer, a populated address
+      # configures TWO. ZeroSSL's issuer needs an account address, so leaving
+      # this empty does not merely drop the contact detail — it silently drops
+      # the fallback certificate authority, which is what you would want on a
+      # first issuance against a rate-limited Let's Encrypt. See
+      # deploy/Caddyfile's global `email` option, which reads this.
       REIM_ACME_EMAIL: ${REIM_ACME_EMAIL:-}
     ports:
       - "80:80"
