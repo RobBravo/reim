@@ -204,6 +204,23 @@ def test_exactly_one_trusted_proxy_hop(production: dict) -> None:
     assert str(environment["REIM_TRUSTED_PROXY_HOPS"]) == "1"
 
 
+def test_the_proxy_image_is_pinned_to_an_exact_version(production: dict) -> None:
+    """The header behaviour REIM_TRUSTED_PROXY_HOPS=1 rests on was measured
+    against one Caddy build.
+
+    Caddy overwrites X-Forwarded-For rather than appending, which is what makes
+    one hop the right number. A floating tag lets a future release replace the
+    binary that was measured, with nothing to notice the change.
+    """
+    image = production["services"]["caddy"]["image"]
+
+    tag = image.rsplit(":", 1)[-1]
+    assert re.fullmatch(r"\d+\.\d+\.\d+(-\w+)?", tag), (
+        f"caddy image tag {tag!r} is not an exact version; the measured "
+        "X-Forwarded-For behaviour is not pinned to anything"
+    )
+
+
 def test_the_settings_an_operator_tunes_reach_the_container(production: dict) -> None:
     """An operator's tuning must not require editing the file we shipped them.
 

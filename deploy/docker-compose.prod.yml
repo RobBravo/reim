@@ -139,13 +139,30 @@ services:
       - reim
 
   caddy:
-    image: docker.io/library/caddy:2-alpine
+    # Pinned, not floating. The Caddyfile's own comment explains what was
+    # measured: Caddy OVERWRITES X-Forwarded-For rather than appending to it,
+    # which is the entire reason REIM_TRUSTED_PROXY_HOPS=1 is correct above.
+    # That was measured against this exact build — v2.11.4, confirmed twice
+    # earlier and reproduced a third time by the final audit with four header
+    # shapes, all reaching the api container as a single entry. `2-alpine`
+    # floats onto whatever 2.x release is newest at pull time, which replaces
+    # this binary with nothing to notice. Upgrading this tag means
+    # re-measuring, not re-reading this comment: forge an X-Forwarded-For
+    # through the new proxy and confirm it still buys no fresh rate-limit
+    # allowance before moving the pin.
+    image: docker.io/library/caddy:2.11.4-alpine
     restart: unless-stopped
     depends_on:
       api:
         condition: service_healthy
     environment:
       REIM_DOMAIN: ${REIM_DOMAIN:?set the domain this deployment serves}
+      # Contact address the CA (Let's Encrypt by default) uses to warn about
+      # certificate problems or upcoming expiry. Optional — Caddy issues and
+      # renews without it — but empty means the CA has no way to reach you
+      # before an automated renewal starts failing. See deploy/Caddyfile's
+      # global `email` option, which reads this.
+      REIM_ACME_EMAIL: ${REIM_ACME_EMAIL:-}
     ports:
       - "80:80"
       - "443:443"

@@ -166,6 +166,35 @@ curl -sk -w '%{http_code}' https://localhost:8443/metrics -o /dev/null
 → 404
 ```
 
+## Reaching `/metrics` from Prometheus
+
+Closed at the proxy is not closed everywhere. `apps/api/routers/system.py`
+still serves `/metrics` itself — unauthenticated, gated only by
+`REIM_METRICS_ENABLED` (`true` by default) — so the Caddyfile's `404` is what
+keeps it off the public internet, not the application. The address that
+route answers on is the same one `deploy/Caddyfile` already reverse-proxies
+to: `api:8000`, reachable only from `docker-compose.prod.yml`'s own network —
+named `reim-prod_reim` by Compose (`<project>_<network key>`; see the
+`Network reim-prod_reim Created` line under "Bring it up" above, from this
+guide's own verified session).
+
+- **From inside the compose network.** Join a Prometheus container to
+  `reim-prod_reim` — as an `external: true` network in your own compose file,
+  or with `podman network connect reim-prod_reim <prometheus container>` —
+  and point a scrape config at `api:8000`, path `/metrics`. No port is
+  published for this and none needs to be: the same network `caddy` already
+  uses to reach `api` is the one Prometheus joins.
+- **Over a tunnel, if Prometheus cannot join that network.** `api` publishes
+  no port (see "Publish no database or API port" in Hardening above), so
+  nothing outside the compose network reaches `api:8000` directly; a tunnel
+  has to land inside the network first — an SSH session to the host, or a
+  small sidecar container on `reim-prod_reim`, forwarding to `api:8000`.
+  **This is the untested half of this section**: verifying it means starting
+  the stack and a second, tunneled scraper, which this guide's own session
+  did not do — every command shown elsewhere in this guide was run for real,
+  this one specific command was not, so none is given here rather than
+  inventing one that has not been run.
+
 ## Mint your first API key
 
 REIM stays open without a key — a missing key is never an error, it just
@@ -357,7 +386,19 @@ costs. An anonymous caller at the default 60 requests a minute can therefore
 extract far more data than "60" suggests: sixty CSV exports a minute, each
 up to 100,000 rows, is a request-shaped limit, not a byte-shaped one. If you
 need a byte budget, set one at the proxy — REIM's own limiter does not
-provide it.
+provide it. `deploy/Caddyfile` ships the directive for that, commented out,
+in the catch-all `handle` block: Caddy's `request_body` directive, whose
+`max_size` subdirective (`request_body { max_size 10MB }`) caps a request
+body before Caddy forwards it — verified for syntax against the pinned
+`docker.io/library/caddy:2.11.4-alpine` build (`caddy validate`; `caddy
+list-modules` on that build shows `http.handlers.request_body` present and
+no other body- or size-related handler). Read that cap correctly: it bounds
+what a client *sends*, not what a response *returns*, so it does nothing for
+`export.csv` specifically — a `GET` with no body — and this build ships no
+core directive that caps response size or egress bandwidth at all. Left
+commented for the same reason it is accepted rather than fixed (the spec's
+§3.2): enabling it is a policy decision about a public data platform, and
+picking a size is yours to make, not this guide's.
 
 ## A bad value takes the site down
 

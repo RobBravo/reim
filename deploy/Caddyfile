@@ -13,6 +13,18 @@
 # actually run on the theory that a second hop would preserve a client's
 # entry — overwriting, not appending, is what every hop here does.
 
+{
+	# Contact address for the ACME CA, from REIM_ACME_EMAIL (deploy/.env).
+	# Quoted so an empty/unset value substitutes to an empty *argument*
+	# rather than none at all — `email {$REIM_ACME_EMAIL}` with the variable
+	# unset fails Caddyfile parsing ("wrong argument count") instead of
+	# quietly omitting the option. Verified against this pinned build
+	# (docker.io/library/caddy:2.11.4-alpine, `caddy adapt`): quoted-empty
+	# adapts with no `email` key under `apps.tls`, and a populated value
+	# adapts with that address on both configured ACME issuers.
+	email "{$REIM_ACME_EMAIL}"
+}
+
 {$REIM_DOMAIN} {
 	encode zstd gzip
 
@@ -29,6 +41,14 @@
 	}
 
 	handle {
+		# Caddy does not add this by default. docs/deployment.md's "limit
+		# counts requests, not bytes" section points here for a byte budget;
+		# left commented because that trade-off is accepted, not fixed (see
+		# the spec's §3.2) — uncomment and pick a size to enable it.
+		# request_body {
+		# 	max_size 10MB
+		# }
+		header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		reverse_proxy api:8000
 	}
 }
