@@ -10,6 +10,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from reim.core.exceptions import InvalidRequestError
 from reim.database.models import ApiKey
 
 #: Marks a REIM token in logs and configuration without revealing it.
@@ -31,7 +32,15 @@ def create_key(session: Session, *, label: str, now: datetime) -> tuple[ApiKey, 
 
     The token is returned exactly once. Nothing stores it, so a caller who
     loses it creates another and revokes this one.
+
+    Raises:
+        InvalidRequestError: ``label`` is empty or only whitespace. The CLI
+            already refuses this before calling in, but the row's owning
+            layer enforces it too, for any caller that does not.
     """
+    if not label.strip():
+        msg = "A key needs a label: it is how you identify which key to revoke."
+        raise InvalidRequestError(msg)
     token = generate_token()
     record = ApiKey(token_hash=hash_token(token), label=label, created_at=now)
     session.add(record)
