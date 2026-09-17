@@ -56,25 +56,32 @@ def test_create_requires_a_label() -> None:
 
 
 @requires_db
-def test_create_rejects_an_empty_label(cli_session: Session) -> None:
-    """An empty label is as unusable as a missing one, and gets in further.
+@pytest.mark.parametrize("label", ["", "   "], ids=["empty", "whitespace"])
+def test_create_rejects_a_blank_label(cli_session: Session, label: str) -> None:
+    """A blank label is as unusable as a missing one, and gets in further.
 
     ``--label ""`` satisfies Typer's required-option check, so nothing else
-    stops it: the key is minted and appears in ``key list`` as a blank column
-    nobody can match to a consumer.
+    stops it here: without the CLI's own guard the key would be minted and
+    appear in ``key list`` as a blank column nobody can match to a consumer.
+    Whitespace is the same problem wearing a disguise.
+
+    The repository refuses a blank label too, so the row is unwritable either
+    way. That is not what this asserts. What the CLI owns is the *shape of the
+    refusal* the operator sees — ``EXIT_INVALID`` rather than the generic
+    failure code, and one sentence on stderr rather than a traceback — and that
+    is what the assertions below pin. Delete the guard in ``key_create`` and
+    the repository still refuses, but the exit code slides to 1 and the
+    sentence becomes an uncaught ``InvalidRequestError``; these fail.
     """
-    result = runner.invoke(app, ["key", "create", "--label", ""])
+    result = runner.invoke(app, ["key", "create", "--label", label])
 
-    assert result.exit_code != 0
-    assert list_keys(cli_session) == []
-
-
-@requires_db
-def test_create_rejects_a_whitespace_label(cli_session: Session) -> None:
-    """Whitespace is the same problem wearing a disguise."""
-    result = runner.invoke(app, ["key", "create", "--label", "   "])
-
-    assert result.exit_code != 0
+    assert result.exit_code == 2
+    assert isinstance(result.exception, SystemExit), (
+        "the refusal must be a decided exit, not an exception escaping the command: "
+        f"got {result.exception!r}"
+    )
+    assert result.stderr.startswith("\u2717 ")
+    assert "needs a label" in result.stderr
     assert list_keys(cli_session) == []
 
 
