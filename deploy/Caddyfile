@@ -12,7 +12,6 @@
 # a client-chosen value. Do not raise this past the number of proxies you
 # actually run on the theory that a second hop would preserve a client's
 # entry — overwriting, not appending, is what every hop here does.
-
 {
 	# Contact address for the ACME CA, from REIM_ACME_EMAIL (deploy/.env).
 	# Quoted so an empty/unset value substitutes to an empty *argument*
@@ -45,6 +44,12 @@
 		# counts requests, not bytes" section points here for a byte budget;
 		# left commented because that trade-off is accepted, not fixed (see
 		# the spec's §3.2) — uncomment and pick a size to enable it.
+		#
+		# Read what it actually bounds before you do: max_size caps a request
+		# body a client SENDS, before Caddy forwards it upstream. It does not
+		# cap a response Caddy returns. export.csv is fetched with a bodiless
+		# GET, so uncommenting this caps nothing about that endpoint — this
+		# build ships no core directive that does (see docs/deployment.md).
 		# request_body {
 		# 	max_size 10MB
 		# }
