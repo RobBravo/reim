@@ -195,8 +195,20 @@ def test_the_flag_is_what_closes_the_bypass(default_server: str) -> None:
 def test_the_shipped_commands_disable_uvicorn_proxy_headers(path: str) -> None:
     """The behaviour above only protects a deployment that asks for it.
 
-    Both files invoke uvicorn, and a limiter silently stops limiting if either
-    one loses the flag.
+    Both files invoke uvicorn, and the flag has to be in the command for the
+    protection to exist at all. What it protects is narrower than an earlier
+    version of this docstring claimed: the six-cell measurement above found
+    the rewrite happens only when uvicorn's immediate TCP peer is itself
+    trusted, which is not the case for either of these files as they are
+    normally run — deploy/docker-compose.prod.yml overrides the Dockerfile's
+    CMD, and in both compose topologies the peer is another container.
+
+    The flag is still worth pinning here, for the case the measurement
+    identified rather than for a blanket one: an operator running this image
+    or this command directly, with the peer really at 127.0.0.1, is exactly
+    the topology where a caller-supplied X-Forwarded-For buys a fresh
+    allowance without it. That is the deployment these two files describe when
+    nothing overrides them.
     """
     text = (REPO_ROOT / path).read_text(encoding="utf-8")
 

@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from reim.core.exceptions import InvalidRequestError
 from reim.database.models import ApiKey
 from reim.repositories.api_keys import (
     TOKEN_PREFIX,
@@ -25,6 +26,24 @@ from reim.repositories.api_keys import (
 from tests.conftest import requires_db
 
 NOW = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
+
+
+@requires_db
+def test_create_key_rejects_an_empty_label(session: Session) -> None:
+    """The CLI is not the only caller: the row's own layer refuses this too."""
+    with pytest.raises(InvalidRequestError):
+        create_key(session, label="", now=NOW)
+
+    assert list_keys(session) == []
+
+
+@requires_db
+def test_create_key_rejects_a_whitespace_label(session: Session) -> None:
+    """Whitespace is the same problem wearing a disguise."""
+    with pytest.raises(InvalidRequestError):
+        create_key(session, label="   ", now=NOW)
+
+    assert list_keys(session) == []
 
 
 @requires_db

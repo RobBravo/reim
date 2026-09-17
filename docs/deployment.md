@@ -34,7 +34,26 @@ output below:
   at a real domain with DNS already pointed at this host, and Caddy obtains
   and renews a real certificate for it instead — that part was not itself
   exercised in this session, since there was no public domain available to
-  exercise it against.
+  exercise it against. **Untested here, so protect your first real attempt:**
+  Let's Encrypt caps failed issuances per account per hour, and a DNS record
+  that is not yet pointed at this host, or a typo in `REIM_DOMAIN`, burns
+  that budget without giving you a certificate. Point Caddy at Let's
+  Encrypt's staging directory for the first run — Caddy's global `acme_ca`
+  option (`{ acme_ca https://acme-staging-v02.api.letsencrypt.org/directory }`
+  in `deploy/Caddyfile`'s top-level block) issues from staging instead of
+  production, against a limit that is far more forgiving. Remove it once a
+  staging certificate issues successfully, then let the real run happen
+  against the production endpoint.
+- **The contact address, and the fallback CA that comes with it.** Set
+  `REIM_ACME_EMAIL` before that first real run. It ships commented out in
+  `deploy/.env.prod.example`, and empty is supported — Caddy issues and renews
+  without it — but empty costs more than a contact address. `caddy adapt` on
+  the shipped `deploy/Caddyfile`, against the pinned `caddy:2.11.4-alpine`
+  build, configures **one** issuer with the field empty and **two** with it
+  populated: ZeroSSL's issuer needs an account address, so with the field empty
+  Caddy does not configure it at all. Empty therefore also means no second
+  certificate authority to fall back to — in exactly the rate-limited
+  first-issuance scenario the point above is about.
 
 If you run rootless Podman, `podman compose` also needs its API socket
 running (`systemctl --user start podman.socket`) before it will do anything —
@@ -87,10 +106,22 @@ openssl rand -base64 32
 ```
 
 Everything below that line in `deploy/.env.prod.example` already has a safe
-default baked into `docker-compose.prod.yml` — `REIM_RATE_LIMIT_ANONYMOUS`
-(60), `REIM_RATE_LIMIT_KEYED` (600) and `REIM_RATE_LIMIT_WINDOW_SECONDS` (60),
-each matching `reim.core.config.Settings`'s own default — so leaving them
-commented out changes nothing. Uncomment one only to tune it.
+default baked into `docker-compose.prod.yml`, so leaving it commented out
+changes nothing — uncomment a line only to tune it. That now covers far more
+than the original three rate-limit settings: alerting, request paging, export
+size, the database pool and outbound HTTP configuration all work the same way, each
+value matching `reim.core.config.Settings`'s own default, and so does
+`REIM_LOG_LEVEL` (default `INFO`). Three variables follow the same
+"commented out changes nothing" rule but are not `Settings` fields at all, and
+`deploy/.env.prod.example` groups them above their own divider so the list
+stays checkable against the file rather than against this sentence:
+`POSTGRES_USER` and `POSTGRES_DB` (both default `reim`) are read by the
+official `postgres` image itself, not validated by REIM — change either one
+and also change the `pg_dump` command under "Backups and teardown" below,
+which hardcodes `reim` for both — and `REIM_ACME_EMAIL`, which despite the
+`REIM_` prefix is read by `deploy/Caddyfile` as a Caddy substitution and by
+nothing under `reim/`. See "The certificate" above for what leaving it empty
+actually costs.
 
 ## Bring it up
 
@@ -119,15 +150,42 @@ it simply as `Up`.
 **The `api` container can take close to 30 seconds to show healthy even
 though it is ready in about 6.5.** Measured on a cold start: migrations,
 seeding and `uvicorn`'s own "Application startup complete" all finish around
-6.5 seconds after the container starts, but Docker's/Podman's healthcheck
-only polls once at `start_period` (20s) and then every `interval` (30s)
-after that — so the first check (at ~0s) fails before the app is listening,
-is forgiven because it is inside `start_period`, and the *next* scheduled
-check, at the 30-second mark, is the one that reports healthy. `caddy`, which
-waits on `api`'s healthcheck, is delayed by that same margin. This is
-healthcheck cadence, not a failure — the whole three-service stack (network
-and volume creation, both healthchecks, `caddy` starting) took 37 seconds
-wall-clock on a rerun with the image already built.
+6.5 seconds after the container starts, but the healthcheck reported healthy
+only at ~30.4 seconds — a gap of about 24 seconds during which the app was
+already serving. `api`'s healthcheck in `deploy/docker-compose.prod.yml` sets
+`interval: 30s`, `timeout: 5s`, `retries: 3`, `start_period: 20s`, and declares
+no `start_interval`.
+
+What the engine actually does — observed, in an isolated container with the
+same healthcheck shape and a check hardcoded to fail, so that the schedule is
+the only thing the log can be showing:
+
+```text
+container started              02:03:24.038
+probe 1  02:03:24.108  exit=1  FailingStreak 0   # t+70ms, inside start_period
+probe 2  02:03:54.323  exit=1  FailingStreak 1   # t+30.2s, one interval later
+```
+
+So the first probe fires **at container start**, not `interval` seconds in, and
+every `interval` after that. For the real `api` container that first probe
+lands ~0.08 s in and *fails* — migrations and seeding are still running and
+nothing is listening yet. `start_period` is what makes that harmless: it
+forgives failures inside its window so they do not count against `retries`,
+which is visible above as `FailingStreak` staying 0 for the probe inside the
+window and becoming 1 for the identical failure after it. The container is then
+healthy at the second probe, one full interval after the first — ~30.4 s — by
+which time it has been serving for about 24 seconds.
+
+That makes `start_period` load-bearing today rather than idle, and it makes
+`interval` the lever on the gap: halve it, or add a `start_interval` (which
+sets a separate, shorter cadence for probes inside `start_period`), and the
+container is marked healthy nearer the 6.5 s it is actually ready. Raising
+`start_period` does the opposite of what its name suggests here — it does not
+make the engine probe sooner. `caddy`, which waits on `api`'s healthcheck, is
+delayed by whatever margin is left. This is healthcheck cadence, not a
+failure — the whole three-service stack (network and volume creation, both
+healthchecks, `caddy` starting) took 37 seconds wall-clock on a rerun with the
+image already built.
 
 ## Verify it
 
@@ -165,6 +223,35 @@ And `/metrics` is closed at the proxy:
 curl -sk -w '%{http_code}' https://localhost:8443/metrics -o /dev/null
 → 404
 ```
+
+## Reaching `/metrics` from Prometheus
+
+Closed at the proxy is not closed everywhere. `apps/api/routers/system.py`
+still serves `/metrics` itself — unauthenticated, gated only by
+`REIM_METRICS_ENABLED` (`true` by default) — so the Caddyfile's `404` is what
+keeps it off the public internet, not the application. The address that
+route answers on is the same one `deploy/Caddyfile` already reverse-proxies
+to: `api:8000`, reachable only from `docker-compose.prod.yml`'s own network —
+named `reim-prod_reim` by Compose (`<project>_<network key>`; see the
+`Network reim-prod_reim Created` line under "Bring it up" above, from this
+guide's own verified session).
+
+- **From inside the compose network.** Join a Prometheus container to
+  `reim-prod_reim` — as an `external: true` network in your own compose file,
+  or with `podman network connect reim-prod_reim <prometheus container>` —
+  and point a scrape config at `api:8000`, path `/metrics`. No port is
+  published for this and none needs to be: the same network `caddy` already
+  uses to reach `api` is the one Prometheus joins.
+- **Over a tunnel, if Prometheus cannot join that network.** `api` publishes
+  no port (see "Publish no database or API port" in Hardening above), so
+  nothing outside the compose network reaches `api:8000` directly; a tunnel
+  has to land inside the network first — an SSH session to the host, or a
+  small sidecar container on `reim-prod_reim`, forwarding to `api:8000`.
+  **This is the untested half of this section**: verifying it means starting
+  the stack and a second, tunneled scraper, which this guide's own session
+  did not do — every command shown elsewhere in this guide was run for real,
+  this one specific command was not, so none is given here rather than
+  inventing one that has not been run.
 
 ## Mint your first API key
 
@@ -266,7 +353,18 @@ verification — what was verified is each piece of it separately: the
 `pipeline schedule` output above (the timing fields and subcommands), the
 `/opt/venv` vs. `.venv` mismatch (read from `Dockerfile`), and the `exec api
 reim <subcommand>` form (run directly, for `pipeline run` and `alert check`,
-elsewhere in this guide).
+elsewhere in this guide). **Also untested here, and worth protecting against
+before you rely on it:** under rootless Podman, `crontab`'s own job
+environment is a bare one — no login session ran to set it up — and
+typically lacks `XDG_RUNTIME_DIR`, which is where `podman` looks for its API
+socket (`$XDG_RUNTIME_DIR/podman/podman.sock`). Without it, the `podman
+compose exec` line above fails with something like `unable to connect to
+Podman socket`, and cron's own behavior on a failing job is to mail the
+output to the crontab's owner rather than show it anywhere you would notice
+at the time. Set `XDG_RUNTIME_DIR=/run/user/<uid>` (your numeric UID) at the
+top of the crontab, or in each line before the command, so the job environment
+matches the one your interactive shell already has when `podman compose`
+works there.
 
 ## Point alerting at a webhook
 
@@ -291,14 +389,17 @@ already pinned the rate-limit settings. Uncomment the ones you want in
 # it just delivers nothing.
 # REIM_ALERT_WEBHOOK_URL=
 
-# Minimum severity that reaches the webhook: info | warning | error | critical.
+# Minimum severity that reaches the webhook: one of info, warning, error,
+# critical. Case is normalised, so ERROR is accepted too; any other word is
+# not, and stops the container.
 # REIM_ALERT_SEVERITY_FLOOR=error
 
 # Hours to wait before repeating a standing alert about the same condition on
-# the same pipeline.
+# the same pipeline. Whole number, 1 to 720 (30 days).
 # REIM_ALERT_REPEAT_HOURS=24
 
 # Hours a pipeline run may sit in 'running' before it's flagged as stuck.
+# Whole number, 1 to 168 (7 days).
 # REIM_ALERT_STUCK_RUN_HOURS=6
 ```
 
@@ -331,17 +432,52 @@ cannot silently drift apart. Running that file confirms every row at once:
 
 ```text
 .venv/bin/pytest tests/unit/test_deploy_artifacts.py -q
-→ 6 passed
 ```
 
 | Do this | How it's verified |
 |---|---|
 | **Publish no database or API port.** Only `caddy` has a `ports:` entry in `docker-compose.prod.yml`; `postgres` and `api` are reachable only over the compose network. | `test_only_caddy_publishes_ports`, and directly: connecting to `127.0.0.1:5432` and `127.0.0.1:8000` from the host was refused (see "Verify it" above). |
-| **Set exactly one trusted proxy hop.** `REIM_TRUSTED_PROXY_HOPS: "1"` is fixed in the `api` service's environment, matching the one proxy (`caddy`) actually in front of it. Higher hands identity to whoever sends the header. | `test_exactly_one_trusted_proxy_hop`, and at runtime: three requests through Caddy with different forged `X-Forwarded-For` headers, sent while the anonymous allowance was already exhausted, were all refused with `429` — no bypass. |
-| **Refuse a CORS wildcard.** `REIM_CORS_ALLOW_ORIGINS` has no default in the compose file (`${REIM_CORS_ALLOW_ORIGINS:?set the allowed origins}`) — the stack does not start until you state an origin. | `test_compose_file_declares_no_cors_wildcard_default`. |
+| **Set exactly one trusted proxy hop.** `REIM_TRUSTED_PROXY_HOPS: "1"` is fixed in the `api` service's environment, matching the one proxy (`caddy`) actually in front of it. Higher hands identity to whoever sends the header. This is pinned to the topology this compose file actually runs — one proxy — and breaks in the other direction too: put a CDN or load balancer (Cloudflare, say) in front of `caddy` and there are now two hops, but the pinned `1` still trusts only the last one, which is then the CDN's own address for every caller. Every request the CDN forwards collapses into that single bucket, one allowance for the whole world behind it. Putting anything in front of `caddy` means editing this compose file's `REIM_TRUSTED_PROXY_HOPS` and re-measuring, not leaving it at `1`. | `test_exactly_one_trusted_proxy_hop`, and at runtime: three requests through Caddy with different forged `X-Forwarded-For` headers, sent while the anonymous allowance was already exhausted, were all refused with `429` — no bypass. The reasoning above is recorded in code, not just here: `PINNED_IN_COMPOSE["REIM_TRUSTED_PROXY_HOPS"]` in `tests/unit/test_deploy_artifacts.py`. |
+| **Demand an explicit CORS decision.** `REIM_CORS_ALLOW_ORIGINS` has no default in the compose file (`${REIM_CORS_ALLOW_ORIGINS:?set the allowed origins}`) — the stack refuses to start until you state a value. That does not reject a wildcard: `REIM_CORS_ALLOW_ORIGINS=*` boots fine and resolves to `['*']`. It makes the wildcard a decision an operator has to type, not a default nobody chose. | `test_compose_file_declares_no_cors_wildcard_default`, which checks the file's declared default (there is none), not what an operator sets at runtime. |
 | **Close `/metrics` at the proxy.** The Caddyfile's `/metrics` handler responds `404` directly; it never reaches `reverse_proxy`. | `test_metrics_is_not_reachable_from_outside`, and at runtime: `curl` against `/metrics` through Caddy returned `404` (see "Verify it" above). |
 | **Proxy to the API by its compose service name, never a published port.** The Caddyfile reverse-proxies to `api:8000` over the compose network. | `test_caddy_proxies_to_the_api_service_by_name`, and at runtime: the data route through Caddy worked while port 8000 was unreachable from the host. |
-| **Make the rate limits and the alert settings configurable without editing the compose file.** `REIM_RATE_LIMIT_ANONYMOUS`, `REIM_RATE_LIMIT_KEYED`, `REIM_RATE_LIMIT_WINDOW_SECONDS`, `REIM_ALERT_WEBHOOK_URL`, `REIM_ALERT_SEVERITY_FLOOR`, `REIM_ALERT_REPEAT_HOURS` and `REIM_ALERT_STUCK_RUN_HOURS` are all read from `deploy/.env` through the `api` service's environment block. | `test_rate_limit_is_configurable_without_editing_the_compose_file`, drilled by removing one variable from the compose file and confirming the test fails, then restoring it and confirming the test passes again. |
+| **Make every setting an operator would plausibly tune configurable without editing the compose file.** Not just the rate limits and the alert settings any more — `OPERATOR_SETTABLE` in `tests/unit/test_deploy_artifacts.py` is the list, and reading it there rather than re-listing it here is deliberate — a copy in this guide is a copy that goes stale. It spans rate limiting and its own on/off switch, alerting, request paging, export size, whether `/metrics` is served, the database pool, outbound HTTP configuration, log level, and the ACME contact address; every one is read from `deploy/.env` through the environment block of the service that uses it (the `api` service for all but `REIM_ACME_EMAIL`, which `caddy` reads) rather than fixed in a file you'd otherwise have to edit. | `test_the_settings_an_operator_tunes_reach_the_container`, which checks every name in `OPERATOR_SETTABLE` against the block, drilled by removing one variable from the compose file and confirming the test fails, then restoring it and confirming the test passes again. |
+| **Ship the rate limiter on, and know that `.env` can switch it off.** `REIM_RATE_LIMIT_ENABLED` defaults to `true` in the compose file, so what ships is limited. But `false` in `deploy/.env` now reaches the container, and `apps/api/main.py` then adds no limiter middleware at all — every allowance named in this guide stops existing, silently and without an error anywhere. The switch is deliberate: it is how an operator who has moved limiting into their own gateway (see "Limits of this deployment" on running several workers) turns REIM's off. Setting it without that gateway in place leaves the API unlimited. | `test_the_rate_limiter_is_on_unless_an_operator_turns_it_off`, which pins both halves: `Settings.rate_limit_enabled` defaults to `True`, and the compose entry is `${REIM_RATE_LIMIT_ENABLED:-true}`. |
+| **Keep `--no-proxy-headers` in the `uvicorn` command**, as the `Dockerfile`'s own `CMD` already does — but `docker-compose.prod.yml`'s `command:` overrides that `CMD` entirely, so this copy of the flag is the one that actually runs. Measured, not assumed: in this compose file's own topology (`caddy` and `api` as separate containers on the compose network, one `X-Forwarded-For` entry Caddy itself writes), removing the flag changed nothing — a forged header through Caddy was refused identically with and without it, at both `REIM_TRUSTED_PROXY_HOPS=0` and the shipped `=1`. The `api` container's peer is never uvicorn's default-trusted `127.0.0.1` here, and at hops=1 the header's own value decides identity, never the peer. The flag's measured effect is on a different topology: uvicorn run with its immediate TCP peer actually at `127.0.0.1` (no Caddy, no bridge network in front) — there, a caller-supplied `X-Forwarded-For` bought a fresh allowance without the flag. Keep it regardless: it is uvicorn's correct default, costs nothing, and a later change to how this command runs could make it load-bearing again in this topology too. | `test_the_production_command_keeps_uvicorn_out_of_the_identity_decision`. Runtime, this compose file's topology: three forged `X-Forwarded-For` headers through Caddy were refused identically at `REIM_TRUSTED_PROXY_HOPS=0` and `=1`, with the flag present and with it removed — four configurations, one result. Runtime, bare `uvicorn --host 127.0.0.1` (peer = uvicorn's trusted `127.0.0.1`): the same three forged headers each bought a fresh `200` without the flag; all three were refused with it. |
+| **Ship HSTS on, for a year, including subdomains.** `deploy/Caddyfile`'s catch-all `handle` block sets `Strict-Transport-Security: max-age=31536000; includeSubDomains` on every proxied response. Caddy does not add this itself. Unlike every other row here, it cannot be withdrawn by redeploying: a browser that has seen the header refuses plain HTTP to `REIM_DOMAIN` — and, because of `includeSubDomains`, to every subdomain of it — until the year elapses. If you serve anything else on a subdomain over plain HTTP, decide about this **before** the first visitor arrives, not after. To narrow it, edit that `header` line: drop `includeSubDomains` to scope it to the apex, shorten `max-age`, or delete the line to stop sending it (already-served browsers keep honouring it until their cached copy expires). Do not add `preload`, which is close to irreversible. | `test_hsts_ships_on_and_its_policy_is_pinned`, which pins the exact directive rather than its presence, and `caddy adapt` on the pinned `caddy:2.11.4-alpine` build, which places the header handler ahead of `reverse_proxy` in the catch-all subroute — so it is on every proxied response. |
+
+### What is public and unlimited
+
+The rate limiter only inspects `/api/v1` — `LIMITED_PREFIX` in
+`apps/api/middleware.py` is that one prefix, and a request whose path does not
+start with it never reaches the limiter at all. Everything else Caddy
+proxies through is public and carries no allowance of REIM's own: the web
+pages under `apps/web/routes.py` (`/`, `/runs`, `/runs/{run_id}` and
+`/series`), `/static` (served by `StaticFiles`), and FastAPI's own docs
+endpoints. There are **four** of those, not two — `create_app()` disables
+none of FastAPI's defaults, so a route inventory of the built app shows
+`/openapi.json`, `/docs`, `/docs/oauth2-redirect` and `/redoc` outside
+`/api/v1`, and all four answer `200`. `/redoc` is a second, complete
+interactive rendering of the same schema.
+
+This is the documented design, not a gap — the web UI and the interactive
+API docs are meant to work without a key — but an operator reading only this
+section would not know it without being told here. If you do not want the
+docs published, close them at the proxy the same way `deploy/Caddyfile`
+already closes `/metrics`: add a `handle /docs*`, `/redoc`, `/openapi.json`
+(and `/static`, `/runs*`, `/series` if you want the API alone reachable)
+block that `respond`s `404` before the catch-all `reverse_proxy`. Closing
+`/docs` alone is the mistake to avoid: it leaves the same documentation
+served at `/redoc`, and the `/docs*` form is what also catches
+`/docs/oauth2-redirect`.
+
+`/health` and `/ready` are outside `/api/v1` too, and so also unlimited.
+That is deliberate — an uptime check that could be rate-limited into
+reporting an outage is worse than no check (`apps/api/middleware.py` says so
+at the top) — but note that `/ready` opens a database connection per call,
+so it is the one unlimited endpoint that does real work. Leave both open;
+they are what `depends_on: condition: service_healthy` and any external
+monitor rely on.
 
 ## The limit counts requests, not bytes
 
@@ -350,15 +486,138 @@ cannot silently drift apart. Running that file confirms every row at once:
 allowance** — the same one unit a single-row request to `/api/v1/countries`
 costs. An anonymous caller at the default 60 requests a minute can therefore
 extract far more data than "60" suggests: sixty CSV exports a minute, each
-up to 100,000 rows, is a request-shaped limit, not a byte-shaped one. If you
-need a byte budget, set one at the proxy — REIM's own limiter does not
-provide it.
+up to 100,000 rows, is a request-shaped limit, not a byte-shaped one.
+
+**You cannot fix that at the proxy, and the stock advice to do so does not
+apply here.** Caddy ships no directive that caps a response's size or a
+connection's egress bandwidth. Measured on the pinned build:
+
+```text
+podman run --rm docker.io/library/caddy:2.11.4-alpine caddy list-modules \
+  | grep -iE "body|size|limit|bandwidth|throttl"
+→ http.handlers.request_body
+```
+
+One match, and it is the wrong direction: `request_body` and its `max_size`
+subdirective bound what a client *sends*, before Caddy forwards it. A
+`export.csv` request is a `GET` with no body, so that cap does nothing for it
+whatever value you pick. `deploy/Caddyfile` does ship `request_body` commented
+out in the catch-all `handle` block — verified for syntax against that same
+build with `caddy validate` — and it is worth enabling against large uploads
+if you ever accept any. It is not a byte budget for this endpoint, and it is
+left commented because enabling it is a policy decision about a public data
+platform that is yours to make, not this guide's.
+
+**The only byte lever this deployment actually has is
+`REIM_MAX_EXPORT_ROWS`.** It bounds the rows in the response rather than the
+bytes, but it is the one setting that changes how much data a single unit of
+rate-limit allowance can buy. Lower it if sixty exports a minute is more
+egress than you intend to serve.
+
+## A bad value takes the site down
+
+A `REIM_*` variable whose **name** matches a field of
+`reim.core.config.Settings` is validated when the application is imported —
+against that field's type, and against its `ge=`/`le=` bounds where it has them,
+which is what `deploy/.env.prod.example` states beside each line. (Not every
+field has bounds: `REIM_LOG_LEVEL` and `REIM_ALERT_SEVERITY_FLOOR` are checked
+against a list of accepted words instead, and `REIM_CORS_ALLOW_ORIGINS` only
+has to parse.) A value the field rejects **is not ignored, is not clamped, and
+does not fall back to the default.** It raises, and it raises before `uvicorn`
+has an application to serve.
+
+Measured in this repository, two cells. The rival hypothesis is the comfortable
+one — that pydantic-settings treats an out-of-range value as absent and uses
+the field default — and it predicts the same output as the claim in the first
+cell, so only the second decides anything:
+
+```text
+REIM_MAX_EXPORT_ROWS=5000 .venv/bin/python -c "import apps.api.main; \
+  from reim.core.config import get_settings; print(get_settings().max_export_rows)"
+→ 5000
+
+REIM_MAX_EXPORT_ROWS=0 .venv/bin/python -c "import apps.api.main"
+→ pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+  max_export_rows
+    Input should be greater than or equal to 1 [type=greater_than_equal, ...]
+```
+
+The second cell raises rather than printing `100000`, which is what the rival
+hypothesis would have produced.
+
+Read off `docker-compose.prod.yml`, that failure does not stay inside the `api`
+container. The service carries `restart: unless-stopped`, so a container that
+dies at import is started again, and again; its healthcheck never passes
+because nothing is listening on 8000; and `caddy` declares
+`depends_on: api: condition: service_healthy`. So:
+
+- If you recreated only `api` — `up -d --force-recreate api`, the command this
+  guide gives for picking up a changed `.env` — `caddy` is already running and
+  keeps its certificate, but every request it proxies reaches a container that
+  is not there. The site answers `502`.
+- On the next `up -d` from a stopped stack, or the next reboot of the host,
+  `caddy` never starts at all, because the condition it waits on is never
+  satisfied. Nothing listens on 80 or 443: no HTTP, **no HTTPS, and no
+  certificate renewal.** One mistyped number in `.env` is the whole site,
+  TLS included.
+
+For a bad value there is no partial-failure mode and no warning in between. The
+check that catches it is one command:
+
+```text
+podman compose -f deploy/docker-compose.prod.yml --env-file deploy/.env logs api
+```
+
+A validation failure is at the end of that output, naming the field and what it
+rejected — the same `ValidationError` as the cell above. Run it after every
+`.env` change and restart, and read it before you walk away.
+
+### A bad *name* does the opposite: nothing at all
+
+That command is necessary and it is not sufficient, because the likeliest
+mistake in a `.env` file is not a bad value, it is a misspelled variable name —
+and `Settings` is configured with `extra="ignore"`. An unknown `REIM_*` name is
+not an error. It is read by nobody, the setting you meant to change stays at its
+default, the stack comes up healthy, and `logs api` says nothing, because
+nothing went wrong as far as the application is concerned.
+
+Two cells again, and the rival hypothesis is the one most people assume — that
+an unknown `REIM_*` name is rejected the way a bad value is. It predicts a
+raise; what happens is a boot:
+
+```text
+REIM_MAX_EXPORT_ROWS=5000 → 5000
+REIM_MAX_EXPORT_ROW=5000  → 100000        # name typo'd: silently the default
+```
+
+Inside this repository the corresponding mistake is caught —
+`test_every_wired_variable_names_a_real_setting` fails on any `REIM_*` key in
+`docker-compose.prod.yml` that no `Settings` field reads, and
+`test_the_env_example_documents_what_the_compose_file_reads` does the same for
+`deploy/.env.prod.example`. **Nothing checks your `deploy/.env`**, because it is
+yours and it never reaches us. So the check for a name is not "did the container
+come up" but "is the value what I set":
+
+```text
+podman compose -f deploy/docker-compose.prod.yml --env-file deploy/.env \
+  exec api python -c \
+  "from reim.core.config import get_settings; print(get_settings().max_export_rows)"
+```
+
+That prints what the running application actually resolved, which is the only
+thing that settles it. Substitute the field name — the lower-case form of the
+variable without its `REIM_` prefix — for whichever setting you changed. Run it
+once after an edit; a number you did not set is a typo in the name, not a
+setting that refused to apply.
 
 ## Limits of this deployment
 
 - **One `uvicorn` worker.** Neither `Dockerfile` nor `docker-compose.prod.yml`
   passes `--workers`, so the rate-limit counters, which live in memory per
-  process, are exact as shipped. Running *N* workers behind your own gateway
+  process, are exact as shipped. To run *N* workers, add `--workers N` to the
+  `uvicorn` command in `docker-compose.prod.yml`'s `api` service — but
+  **preserve `--no-proxy-headers` when you do**, since the `command:` overrides
+  the `Dockerfile`'s `CMD` entirely. Running *N* workers behind your own gateway
   multiplies the effective limit by *N*, since each worker counts its own
   window independently — an operator who scales workers needs a limiter in
   their own gateway, not this one.
@@ -374,6 +633,14 @@ Back up with `pg_dump`:
 podman compose -f deploy/docker-compose.prod.yml --env-file deploy/.env \
   exec -T postgres pg_dump -U reim -d reim > reim-backup.sql
 ```
+
+This hardcodes `reim` for both the user and the database name —
+`docker-compose.prod.yml`'s own defaults for `POSTGRES_USER` and
+`POSTGRES_DB` (that file's `postgres` service also documents a `psql -U reim`
+shell in a comment, for the same reason). If you set either one in
+`deploy/.env` to something else, change `-U reim` and `-d reim` to match
+wherever you invoke `pg_dump` or `psql`, or the command connects as, or to, a
+role/database that no longer exists.
 
 Exit 0; the file this produced during this guide's own verification was
 132,560 bytes across 929 lines, non-empty, with `COPY` statements for every

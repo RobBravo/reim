@@ -55,8 +55,15 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl --fail --silent http://localhost:8000/health || exit 1
 
 # --no-proxy-headers: uvicorn's own ProxyHeadersMiddleware is enabled by
-# default and trusts 127.0.0.1, so it would rewrite the client address from a
+# default and trusts 127.0.0.1, so it can rewrite the client address from a
 # caller-supplied X-Forwarded-For header before REIM ever sees the request.
-# REIM_TRUSTED_PROXY_HOPS is the one place that decision belongs; two
-# implementations of it means the stricter one does not hold.
+# Measured, six cells: that rewrite happens only when uvicorn's immediate TCP
+# peer is itself trusted. It is not, in any containerised topology this repo
+# ships — deploy/docker-compose.prod.yml overrides this CMD entirely, and
+# there the peer is Caddy on the compose network, so the flag changes nothing
+# observable. This CMD governs the case the measurement found the flag does
+# bite: a bare `podman run` of this image, or any invocation whose peer really
+# is 127.0.0.1. That case is exactly why the flag stays. Beyond it,
+# REIM_TRUSTED_PROXY_HOPS is the one place the identity decision belongs, and
+# two implementations of it means the stricter one does not hold.
 CMD ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

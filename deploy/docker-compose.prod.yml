@@ -69,8 +69,62 @@ services:
       REIM_ALERT_SEVERITY_FLOOR: ${REIM_ALERT_SEVERITY_FLOOR:-error}
       REIM_ALERT_REPEAT_HOURS: ${REIM_ALERT_REPEAT_HOURS:-24}
       REIM_ALERT_STUCK_RUN_HOURS: ${REIM_ALERT_STUCK_RUN_HOURS:-6}
+      # The three findings above were each found one at a time — rate limits,
+      # then alerting, then REIM_MAX_EXPORT_ROWS. What follows is the result of
+      # enumerating instead: every field of reim.core.config.Settings that an
+      # operator of a public deployment would plausibly set, checked against
+      # this block. Same rule throughout — the default here is Settings' own
+      # default, so leaving one unset in .env changes nothing.
+      #
+      # How much data one request may return. docs/deployment.md names
+      # REIM_MAX_EXPORT_ROWS as the export budget to tune; until now it had no
+      # path through this file, so following that instruction did nothing.
+      REIM_DEFAULT_PAGE_SIZE: ${REIM_DEFAULT_PAGE_SIZE:-100}
+      REIM_MAX_PAGE_SIZE: ${REIM_MAX_PAGE_SIZE:-1000}
+      REIM_MAX_EXPORT_ROWS: ${REIM_MAX_EXPORT_ROWS:-100000}
+      # The limiter's own switch, next to the three numbers that tune it.
+      # An operator who runs their own gateway limiter — which the worker
+      # scaling note in docs/deployment.md tells them they must, since these
+      # counters are per process — has no other way to turn this one off.
+      REIM_RATE_LIMIT_ENABLED: ${REIM_RATE_LIMIT_ENABLED:-true}
+      # Whether /metrics collects and serves at all. Separate from the
+      # Caddyfile's 404 on that path: that closes the route from outside, this
+      # decides whether there is anything behind it for an in-network scraper.
+      REIM_METRICS_ENABLED: ${REIM_METRICS_ENABLED:-true}
+      # SQLAlchemy pool, sized against the postgres service's own
+      # max_connections. One API container as shipped, so the default 5+10 is
+      # far inside Postgres' default 100; raise these only alongside that.
+      REIM_DATABASE_POOL_SIZE: ${REIM_DATABASE_POOL_SIZE:-5}
+      REIM_DATABASE_MAX_OVERFLOW: ${REIM_DATABASE_MAX_OVERFLOW:-10}
+      # Outbound HTTP for connectors. Ingestion runs inside THIS container
+      # (`exec api reim pipeline run-all`), so the settings its HTTP client
+      # reads are the ones set here, and an operator whose upstream source is
+      # slow or flaky has nowhere else to raise them.
+      REIM_HTTP_TIMEOUT_SECONDS: ${REIM_HTTP_TIMEOUT_SECONDS:-30}
+      REIM_HTTP_MAX_RETRIES: ${REIM_HTTP_MAX_RETRIES:-3}
+      REIM_HTTP_RETRY_BACKOFF_SECONDS: ${REIM_HTTP_RETRY_BACKOFF_SECONDS:-1}
     # No published port either: caddy is the only way in, so there is no second
     # door on 8000 that skips TLS and the proxy the limiter assumes.
+    # This command REPLACES the Dockerfile's CMD, including the comment there
+    # explaining --no-proxy-headers. Keep the flag anyway. Measured in this
+    # exact topology (caddy and api as separate containers on this compose
+    # file's own bridge network): removing it changed nothing — a forged
+    # X-Forwarded-For through Caddy was refused identically with and without
+    # the flag, at REIM_TRUSTED_PROXY_HOPS=1 (shipped, below) and at 0. The
+    # api container's peer is never uvicorn's default-trusted 127.0.0.1 here,
+    # so its ProxyHeadersMiddleware would not act on the flag's absence even
+    # if hops were 0; at hops=1 the header decides identity and the peer is
+    # never consulted at all. What the flag is measured to protect is a
+    # different topology: uvicorn's immediate TCP peer actually at 127.0.0.1
+    # — e.g. run directly, without this compose file's Caddy and bridge
+    # network in front. There, without the flag, three forged
+    # X-Forwarded-For headers each bought a fresh rate-limit allowance; with
+    # it, all three were refused. Keep it regardless of what this shipped
+    # topology needs today: it is uvicorn's correct default, it costs
+    # nothing, and a later change to how this command is run (a different
+    # network mode, FORWARDED_ALLOW_IPS, a bare invocation) could make it
+    # load-bearing again without anyone revisiting this comment. If you edit
+    # this line — to add --workers, say — the flag goes with it.
     command: >-
       sh -c "alembic upgrade head
       && python -m reim.cli db seed
@@ -85,13 +139,35 @@ services:
       - reim
 
   caddy:
-    image: docker.io/library/caddy:2-alpine
+    # Pinned, not floating. The Caddyfile's own comment explains what was
+    # measured: Caddy OVERWRITES X-Forwarded-For rather than appending to it,
+    # which is the entire reason REIM_TRUSTED_PROXY_HOPS=1 is correct above.
+    # That was measured against this exact build — v2.11.4, confirmed twice
+    # earlier and reproduced a third time by the final audit with four header
+    # shapes, all reaching the api container as a single entry. `2-alpine`
+    # floats onto whatever 2.x release is newest at pull time, which replaces
+    # this binary with nothing to notice. Upgrading this tag means
+    # re-measuring, not re-reading this comment: forge an X-Forwarded-For
+    # through the new proxy and confirm it still buys no fresh rate-limit
+    # allowance before moving the pin.
+    image: docker.io/library/caddy:2.11.4-alpine
     restart: unless-stopped
     depends_on:
       api:
         condition: service_healthy
     environment:
       REIM_DOMAIN: ${REIM_DOMAIN:?set the domain this deployment serves}
+      # Contact address the CA (Let's Encrypt by default) uses to warn about
+      # certificate problems or upcoming expiry. Optional — Caddy issues and
+      # renews without it — but empty costs two things, and the second is the
+      # one nobody expects. `caddy adapt` on this Caddyfile, against the pinned
+      # 2.11.4 build: empty configures ONE issuer, a populated address
+      # configures TWO. ZeroSSL's issuer needs an account address, so leaving
+      # this empty does not merely drop the contact detail — it silently drops
+      # the fallback certificate authority, which is what you would want on a
+      # first issuance against a rate-limited Let's Encrypt. See
+      # deploy/Caddyfile's global `email` option, which reads this.
+      REIM_ACME_EMAIL: ${REIM_ACME_EMAIL:-}
     ports:
       - "80:80"
       - "443:443"

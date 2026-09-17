@@ -122,7 +122,15 @@ class ResourceNotFoundError(REIMError):
 
 
 class InvalidRequestError(REIMError):
-    """The caller supplied an invalid combination of query parameters."""
+    """The caller asked for something the arguments themselves rule out.
+
+    Raised for an invalid combination of query parameters, which is where it
+    started and still its most common use, and equally for an argument a
+    repository refuses on its own terms — an empty API-key label, say, which
+    arrives from the CLI and never over HTTP. The common factor is the caller's
+    input, not the transport: ``http_status = 400`` is what the API layer makes
+    of it when there is a request, and means nothing when there is not.
+    """
 
     code = "invalid_request"
     http_status = 400
