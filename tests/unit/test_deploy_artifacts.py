@@ -32,6 +32,9 @@ REQUIRED = re.compile(r"^\$\{(REIM_[A-Z0-9_]+):\?(.*)\}$")
 MIN_REASON = 40
 #: ``REIM_X=`` at the start of a line in ``.env.prod.example``, commented or not.
 ENV_EXAMPLE_ASSIGNMENT = re.compile(r"^#?\s*(REIM_[A-Z0-9_]+)=", re.MULTILINE)
+#: ``{$REIM_X}`` — Caddy's own environment substitution, read at config-load
+#: time from the caddy container's environment, not from compose's.
+CADDYFILE_SUBSTITUTION = re.compile(r"\{\$(REIM_[A-Z0-9_]+)\}")
 
 #: Fields of ``Settings`` given no path through ``docker-compose.prod.yml`` at
 #: all, each with the reason it is not an operator's to set.
@@ -120,6 +123,13 @@ PINNED_IN_COMPOSE: dict[str, str] = {
 #: kind there is, and would otherwise reach no file an operator reads while
 #: passing every other test here.
 REQUIRED_IN_COMPOSE: dict[str, str] = {
+    "REIM_DOMAIN": (
+        "The domain this deployment serves, on the caddy service. There is no "
+        "default worth having: Caddy uses it as the site address, so a guess "
+        "would make the stack request a certificate for somebody else's name. "
+        "Compose refuses to render the file without it, which is the loudest "
+        "and earliest failure available and better than a wrong certificate."
+    ),
     "REIM_CORS_ALLOW_ORIGINS": (
         "The origins allowed to call this API from a browser. Every default "
         "worth having is either a wildcard, which undoes the reason this "
@@ -145,6 +155,7 @@ OPERATOR_SETTABLE_BUT_UNDOCUMENTED: dict[str, str] = {}
 #: than derived, so that a variable silently dropped from the compose file
 #: fails by name.
 OPERATOR_SETTABLE = (
+    "REIM_ACME_EMAIL",
     "REIM_LOG_LEVEL",
     "REIM_RATE_LIMIT_ENABLED",
     "REIM_RATE_LIMIT_ANONYMOUS",
@@ -169,6 +180,30 @@ OPERATOR_SETTABLE = (
 @pytest.fixture
 def production() -> dict:
     return yaml.safe_load(PRODUCTION.read_text(encoding="utf-8"))
+
+
+def _reim_environment(production: dict) -> dict[str, tuple[str, str]]:
+    """Every ``REIM_*`` variable any service reads, mapped to (service, value).
+
+    The four classes below used to be checked against the **api** service alone,
+    which left one service-shaped hole in a file whose whole purpose is closure:
+    a ``REIM_*`` added to the caddy service belonged to no class, named no
+    ``Settings`` field, appeared in no file an operator reads, and every test
+    here stayed green. The two variables already living in that hole —
+    ``REIM_DOMAIN`` and ``REIM_ACME_EMAIL`` — are not incidental: compose
+    refuses to render the file without the first, and the second decides how
+    many certificate issuers Caddy configures.
+
+    ``Settings`` cannot be the authority for those, because they are Caddyfile
+    substitutions rather than application settings. The authority is this
+    function: whatever a service reads, some class here must account for.
+    """
+    found: dict[str, tuple[str, str]] = {}
+    for name, service in production["services"].items():
+        for key, raw in (service.get("environment") or {}).items():
+            if key.startswith("REIM_"):
+                found[key] = (name, str(raw))
+    return found
 
 
 def test_only_caddy_publishes_ports(production: dict) -> None:
@@ -223,8 +258,8 @@ def test_the_proxy_image_is_pinned_to_an_exact_version(production: dict) -> None
 def test_the_settings_an_operator_tunes_reach_the_container(production: dict) -> None:
     """An operator's tuning must not require editing the file we shipped them.
 
-    Each of these must be referenced in the api service's environment block so
-    that setting it in .env actually reaches the container. Their absence there
+    Each of these must be referenced in some service's environment block so
+    that setting it in .env actually reaches a container. Their absence there
     is exactly what let ``REIM_RATE_LIMIT_ANONYMOUS`` through unconfigurable
     until this test existed. Alerting had the identical gap, one subsystem
     over, and then ``REIM_MAX_EXPORT_ROWS`` had it a third time while
@@ -241,10 +276,10 @@ def test_the_settings_an_operator_tunes_reach_the_container(production: dict) ->
     field belong to one of the three rather than to nobody. This tuple stays
     explicit so a variable dropped from the compose file fails by name.
     """
-    environment = production["services"]["api"]["environment"]
+    reachable = _reim_environment(production)
 
     for variable in OPERATOR_SETTABLE:
-        assert variable in environment, f"{variable} has no path through docker-compose.prod.yml"
+        assert variable in reachable, f"{variable} has no path through docker-compose.prod.yml"
 
 
 def test_every_wired_variable_names_a_real_setting(production: dict) -> None:
@@ -256,6 +291,13 @@ def test_every_wired_variable_names_a_real_setting(production: dict) -> None:
     ``REIM_MAX_EXPORT_ROW`` would satisfy nothing and fail loudly, but
     ``REIM_MAX_EXPORT_ROWS`` surviving a later rename of the field itself would
     leave a line here that reaches nothing and a test that still passes.
+
+    Deliberately scoped to the api service, unlike the partition tests below.
+    ``Settings`` is the authority only for the container that constructs it;
+    caddy's ``REIM_DOMAIN`` and ``REIM_ACME_EMAIL`` are Caddyfile substitutions
+    and name no field by design, so widening this would fail on the two
+    variables it has nothing true to say about. Their closure is
+    ``test_every_caddyfile_substitution_is_wired_and_documented``.
     """
     environment = production["services"]["api"]["environment"]
     known = {f"REIM_{name.upper()}" for name in Settings.model_fields}
@@ -393,6 +435,11 @@ def test_each_compose_default_is_the_application_default(
     the environment source is the path a ``deploy/.env`` value actually takes
     and it parses differently (``tests/unit/test_config.py`` exists because of
     exactly that difference).
+
+    Scoped to the api service for the same reason as
+    ``test_every_wired_variable_names_a_real_setting``: this compares compose
+    defaults against ``Settings`` defaults, and a variable with no ``Settings``
+    field has nothing on the other side of the comparison.
     """
     for name in [key for key in os.environ if key.startswith("REIM_")]:
         monkeypatch.delenv(name)
@@ -466,8 +513,13 @@ def test_the_compose_block_is_a_partition_too(production: dict) -> None:
     which is a worse first experience than the gap this file already fixed. So
     every key in the block belongs to exactly one of the four classes, and
     ``REQUIRED_IN_COMPOSE``'s members must be documented like the rest.
+
+    Read over **every** service, not just api. Scoped to api this test was
+    blind to a variable added to caddy: it named no ``Settings`` field, sat in
+    no class, was documented nowhere, and all fifteen tests here passed. See
+    ``_reim_environment``.
     """
-    environment = production["services"]["api"]["environment"]
+    reachable = _reim_environment(production)
     assert_reasons_are_usable(REQUIRED_IN_COMPOSE, "REQUIRED_IN_COMPOSE")
     assert_reasons_are_usable(
         OPERATOR_SETTABLE_BUT_UNDOCUMENTED, "OPERATOR_SETTABLE_BUT_UNDOCUMENTED"
@@ -485,7 +537,7 @@ def test_the_compose_block_is_a_partition_too(production: dict) -> None:
         assert not overlap, f"{overlap} are in {name} and in an earlier class as well"
         classified |= members
 
-    keys = {key for key in environment if key.startswith("REIM_")}
+    keys = set(reachable)
 
     unclassified = sorted(keys - classified)
     assert not unclassified, (
@@ -504,12 +556,12 @@ def test_the_compose_block_is_a_partition_too(production: dict) -> None:
     )
 
     not_required = sorted(
-        key for key in REQUIRED_IN_COMPOSE if not REQUIRED.match(str(environment[key]))
+        key for key in REQUIRED_IN_COMPOSE if not REQUIRED.match(reachable[key][1])
     )
     assert not not_required, (
         f"{not_required} are recorded as demanded of the operator, with a reason no "
         f"default is safe to pick, but no longer use the ${{VAR:?message}} form: "
-        f"{[str(environment[key]) for key in not_required]}"
+        f"{[reachable[key][1] for key in not_required]}"
     )
 
 
@@ -555,6 +607,57 @@ def test_the_env_example_documents_what_the_compose_file_reads(production: dict)
         f"{wrongly_parked} are recorded in OPERATOR_SETTABLE_BUT_UNDOCUMENTED as not "
         f"yet documented, but deploy/.env.prod.example now documents them — move each "
         f"into OPERATOR_SETTABLE and delete its entry here."
+    )
+
+
+def test_every_caddyfile_substitution_is_wired_and_documented(production: dict) -> None:
+    """The Caddyfile's own variables, closed the same way the api service's are.
+
+    ``{$REIM_X}`` is read by Caddy from the *container's* environment when it
+    loads its config — which is a different channel from compose's ``${...}``
+    interpolation, and one no other test in this file looks at. Two things can
+    go wrong on it, and neither raises:
+
+    - a substitution with no matching key in the caddy service's ``environment``
+      expands to the empty string. ``{$REIM_DOMAIN}`` emptied that way is not an
+      error; it is a site block with no address, and Caddy's behaviour then is
+      not what the operator asked for.
+    - a substitution nobody wrote into ``.env.prod.example`` is a value the
+      operator is required to supply and has no way to learn about.
+
+    So the Caddyfile is the authority here, not ``Settings``: whatever it
+    substitutes must be wired on the service that mounts it, and named in the
+    file an operator copies. Both directions are checked, so a variable dropped
+    from the Caddyfile leaves no orphan wiring behind either.
+    """
+    caddyfile = CADDYFILE.read_text(encoding="utf-8")
+    substituted = set(CADDYFILE_SUBSTITUTION.findall(caddyfile))
+    assert substituted, (
+        "no {$REIM_*} substitution found in deploy/Caddyfile — either the file "
+        "stopped using them, and this test should go, or CADDYFILE_SUBSTITUTION "
+        "no longer matches the syntax and this test silently checks nothing"
+    )
+
+    caddy_environment = production["services"]["caddy"]["environment"]
+    unwired = sorted(substituted - set(caddy_environment))
+    assert not unwired, (
+        f"deploy/Caddyfile substitutes {unwired}, but the caddy service's environment "
+        f"block does not set them, so Caddy expands each to the empty string at "
+        f"config-load time rather than failing"
+    )
+
+    documented = set(ENV_EXAMPLE_ASSIGNMENT.findall(ENV_EXAMPLE.read_text(encoding="utf-8")))
+    undocumented = sorted(substituted - documented)
+    assert not undocumented, (
+        f"deploy/Caddyfile substitutes {undocumented}, so an operator must supply them, "
+        f"but deploy/.env.prod.example — the file they copy — never mentions them"
+    )
+
+    orphaned = sorted(set(caddy_environment) - substituted)
+    assert not orphaned, (
+        f"{orphaned} are set on the caddy service but deploy/Caddyfile substitutes "
+        f"none of them, so nothing reads them; either the Caddyfile stopped using "
+        f"them or the name drifted"
     )
 
 
