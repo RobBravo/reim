@@ -131,22 +131,21 @@ REQUIRED_IN_COMPOSE: dict[str, str] = {
 #: Variables that are operator-settable in fact but deliberately absent from
 #: ``OPERATOR_SETTABLE``, each with the reason — so that the difference is a
 #: named decision rather than an off-by-one in an arithmetic guard.
-OPERATOR_SETTABLE_BUT_UNDOCUMENTED: dict[str, str] = {
-    "REIM_LOG_LEVEL": (
-        "Reachable from .env as ${REIM_LOG_LEVEL:-INFO}, but documenting it in "
-        "deploy/.env.prod.example is Task 4 Step 3's work in the deployment "
-        "corrections increment, and asserting it here would either fail or do "
-        "their job for them. When it is documented, move it into "
-        "OPERATOR_SETTABLE and delete this entry — the two are checked as one "
-        "set, so moving it across changes nothing else."
-    ),
-}
+#:
+#: Empty as of Task 4: ``REIM_LOG_LEVEL`` was this dict's only member, and Task
+#: 4 Step 3 documented it and moved it into ``OPERATOR_SETTABLE`` below. Kept
+#: as a dict (not deleted) because the next setting shipped unreachable and
+#: undocumented needs somewhere to sit while its documentation is written,
+#: without ever failing this file's own tests in the meantime — the same
+#: reason it existed for ``REIM_LOG_LEVEL``.
+OPERATOR_SETTABLE_BUT_UNDOCUMENTED: dict[str, str] = {}
 
 #: The variables an operator is meant to be able to tune from ``deploy/.env``
 #: *and* find documented in ``deploy/.env.prod.example``. Kept explicit rather
 #: than derived, so that a variable silently dropped from the compose file
 #: fails by name.
 OPERATOR_SETTABLE = (
+    "REIM_LOG_LEVEL",
     "REIM_RATE_LIMIT_ENABLED",
     "REIM_RATE_LIMIT_ANONYMOUS",
     "REIM_RATE_LIMIT_KEYED",
@@ -544,6 +543,18 @@ def test_the_env_example_documents_what_the_compose_file_reads(production: dict)
     assert not undocumented, (
         f"these must be set, or may be tuned, from deploy/.env, but the example an "
         f"operator copies never mentions them: {undocumented}"
+    )
+
+    # The mirror image of the assertion above, and the reason
+    # OPERATOR_SETTABLE_BUT_UNDOCUMENTED cannot silently become a permanent
+    # parking space: a variable recorded there as not-yet-documented, that
+    # deploy/.env.prod.example has since started documenting, must move into
+    # OPERATOR_SETTABLE instead — nothing else would ever notice.
+    wrongly_parked = sorted(set(OPERATOR_SETTABLE_BUT_UNDOCUMENTED) & documented)
+    assert not wrongly_parked, (
+        f"{wrongly_parked} are recorded in OPERATOR_SETTABLE_BUT_UNDOCUMENTED as not "
+        f"yet documented, but deploy/.env.prod.example now documents them — move each "
+        f"into OPERATOR_SETTABLE and delete its entry here."
     )
 
 
