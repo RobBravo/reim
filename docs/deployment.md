@@ -169,23 +169,43 @@ probe 2  02:03:54.323  exit=1  FailingStreak 1   # t+30.2s, one interval later
 So the first probe fires **at container start**, not `interval` seconds in, and
 every `interval` after that. For the real `api` container that first probe
 lands ~0.08 s in and *fails* — migrations and seeding are still running and
-nothing is listening yet. `start_period` is what makes that harmless: it
-forgives failures inside its window so they do not count against `retries`,
-which is visible above as `FailingStreak` staying 0 for the probe inside the
-window and becoming 1 for the identical failure after it. The container is then
-healthy at the second probe, one full interval after the first — ~30.4 s — by
-which time it has been serving for about 24 seconds.
+nothing is listening yet. The second probe, one `interval` later, already
+succeeds — the app has been ready for over twenty seconds by then. The
+`start_period` forgiveness shown above (`FailingStreak` staying 0 inside the
+window, becoming 1 for the same failure outside it) is a real mechanic, but
+it is never put to work here: the container never produces a second failure
+for it to forgive.
 
-That makes `start_period` load-bearing today rather than idle, and it makes
-`interval` the lever on the gap: halve it, or add a `start_interval` (which
-sets a separate, shorter cadence for probes inside `start_period`), and the
-container is marked healthy nearer the 6.5 s it is actually ready. Raising
-`start_period` does the opposite of what its name suggests here — it does not
-make the engine probe sooner. `caddy`, which waits on `api`'s healthcheck, is
-delayed by whatever margin is left. This is healthcheck cadence, not a
-failure — the whole three-service stack (network and volume creation, both
-healthchecks, `caddy` starting) took 37 seconds wall-clock on a rerun with the
-image already built.
+Measured directly: swapping the shipped `start_period: 20s` for
+`start_period: 0` (`retries: 3` in both) changes nothing — same service, same
+healthcheck shape, a check standing in for readiness the way `api`'s does:
+
+```text
+start_period: 20s (shipped)
+container started  19:09:19.065
+probe 1  19:09:19.135  exit=1  FailingStreak 0   # t+0.07s
+probe 2  19:09:49.328  exit=0                    # t+30.26s, -> healthy
+
+start_period: 0
+container started  19:10:10.978
+probe 1  19:10:11.058  exit=1  FailingStreak 0   # t+0.08s
+probe 2  19:10:41.329  exit=0                    # t+30.35s, -> healthy
+```
+
+Both cells go `starting` → `healthy` at the second probe, ~30.3 s after the
+container starts, and neither ever touches `unhealthy`. `start_period` is not
+load-bearing here: with `interval: 30s`, at most one probe ever lands inside
+a 20 s window, and one failure alone never trips `retries: 3` whether or not
+it is forgiven. The lever that actually moves the "healthy" timestamp is
+`interval` itself: halve it and the container is marked healthy nearer the
+6.5 s it is actually ready. `start_interval` is not that lever on podman
+5.8.4 — a compose file that declares it is accepted with no warning, but
+`podman inspect` shows no `StartInterval` key on the resulting container: the
+field is silently dropped and the probe schedule is unchanged. `caddy`, which
+waits on `api`'s healthcheck, is delayed by whatever margin is left. This is
+healthcheck cadence, not a failure — the whole three-service stack (network
+and volume creation, both healthchecks, `caddy` starting) took 37 seconds
+wall-clock on a rerun with the image already built.
 
 ## Verify it
 
