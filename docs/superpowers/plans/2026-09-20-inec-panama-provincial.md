@@ -52,7 +52,7 @@
 In `reim/database/models/reference.py`, add `AdministrativeArea` to the `TYPE_CHECKING` import
 block (it is referenced by `Observation`'s relationship type hint in the next step):
 
-```python
+```text
 if TYPE_CHECKING:
     from reim.database.models.observation import Observation
     from reim.database.models.pipeline import PipelineRun
@@ -64,7 +64,7 @@ stays as-is (no change needed there — `AdministrativeArea` doesn't need `Obser
 Add the new class directly after `Country` (after its closing `__table_args__` line, currently
 `reim/database/models/reference.py:46`):
 
-```python
+```text
 class AdministrativeArea(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """A geographic subdivision below the country level.
 
@@ -96,14 +96,14 @@ This references `Observation` (only inside a type hint, resolved lazily thanks t
 `from __future__ import annotations` already at the top of the file) and `UniqueConstraint`, which
 is not yet imported. Update the `sqlalchemy` import line:
 
-```python
+```text
 from sqlalchemy import Boolean, ForeignKey, Index, String, Text, UniqueConstraint
 ```
 
 Give `Country` the matching relationship. In the `Country` class body, alongside its existing
 `organizations`/`data_sources`/`observations` relationships:
 
-```python
+```text
     administrative_areas: Mapped[list[AdministrativeArea]] = relationship(back_populates="country")
 ```
 
@@ -112,14 +112,14 @@ Give `Country` the matching relationship. In the `Country` class body, alongside
 In `reim/database/models/observation.py`, add `AdministrativeArea` to the `TYPE_CHECKING` block
 (currently line 27-28):
 
-```python
+```text
 if TYPE_CHECKING:
     from reim.database.models.reference import AdministrativeArea, Country, DataSource, Indicator
 ```
 
 Extend `NATURAL_KEY_COLUMNS` (currently line 33):
 
-```python
+```text
 #: Natural key of an observation. A source may publish exactly one value for a
 #: given indicator, country, reporting period and administrative area; a
 #: second arrival for the same key is either a no-op (identical payload) or a
@@ -138,7 +138,7 @@ NATURAL_KEY_COLUMNS = (
 Add the column to `Observation`, in the `# -- Dimensions --` block (after `source_id`, currently
 ending at line 55):
 
-```python
+```text
     administrative_area_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("administrative_areas.id", ondelete="RESTRICT")
     )
@@ -146,7 +146,7 @@ ending at line 55):
 
 Add the relationship, alongside `country`/`indicator`/`source` (currently lines 93-95):
 
-```python
+```text
     administrative_area: Mapped[AdministrativeArea | None] = relationship(
         back_populates="observations"
     )
@@ -161,7 +161,7 @@ unpacks (it is).
 
 In `reim/database/models/__init__.py`, add the import and `__all__` entry:
 
-```python
+```text
 from reim.database.models.reference import AdministrativeArea, Country, DataSource, Indicator, Organization
 ```
 
@@ -197,7 +197,7 @@ migration is missing something the models declare — fix the migration file, no
 
 Create `tests/unit/test_database_models.py`:
 
-```python
+```text
 """Model-level checks that don't need seeded reference data."""
 
 from __future__ import annotations
@@ -320,7 +320,7 @@ Create `reim/domain/geography/__init__.py` (empty — matches `reim/domain/count
 Create `reim/domain/geography/registry.py`, following `reim/domain/countries/registry.py`'s shape
 exactly:
 
-```python
+```text
 """Canonical administrative-area definitions below the country level.
 
 REIM's first geography below ``Country``. Only Panama's provinces exist today
@@ -372,7 +372,7 @@ code shape (the dataclass, the tuple, the module layout) does not change either 
 
 Create `tests/unit/test_geography_registry.py`:
 
-```python
+```text
 """Structural checks on the administrative-area registry."""
 
 from __future__ import annotations
@@ -412,7 +412,7 @@ Expected: 4 passed.
 In `reim/domain/pipelines/models.py`, add one field to `NormalizedObservation` (after
 `source_record_id`, before `raw_metadata`, currently lines 66-67):
 
-```python
+```text
     source_record_id: str | None = None
     #: Publisher's own code for a subnational area (e.g. INEC Panama's
     #: ``id_provincia``). ``None`` for every national-level observation.
@@ -425,7 +425,7 @@ last, after `period_end`, to keep the existing five-element tuples in every curr
 loudly (a type error, not a silent wrong-shape pass) rather than quietly matching a stale
 expectation:
 
-```python
+```text
     @property
     def natural_key(self) -> tuple[str, str, str, str, str, str]:
         """Return the natural key tuple identifying this datapoint.
@@ -454,7 +454,7 @@ rows itself.
 
 In `reim/domain/observations/hashing.py`, extend `natural_key()` (currently lines 36-52) to match:
 
-```python
+```text
 def natural_key(
     *,
     country_iso3: str,
@@ -484,7 +484,7 @@ content_hash alone.
 Open `tests/unit/test_hashing.py`. Find the test(s) that call `natural_key(...)` directly and
 confirm its return shape — extend at least one to assert the new tuple length and the default:
 
-```python
+```text
 def test_natural_key_defaults_administrative_area_to_empty() -> None:
     from reim.domain.observations.hashing import natural_key
     from datetime import date
@@ -525,7 +525,7 @@ file's existing organization — read it first to find where.)
 via the `make_observation` fixture (`tests/conftest.py:301-329`). Add the new field so Task 3's
 tests can use it:
 
-```python
+```text
     def _build(
         period: str = "2024",
         value: str | Decimal | None = "10.5",
@@ -603,14 +603,14 @@ git commit -m "feat(domain): province registry, and administrative_area in the n
 
 In `reim/repositories/reference.py`, import `AdministrativeArea`:
 
-```python
+```text
 from reim.database.models import AdministrativeArea, Country, DataSource, Indicator, Organization
 ```
 
 Add, following `require_country_by_iso3`'s exact shape (after the existing organization lookups at
 the end of the file):
 
-```python
+```text
 def get_administrative_area_by_code(
     session: Session, country_id: uuid.UUID, level: str, code: str
 ) -> AdministrativeArea | None:
@@ -639,7 +639,7 @@ def require_administrative_area_by_code(
 
 In `reim/repositories/observations.py`, `get_by_natural_key` (currently lines 168-186):
 
-```python
+```text
 def get_by_natural_key(
     session: Session,
     *,
@@ -672,7 +672,7 @@ right-hand side is Python `None`, so this one line is correct for both the "nati
 
 In `reim/services/seeding.py`, import the registry and model:
 
-```python
+```text
 from reim.database.models import AdministrativeArea, Country, DataSource, Indicator, Organization
 from reim.domain.geography.registry import ADMINISTRATIVE_AREAS
 ```
@@ -680,7 +680,7 @@ from reim.domain.geography.registry import ADMINISTRATIVE_AREAS
 Add `administrative_areas_created`/`administrative_areas_updated` to `SeedReport`, alongside the
 existing counters, and fold them into `total_created`/`total_updated`:
 
-```python
+```text
 @dataclass(slots=True)
 class SeedReport:
     """Counts of what seeding created and updated."""
@@ -722,7 +722,7 @@ class SeedReport:
 Add `seed_administrative_areas`, following `seed_organizations`'s shape exactly (a country lookup,
 then a definition loop):
 
-```python
+```text
 def seed_administrative_areas(session: Session, report: SeedReport) -> None:
     """Insert or refresh every administrative area in the registry."""
     countries = {country.iso2: country for country in session.scalars(select(Country))}
@@ -759,7 +759,7 @@ Call it from `seed_all`, **before** `seed_indicators` (order doesn't matter func
 neither depends on the other, but grouping it with the other "static, code-defined" reference data
 before the catalog-derived `seed_sources` keeps the dependency order readable):
 
-```python
+```text
 def seed_all(session: Session, catalog: SourceCatalog | None = None) -> SeedReport:
     """Seed every reference table, in dependency order.
 
@@ -786,7 +786,7 @@ def seed_all(session: Session, catalog: SourceCatalog | None = None) -> SeedRepo
 In `reim/services/observation_writer.py`, import `AdministrativeArea` and the new repository
 function:
 
-```python
+```text
 from reim.database.models import (
     AdministrativeArea,
     Country,
@@ -807,7 +807,7 @@ Extend `_ReferenceCache` (currently lines 74-98) with an area cache and lookup, 
 `indicator()`/`source()` pattern exactly — note this one needs the resolved `country_id`, not just
 a code, so it takes the already-resolved `Country` rather than looking one up itself:
 
-```python
+```text
 @dataclass(slots=True)
 class _ReferenceCache:
     """Per-batch cache so reference lookups do not hit the DB once per row."""
@@ -857,7 +857,7 @@ class _ReferenceCache:
 In `write_observations`, resolve the area alongside country/indicator/source (currently lines
 140-142):
 
-```python
+```text
         country = cache.country(session, incoming.country_iso3)
         indicator = cache.indicator(session, incoming.indicator_code)
         source = cache.source(session, incoming.source_key)
@@ -881,7 +881,7 @@ In `write_observations`, resolve the area alongside country/indicator/source (cu
 
 Pass it through to `_build_observation` (currently called at line 156-167):
 
-```python
+```text
         if existing is None:
             session.add(
                 _build_observation(
@@ -902,7 +902,7 @@ Pass it through to `_build_observation` (currently called at line 156-167):
 
 Update `_build_observation`'s signature and body (currently lines 207-240):
 
-```python
+```text
 def _build_observation(
     incoming: NormalizedObservation,
     *,
@@ -954,7 +954,7 @@ No new `import uuid` is needed — `observation_writer.py:18` already imports it
 In `tests/integration/test_persistence.py`, add near the other reference-data tests (after
 `test_disabled_source_is_marked_inactive`, before the observation-insertion tests):
 
-```python
+```text
 def test_seed_creates_administrative_areas(seeded_session: Session) -> None:
     from reim.database.models import AdministrativeArea
 
@@ -974,7 +974,7 @@ Add near the other persistence/idempotency tests (this is the load-bearing new c
 national and provincial observations for the same indicator/period must coexist as different
 rows, and a duplicate provincial observation must not double-insert):
 
-```python
+```text
 def test_a_national_and_a_provincial_observation_coexist(
     seeded_session: Session, make_observation
 ) -> None:  # type: ignore[no-untyped-def]
@@ -1099,7 +1099,7 @@ Open `tests/integration/test_comparison_repository.py` and read it to find an ex
 exercises `fetch_comparison_cells` (or `count_comparison_periods`) against a known indicator/country
 pair with a predictable cell count — copy its setup pattern rather than inventing a new one. Add:
 
-```python
+```text
 def test_a_provincial_observation_is_invisible_to_compare(
     session: Session, make_observation
 ) -> None:  # type: ignore[no-untyped-def]
@@ -1163,7 +1163,7 @@ query errors, depending on exactly how `_restrict`'s current output combines wit
 
 In `reim/repositories/comparison.py`, `_restrict` (currently lines 75-86):
 
-```python
+```text
 def _restrict[S: Select[Any]](statement: S, query: ComparisonQuery) -> S:
     """Narrow a statement already joined to indicator and country."""
     statement = statement.where(
@@ -1188,7 +1188,7 @@ carry the same scope, even though `RATE_INDICATOR_CODE` is a fixed national exch
 that will not realistically gain subnational data), add the same condition to its `where(...)` call
 (currently lines 261-267):
 
-```python
+```text
         .where(
             Indicator.code == RATE_INDICATOR_CODE,
             Observation.country_id.in_(country_ids),
@@ -1255,7 +1255,7 @@ In `reim/schemas/observations.py`, add two flat fields — matching how `country
 `country_name` are already flattened rather than nested, not the nested `{code, name}` shape an
 earlier draft of the spec loosely suggested. After `currency_code` (currently line 41):
 
-```python
+```text
     published_at: datetime | None
     retrieved_at: datetime
     source_url: str
@@ -1276,7 +1276,7 @@ since `from_model` builds with keyword arguments, ordering here is cosmetic, but
 
 Update `from_model` (currently lines 58-89) to populate them:
 
-```python
+```text
     @classmethod
     def from_model(cls, observation: Observation) -> ObservationRead:
         """Flatten an ORM observation and its joined reference rows."""
@@ -1321,13 +1321,13 @@ Update `from_model` (currently lines 58-89) to populate them:
 
 In `reim/repositories/observations.py`, import `AdministrativeArea`:
 
-```python
+```text
 from reim.database.models import AdministrativeArea, Country, DataSource, Indicator, Observation
 ```
 
 Add the field to `ObservationFilters` (currently lines 27-37):
 
-```python
+```text
 @dataclass(frozen=True, slots=True)
 class ObservationFilters:
     """Filter set shared by the list, count and export queries."""
@@ -1347,7 +1347,7 @@ class ObservationFilters:
 **outer** join, not an inner one, since most rows have no administrative area at all and an inner
 join would silently drop every national-level observation from every unfiltered query:
 
-```python
+```text
 def _base_query() -> Select[tuple[Observation]]:
     return (
         select(Observation)
@@ -1358,7 +1358,7 @@ def _base_query() -> Select[tuple[Observation]]:
     )
 ```
 
-```python
+```text
 def count_observations(session: Session, filters: ObservationFilters) -> int:
     """Return how many observations match ``filters``."""
     statement = (
@@ -1374,7 +1374,7 @@ def count_observations(session: Session, filters: ObservationFilters) -> int:
 
 Add the filter clause to `apply_filters` (currently lines 49-69), after the `source` clause:
 
-```python
+```text
     if filters.source:
         statement = statement.where(DataSource.source_key == filters.source)
     if filters.administrative_area:
@@ -1386,7 +1386,7 @@ Add the filter clause to `apply_filters` (currently lines 49-69), after the `sou
 In `apps/api/routers/observations.py`, add the parameter to `observation_filters()` (currently
 lines 28-47):
 
-```python
+```text
 def observation_filters(
     country: Annotated[
         str | None,
@@ -1439,7 +1439,7 @@ underlying session `client` already depends on (pytest caches a fixture per test
 observations to it after `client` is constructed, then committing, makes them visible to `client`'s
 subsequent requests. Add, near the other `# Observations` tests:
 
-```python
+```text
 def test_observations_filters_by_administrative_area(
     client: TestClient, seeded_session: Session, make_observation
 ) -> None:  # type: ignore[no-untyped-def]
@@ -1613,7 +1613,7 @@ depends on, and this plan's design rests on them being true today.
 In `tests/conftest.py`, following the `sieca_*_json` fixtures' exact shape (currently around lines
 109-131):
 
-```python
+```text
 @pytest.fixture(scope="session")
 def inec_catalogue_excerpt_json() -> str:
     """Real INEC Panama catalogue entries for the three variables this connector reads."""
@@ -1644,7 +1644,7 @@ In `reim/domain/sources/organizations.py`, add (alongside INIDE, matching its ex
 INIDE's entry first, currently around line 44-51, and add this one in the same Panama-adjacent
 region of the tuple, or at the end if the file isn't grouped by country strictly):
 
-```python
+```text
     OrganizationDefinition(
         code="INEC_PA",
         name="Instituto Nacional de Estadística y Censo",
@@ -1660,7 +1660,7 @@ region of the tuple, or at the end if the file isn't grouped by country strictly
 In `reim/domain/indicators/registry.py`, add three entries, following the existing shape exactly
 (check the real `IndicatorCategory`/`ValueType` import already at the top of the file):
 
-```python
+```text
     IndicatorDefinition(
         code="pa_automobiles_per_1000_provincial_annual",
         name="Panama — automobiles in circulation per 1,000 inhabitants, by province",
@@ -1777,7 +1777,7 @@ Create `reim/ingestion/connectors/panama/__init__.py` (empty).
 
 Create `tests/unit/test_inec_provincial_connector.py`:
 
-```python
+```text
 """Unit tests for the INEC Panama provincial connector.
 
 Every payload replayed here is a real recording; see tests/fixtures/.
@@ -1986,7 +1986,7 @@ the shared retry/backoff policy; `ensure_ok` to validate status and content type
 reaches `transform`), confirmed against `reim/ingestion/connectors/regional/sieca_services_trade.py:124-150`
 while writing this plan. The code below already uses them:
 
-```python
+```text
 """INEC Panama — provincial economic indicators.
 
 REIM's first subnational data. Three variables from INEC's "Panamá en
