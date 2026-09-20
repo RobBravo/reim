@@ -120,8 +120,16 @@ more data than the number suggests.
 
 This is the accepted consequence of D2 in the API keys design, not a defect
 against it, and the guide states it plainly (D4) rather than leaving an
-operator to discover it from their egress bill. An operator who needs a byte
-budget sets one at the proxy, where byte budgets belong.
+operator to discover it from their egress bill. This section first sent the
+operator who needs a byte budget to the proxy, "where byte budgets belong".
+That mechanism turned out not to exist: measured against the Caddy build
+`deploy/docker-compose.prod.yml` pins, the only body-related handler the
+proxy offers bounds what a client *sends*, which does nothing for a bodiless
+`GET` on `export.csv` — no directive caps a response at all. D4 stands
+unchanged; what changes is only the mechanism this paragraph claimed. The
+trade-off is documented in `docs/deployment.md` ("The limit counts requests,
+not bytes"), with that measurement and the levers that do exist, rather than
+fixed at the proxy.
 
 ## 4. The two folded fixes
 

@@ -52,7 +52,11 @@ MIN_REASON = 40
 #: directions — prose is not an entry, a commented entry still is one — and
 #: pins them against the real file too, so neither loosening this pattern nor
 #: re-indenting that file's prose flush can quietly widen what counts.
-ENV_EXAMPLE_ASSIGNMENT = re.compile(r"^(?:#[ \t]?)?(REIM_[A-Z0-9_]+)=", re.MULTILINE)
+#: Space only, never a tab: the pattern has to be exactly the rule written
+#: above it or the rule is prose. ``deploy/.env.prod.example`` contains no tab
+#: at all today, so allowing one widened what counts as an entry by a character
+#: nothing in the file needed and nothing in this docstring claimed.
+ENV_EXAMPLE_ASSIGNMENT = re.compile(r"^(?:# ?)?(REIM_[A-Z0-9_]+)=", re.MULTILINE)
 #: ``{$REIM_X}`` — Caddy's own environment substitution, read at config-load
 #: time from the caddy container's environment, not from compose's.
 CADDYFILE_SUBSTITUTION = re.compile(r"\{\$(REIM_[A-Z0-9_]+)\}")
@@ -286,6 +290,57 @@ def test_the_proxy_image_is_pinned_to_an_exact_version(production: dict) -> None
         f"caddy image tag {tag!r} is not an exact version; the measured "
         "X-Forwarded-For behaviour is not pinned to anything"
     )
+
+
+def test_the_pinned_image_is_the_same_string_everywhere_it_is_claimed(
+    production: dict,
+) -> None:
+    """The build every "measured against" sentence names must be the build that runs.
+
+    The test above pins the *shape* of the tag, which is what stops a float
+    like ``2-alpine``. It says nothing about the version, and the version is
+    what three other files assert as fact: ``deploy/Caddyfile`` twice (the
+    `email` option's ``caddy adapt`` reading, and the ``caddy list-modules``
+    reading behind the commented-out ``request_body``), ``docs/deployment.md``
+    three times (the two-issuers note, the HSTS hardening row, and the
+    ``list-modules`` command a reader can rerun), and ``deploy/.env.prod.example``
+    once. Bumping ``image:`` alone would leave all of them naming a binary this
+    deployment no longer runs — every claim silently false, every test green,
+    because nothing today reads the tag and the prose in the same place.
+
+    So the compose file is the authority and the prose is checked against it:
+    every ``caddy:<tag>`` any of those files mentions must be the tag ``image:``
+    actually carries. Both directions fall out of that — a bump with stale
+    prose fails, and so does prose left behind naming a version nothing pins.
+    A bump is then a re-measurement, which is what ``image:``'s own comment
+    already demands, rather than a one-line edit.
+    """
+    image = production["services"]["caddy"]["image"]
+    pinned = image.rsplit(":", 1)[-1]
+
+    # ``caddy:<tag>``, with or without the registry prefix the compose file
+    # spells out. Scoped to a mention of the image, so ordinary prose about
+    # Caddy is untouched.
+    mention = re.compile(r"(?:[\w.\-]+/)*caddy:([\w.\-]+)")
+
+    for path in (CADDYFILE, ENV_EXAMPLE, REPO_ROOT / "docs" / "deployment.md"):
+        named = mention.findall(path.read_text(encoding="utf-8"))
+        relative = path.relative_to(REPO_ROOT)
+        assert named, (
+            f"{relative} names no caddy image at all, but its claims about Caddy's "
+            f"behaviour were measured against one specific build; either it stopped "
+            f"citing the build it measured, or this pattern no longer matches how it "
+            f"cites it and this test now checks nothing there"
+        )
+
+        drifted = sorted({tag for tag in named if tag != pinned})
+        assert not drifted, (
+            f"{relative} says the behaviour it documents was measured against caddy "
+            f"{drifted}, but docker-compose.prod.yml runs {image!r}. Whichever moved, "
+            f"the sentences around those mentions are now about a binary this "
+            f"deployment does not run — re-measure against the pinned build and "
+            f"update the prose with what it reports, in the same commit as the bump."
+        )
 
 
 def test_the_settings_an_operator_tunes_reach_the_container(production: dict) -> None:
@@ -589,20 +644,21 @@ def test_the_compose_block_is_a_partition_too(production: dict) -> None:
 
     keys = set(reachable)
 
-    unclassified = sorted(keys - classified)
+    unclassified = {key: reachable[key][0] for key in sorted(keys - classified)}
     assert not unclassified, (
-        f"{unclassified} reach the api container but belong to none of the four classes "
+        f"these variables reach a container but belong to none of the four classes "
         f"in this file, so nothing says whether an operator may set them, must set them, "
-        f"or cannot. Put each in OPERATOR_SETTABLE (and document it in "
-        f"deploy/.env.prod.example), OPERATOR_SETTABLE_BUT_UNDOCUMENTED, PINNED_IN_COMPOSE "
-        f"or REQUIRED_IN_COMPOSE, with the reason."
+        f"or cannot (name -> the service that sets it): {unclassified}. Put each in "
+        f"OPERATOR_SETTABLE (and document it in deploy/.env.prod.example), "
+        f"OPERATOR_SETTABLE_BUT_UNDOCUMENTED, PINNED_IN_COMPOSE or REQUIRED_IN_COMPOSE, "
+        f"with the reason."
     )
 
     phantom = sorted(classified - keys)
     assert not phantom, (
-        f"{phantom} are classified in this file but are not in the api service's "
-        f"environment block at all, so the recorded reasoning is about variables that "
-        f"no longer reach the container"
+        f"{phantom} are classified in this file but no service in "
+        f"docker-compose.prod.yml sets them at all, so the recorded reasoning is about "
+        f"variables that no longer reach a container"
     )
 
     not_required = sorted(
@@ -956,16 +1012,25 @@ def test_operator_settable_variables_really_read_from_env(production: dict) -> N
     )
 
 
-def test_a_non_reim_variable_on_any_service_is_not_reported_as_name_drift(
+def test_a_non_reim_variable_on_caddy_is_not_reported_as_name_drift(
     production: dict,
 ) -> None:
-    """A service may legitimately carry ``TZ``, ``PATH`` or an image's own knob.
+    """The caddy service may legitimately carry ``TZ``, ``PATH`` or an image's own knob.
 
     The orphan half of ``test_every_caddyfile_substitution_is_wired_and_documented``
     rejected *any* key on the caddy service that the Caddyfile does not
     substitute, and blamed a name drift — sending whoever set ``TZ`` to a file
     that was never going to mention it. The Caddyfile is the authority for the
     names this project invented, and for nothing else.
+
+    Named for caddy rather than for services in general, because that is the
+    whole of what the checked code path reads: the orphan check compares the
+    Caddyfile's substitutions against ``services.caddy.environment`` alone, and
+    deliberately so — the Caddyfile is mounted on caddy and on nothing else, so
+    a ``REIM_*`` set on api or postgres is no evidence about it either way. A
+    probe planted on a second service would exercise nothing here. The
+    api-and-every-other-service side of that closure is
+    ``test_the_compose_block_is_a_partition_too``, which does read every service.
 
     Both directions, because narrowing a check is how a check stops checking: a
     non-``REIM_`` key is ignored, and a genuine ``REIM_*`` orphan still fails
@@ -1002,22 +1067,31 @@ def test_pinning_is_available_to_every_service_not_only_api(
     recorded. Drilled by re-narrowing the pins test to the api service, which
     makes the caddy literal invisible to it — the first half then raises
     nothing and this test fails on ``DID NOT RAISE``.
+
+    Run on caddy *and* on postgres, because "every service" was a claim one
+    service could not support. Both tests read ``_reim_environment``, which is
+    generic over the services mapping, so a second service is the cheap way to
+    show the reach is a property of that helper rather than of caddy having
+    been the one service anybody happened to try. postgres is the sharper of
+    the two: it sets no ``REIM_*`` at all today, so a pin planted there is the
+    case of a service entering the partition from outside it.
     """
-    production["services"]["caddy"]["environment"]["REIM_PIN_PROBE"] = "fixed"
+    for service, probe in (("caddy", "REIM_PIN_PROBE"), ("postgres", "REIM_PIN_PROBE_TWO")):
+        production["services"][service]["environment"][probe] = "fixed"
 
-    with pytest.raises(AssertionError, match="REIM_PIN_PROBE"):
+        with pytest.raises(AssertionError, match=probe):
+            test_the_pinned_settings_are_not_reachable_from_env(production)
+        with pytest.raises(AssertionError, match=probe):
+            test_the_compose_block_is_a_partition_too(production)
+
+        monkeypatch.setitem(
+            PINNED_IN_COMPOSE,
+            probe,
+            f"A probe this test pins on the {service} service, so that a literal "
+            "outside the api service is shown to be classifiable at all.",
+        )
         test_the_pinned_settings_are_not_reachable_from_env(production)
-    with pytest.raises(AssertionError, match="REIM_PIN_PROBE"):
         test_the_compose_block_is_a_partition_too(production)
-
-    monkeypatch.setitem(
-        PINNED_IN_COMPOSE,
-        "REIM_PIN_PROBE",
-        "A probe this test pins on the caddy service, so that a literal outside "
-        "the api service is shown to be classifiable at all.",
-    )
-    test_the_pinned_settings_are_not_reachable_from_env(production)
-    test_the_compose_block_is_a_partition_too(production)
 
 
 def test_no_two_services_set_the_same_reim_variable(production: dict) -> None:

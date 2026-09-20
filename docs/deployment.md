@@ -198,14 +198,39 @@ load-bearing here: with `interval: 30s`, at most one probe ever lands inside
 a 20 s window, and one failure alone never trips `retries: 3` whether or not
 it is forgiven. The lever that actually moves the "healthy" timestamp is
 `interval` itself: halve it and the container is marked healthy nearer the
-6.5 s it is actually ready. `start_interval` is not that lever on podman
-5.8.4 — a compose file that declares it is accepted with no warning, but
-`podman inspect` shows no `StartInterval` key on the resulting container: the
-field is silently dropped and the probe schedule is unchanged. `caddy`, which
-waits on `api`'s healthcheck, is delayed by whatever margin is left. This is
-healthcheck cadence, not a failure — the whole three-service stack (network
-and volume creation, both healthchecks, `caddy` starting) took 37 seconds
-wall-clock on a rerun with the image already built.
+6.5 s it is actually ready.
+
+`start_interval` is not that lever. That was first read on podman 5.8.4 and
+re-measured on **5.8.7** — the version the crontab section below also
+measures on — with the same outcome, so nothing here turns on which of the
+two you run. A compose file that declares it is accepted with no warning, and
+the field is then silently dropped: `podman inspect` shows no `StartInterval`
+key on the resulting container and the probe schedule is the unmodified one.
+Same service shape as above, made ready at ~6.5 s, with `start_interval: 2s`
+added beside `interval: 30s`:
+
+```text
+podman 5.8.7, start_interval: 2s, interval: 30s, start_period: 20s
+container started  12:02:11.627
+probe 1  12:02:11.703  exit=1                    # t+0.08s
+probe 2  12:02:42.358  exit=0  -> healthy        # t+30.73s
+
+podman inspect --format '{{json .Config.Healthcheck}}'
+{"Test":["CMD-SHELL","..."],"StartPeriod":20000000000,
+ "Interval":30000000000,"Timeout":5000000000,"Retries":3}
+```
+
+The second probe is one full `interval` after the first, not one
+`start_interval`, and the inspected healthcheck carries the four schedule
+fields the compose file set with no `StartInterval` beside them — declaring
+the key moved neither. (Podman does carry startup-probe flags of its own on
+`podman run`, `--health-startup-interval` among them, which the compose
+format has no key for; nothing here measured what those do.)
+
+`caddy`, which waits on `api`'s healthcheck, is delayed by whatever margin is
+left. This is healthcheck cadence, not a failure — the whole three-service
+stack (network and volume creation, both healthchecks, `caddy` starting) took
+37 seconds wall-clock on a rerun with the image already built.
 
 ## Verify it
 
@@ -394,19 +419,24 @@ still reported `RunRoot=/run/user/1000/containers` and
 `Socket=/run/user/1000/podman/podman.sock` — Podman 5.8.7 resolved the
 invoking UID's own runtime directory without being told where it was.
 Setting `XDG_RUNTIME_DIR=/run/user/<uid>` at the top of the crontab costs
-nothing, but it is not what makes these lines work, so it is not the fix
-if a job of yours fails — and cron's behavior on a failing job is to mail
-the output to the crontab's owner rather than show it anywhere you would
-notice at the time.
+nothing, but it is not what made these lines work **here**, so on a host
+shaped like the one measured it is not the fix if a job of yours fails —
+and cron's behavior on a failing job is to mail the output to the crontab's
+owner rather than show it anywhere you would notice at the time. What
+"shaped like the one measured" means is the next paragraph, and its second
+item is the case where that variable is back in play.
 
-**Two things this does not cover, and they are what to check first if one
-does fail.** The lines were run from a shell, not dispatched by `crond`,
-so nothing here measures what your own cron daemon's PAM stack hands a
-job. And the directory Podman fell back to, `/run/user/$UID`, is a login
-session's: on the host measured, `loginctl show-user` reported
+**Two things that measurement does not cover, and they are what to check
+first if one does fail.** The lines were run from a shell, not dispatched
+by `crond`, so nothing here measures what your own cron daemon's PAM stack
+hands a job. And the directory Podman resolved, `/run/user/$UID`, is a
+login session's: on the host measured, `loginctl show-user` reported
 `Linger=yes`, so it was there whether or not anyone was logged in. Whether
-that fallback still finds it with lingering off and nobody logged in was
-not measured.
+that directory is there at all with lingering off and nobody logged in, and
+whether Podman resolves a runtime directory without it, was not measured —
+so the paragraph above is a finding about the lingering-on case only, and
+that unmeasured case is the exception to it: with no `/run/user/$UID` to
+resolve, `XDG_RUNTIME_DIR` is exactly the thing to try.
 
 ## Point alerting at a webhook
 
