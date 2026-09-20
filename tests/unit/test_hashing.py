@@ -118,7 +118,33 @@ def test_natural_key_is_normalized() -> None:
         "worldbank_ni_cpi_inflation",
         "2024-01-01",
         "2024-12-31",
+        "",
     )
+
+
+def test_natural_key_defaults_administrative_area_to_empty() -> None:
+    key = natural_key(
+        country_iso3="PAN",
+        indicator_code="pa_test",
+        source_key="test_source",
+        period_start=date(2023, 1, 1),
+        period_end=date(2023, 12, 31),
+    )
+    assert len(key) == 6
+    assert key[-1] == ""
+
+
+def test_natural_key_distinguishes_administrative_areas() -> None:
+    kwargs = {
+        "country_iso3": "PAN",
+        "indicator_code": "pa_test",
+        "source_key": "test_source",
+        "period_start": date(2023, 1, 1),
+        "period_end": date(2023, 12, 31),
+    }
+    national = natural_key(**kwargs)
+    provincial = natural_key(**kwargs, administrative_area_code="08")
+    assert national != provincial
 
 
 def test_natural_key_distinguishes_sources_for_the_same_series() -> None:

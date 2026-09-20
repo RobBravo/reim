@@ -41,7 +41,8 @@ def natural_key(
     source_key: str,
     period_start: date,
     period_end: date,
-) -> tuple[str, str, str, str, str]:
+    administrative_area_code: str | None = None,
+) -> tuple[str, str, str, str, str, str]:
     """Return the tuple that uniquely identifies an observation."""
     return (
         country_iso3.upper(),
@@ -49,6 +50,7 @@ def natural_key(
         source_key.lower(),
         period_start.isoformat(),
         period_end.isoformat(),
+        (administrative_area_code or "").upper(),
     )
 
 

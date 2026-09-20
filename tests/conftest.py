@@ -313,6 +313,7 @@ def make_observation():  # type: ignore[no-untyped-def]
         frequency: Frequency | None = None,
         value_text: str | None = None,
         retrieved_at: datetime | None = None,
+        administrative_area_code: str | None = None,
     ) -> NormalizedObservation:
         return NormalizedObservation(
             country_iso3=country_iso3,
@@ -326,6 +327,7 @@ def make_observation():  # type: ignore[no-untyped-def]
             retrieved_at=retrieved_at or datetime(2026, 8, 4, 12, 0, tzinfo=UTC),
             source_url="https://api.worldbank.org/v2/country/NIC/indicator/FP.CPI.TOTL.ZG",
             source_record_id=f"FP.CPI.TOTL.ZG:{period}",
+            administrative_area_code=administrative_area_code,
         )
 
     return _build

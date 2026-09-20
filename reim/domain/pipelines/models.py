@@ -64,6 +64,9 @@ class NormalizedObservation:
     currency_code: str | None = None
     published_at: datetime | None = None
     source_record_id: str | None = None
+    #: Publisher's own code for a subnational area (e.g. INEC Panama's
+    #: ``id_provincia``). ``None`` for every national-level observation.
+    administrative_area_code: str | None = None
     raw_metadata: dict[str, Any] = field(default_factory=dict)
 
     def compute_content_hash(self) -> str:
@@ -81,14 +84,22 @@ class NormalizedObservation:
         )
 
     @property
-    def natural_key(self) -> tuple[str, str, str, str, str]:
-        """Return the natural key tuple identifying this datapoint."""
+    def natural_key(self) -> tuple[str, str, str, str, str, str]:
+        """Return the natural key tuple identifying this datapoint.
+
+        The sixth element distinguishes a provincial observation from the
+        national one for the same indicator and period — without it, ten
+        provincial rows sharing a country/indicator/source/period would look
+        like ten duplicates of the same key to
+        ``reim.domain.quality.checks``' in-batch duplicate check.
+        """
         return (
             self.country_iso3.upper(),
             self.indicator_code.lower(),
             self.source_key.lower(),
             self.period.start.isoformat(),
             self.period.end.isoformat(),
+            (self.administrative_area_code or "").upper(),
         )
 
 
