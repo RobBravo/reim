@@ -25,10 +25,18 @@ from sqlalchemy.orm import Session
 from reim import PIPELINE_VERSION
 from reim.core.constants import ObservationStatus, ValidationStatus
 from reim.core.logging import get_logger
-from reim.database.models import Country, DataSource, Indicator, Observation, ObservationRevision
+from reim.database.models import (
+    AdministrativeArea,
+    Country,
+    DataSource,
+    Indicator,
+    Observation,
+    ObservationRevision,
+)
 from reim.domain.pipelines.models import NormalizedObservation
 from reim.repositories.observations import get_by_natural_key
 from reim.repositories.reference import (
+    require_administrative_area_by_code,
     require_country_by_iso3,
     require_indicator_by_code,
     require_source_by_key,
@@ -78,6 +86,9 @@ class _ReferenceCache:
     countries: dict[str, Country] = field(default_factory=dict)
     indicators: dict[str, Indicator] = field(default_factory=dict)
     sources: dict[str, DataSource] = field(default_factory=dict)
+    administrative_areas: dict[tuple[uuid.UUID, str], AdministrativeArea] = field(
+        default_factory=dict
+    )
 
     def country(self, session: Session, iso3: str) -> Country:
         """Return (and memoise) the country for ``iso3``."""
@@ -96,6 +107,22 @@ class _ReferenceCache:
         if key not in self.sources:
             self.sources[key] = require_source_by_key(session, key)
         return self.sources[key]
+
+    def administrative_area(
+        self, session: Session, country_id: uuid.UUID, code: str
+    ) -> AdministrativeArea:
+        """Return (and memoise) the administrative area for ``code`` within a country.
+
+        ``level`` is hardcoded to ``"province"`` here because that is the only
+        level any connector produces today — widen this when a second level
+        exists.
+        """
+        key = (country_id, code)
+        if key not in self.administrative_areas:
+            self.administrative_areas[key] = require_administrative_area_by_code(
+                session, country_id, "province", code
+            )
+        return self.administrative_areas[key]
 
 
 def write_observations(
@@ -140,6 +167,11 @@ def write_observations(
         country = cache.country(session, incoming.country_iso3)
         indicator = cache.indicator(session, incoming.indicator_code)
         source = cache.source(session, incoming.source_key)
+        administrative_area = (
+            cache.administrative_area(session, country.id, incoming.administrative_area_code)
+            if incoming.administrative_area_code is not None
+            else None
+        )
         digest = incoming.compute_content_hash()
 
         existing = get_by_natural_key(
@@ -149,6 +181,7 @@ def write_observations(
             source_id=source.id,
             period_start=incoming.period.start,
             period_end=incoming.period.end,
+            administrative_area_id=administrative_area.id if administrative_area else None,
         )
         status = statuses.get(index, ValidationStatus.PASSED)
 
@@ -159,6 +192,7 @@ def write_observations(
                     country=country,
                     indicator=indicator,
                     source=source,
+                    administrative_area=administrative_area,
                     content_hash=digest,
                     validation_status=status,
                     connector_version=connector_version,
@@ -210,6 +244,7 @@ def _build_observation(
     country: Country,
     indicator: Indicator,
     source: DataSource,
+    administrative_area: AdministrativeArea | None,
     content_hash: str,
     validation_status: ValidationStatus,
     connector_version: str,
@@ -219,6 +254,7 @@ def _build_observation(
         country_id=country.id,
         indicator_id=indicator.id,
         source_id=source.id,
+        administrative_area_id=administrative_area.id if administrative_area else None,
         period_start=incoming.period.start,
         period_end=incoming.period.end,
         period_label=incoming.period.label,

@@ -15,8 +15,9 @@ from sqlalchemy.orm import Session
 
 from reim.core.exceptions import UnknownReferenceError
 from reim.core.logging import get_logger
-from reim.database.models import Country, DataSource, Indicator, Organization
+from reim.database.models import AdministrativeArea, Country, DataSource, Indicator, Organization
 from reim.domain.countries.registry import COUNTRIES
+from reim.domain.geography.registry import ADMINISTRATIVE_AREAS
 from reim.domain.indicators.registry import INDICATORS
 from reim.domain.sources.catalog import SourceCatalog, get_catalog
 from reim.domain.sources.organizations import ORGANIZATIONS
@@ -32,6 +33,8 @@ class SeedReport:
     countries_updated: int = 0
     organizations_created: int = 0
     organizations_updated: int = 0
+    administrative_areas_created: int = 0
+    administrative_areas_updated: int = 0
     indicators_created: int = 0
     indicators_updated: int = 0
     sources_created: int = 0
@@ -43,6 +46,7 @@ class SeedReport:
         return (
             self.countries_created
             + self.organizations_created
+            + self.administrative_areas_created
             + self.indicators_created
             + self.sources_created
         )
@@ -53,6 +57,7 @@ class SeedReport:
         return (
             self.countries_updated
             + self.organizations_updated
+            + self.administrative_areas_updated
             + self.indicators_updated
             + self.sources_updated
         )
@@ -121,6 +126,38 @@ def seed_organizations(session: Session, report: SeedReport) -> None:
             report.organizations_created += 1
         elif _sync(current, values):
             report.organizations_updated += 1
+    session.flush()
+
+
+def seed_administrative_areas(session: Session, report: SeedReport) -> None:
+    """Insert or refresh every administrative area in the registry."""
+    countries = {country.iso2: country for country in session.scalars(select(Country))}
+    existing = {
+        (area.country_id, area.level, area.code): area
+        for area in session.scalars(select(AdministrativeArea))
+    }
+
+    for definition in ADMINISTRATIVE_AREAS:
+        country = countries.get(definition.country_iso2)
+        if country is None:
+            msg = (
+                f"Administrative area {definition.code} references unseeded country "
+                f"{definition.country_iso2}"
+            )
+            raise UnknownReferenceError(msg, administrative_area_code=definition.code)
+
+        values = {"name": definition.name}
+        key = (country.id, definition.level, definition.code)
+        current = existing.get(key)
+        if current is None:
+            session.add(
+                AdministrativeArea(
+                    country_id=country.id, level=definition.level, code=definition.code, **values
+                )
+            )
+            report.administrative_areas_created += 1
+        elif _sync(current, values):
+            report.administrative_areas_updated += 1
     session.flush()
 
 
@@ -209,6 +246,7 @@ def seed_all(session: Session, catalog: SourceCatalog | None = None) -> SeedRepo
     report = SeedReport()
     seed_countries(session, report)
     seed_organizations(session, report)
+    seed_administrative_areas(session, report)
     seed_indicators(session, report)
     seed_sources(session, report, catalog or get_catalog())
     logger.info(

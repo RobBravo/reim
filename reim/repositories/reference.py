@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from reim.core.exceptions import UnknownReferenceError
-from reim.database.models import Country, DataSource, Indicator, Organization
+from reim.database.models import AdministrativeArea, Country, DataSource, Indicator, Organization
 
 
 def get_country_by_iso2(session: Session, iso2: str) -> Country | None:
@@ -79,6 +79,30 @@ def list_organizations(session: Session, *, country_iso2: str | None = None) -> 
             Country.iso2 == country_iso2.upper()
         )
     return list(session.scalars(statement))
+
+
+def get_administrative_area_by_code(
+    session: Session, country_id: uuid.UUID, level: str, code: str
+) -> AdministrativeArea | None:
+    """Return the administrative area with this code, if it exists."""
+    return session.scalar(
+        select(AdministrativeArea).where(
+            AdministrativeArea.country_id == country_id,
+            AdministrativeArea.level == level,
+            AdministrativeArea.code == code,
+        )
+    )
+
+
+def require_administrative_area_by_code(
+    session: Session, country_id: uuid.UUID, level: str, code: str
+) -> AdministrativeArea:
+    """Return the administrative area or raise :class:`UnknownReferenceError`."""
+    area = get_administrative_area_by_code(session, country_id, level, code)
+    if area is None:
+        msg = f"Administrative area {level}:{code!r} is not registered; run 'reim db seed' first"
+        raise UnknownReferenceError(msg, administrative_area_code=code)
+    return area
 
 
 def source_ids_by_key(session: Session) -> dict[str, uuid.UUID]:

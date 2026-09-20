@@ -173,6 +173,7 @@ def get_by_natural_key(
     source_id: uuid.UUID,
     period_start: date,
     period_end: date,
+    administrative_area_id: uuid.UUID | None = None,
 ) -> Observation | None:
     """Return the observation matching the natural key, if it exists."""
     return session.scalar(
@@ -182,6 +183,7 @@ def get_by_natural_key(
             Observation.source_id == source_id,
             Observation.period_start == period_start,
             Observation.period_end == period_end,
+            Observation.administrative_area_id == administrative_area_id,
         )
     )
 

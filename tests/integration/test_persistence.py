@@ -100,6 +100,21 @@ def test_enabled_source_carries_no_disabled_reason(seeded_session: Session) -> N
         assert source.disabled_reason is None
 
 
+def test_seed_creates_administrative_areas(seeded_session: Session) -> None:
+    from reim.database.models import AdministrativeArea
+
+    assert seeded_session.scalar(select(func.count(AdministrativeArea.id))) == 10
+
+
+def test_administrative_area_seeding_is_idempotent(seeded_session: Session, catalog) -> None:  # type: ignore[no-untyped-def]
+    from reim.database.models import AdministrativeArea
+
+    before = seeded_session.scalar(select(func.count(AdministrativeArea.id)))
+    report = seed_all(seeded_session, catalog)
+    assert report.administrative_areas_created == 0
+    assert seeded_session.scalar(select(func.count(AdministrativeArea.id))) == before
+
+
 # --------------------------------------------------------------------------
 # Insert
 # --------------------------------------------------------------------------
@@ -200,6 +215,62 @@ def test_unchanged_rows_keep_their_timestamps(seeded_session: Session, make_obse
     row = seeded_session.scalar(select(Observation))
     assert row.created_at == created_at
     assert row.updated_at == updated_at
+
+
+def test_a_national_and_a_provincial_observation_coexist(
+    seeded_session: Session, make_observation
+) -> None:  # type: ignore[no-untyped-def]
+    """administrative_area_id NULL and a real value are different rows for the same key."""
+    national = make_observation(
+        "2023", "205.1", country_iso3="PAN", indicator_code="ni_cpi_inflation_annual"
+    )
+    provincial = make_observation(
+        "2023",
+        "9.6",
+        country_iso3="PAN",
+        indicator_code="ni_cpi_inflation_annual",
+        administrative_area_code="01",
+    )
+    report = _write(seeded_session, [national, provincial])
+    assert (report.inserted, report.updated, report.unchanged) == (2, 0, 0)
+    assert _count(seeded_session) == 2
+
+
+def test_rerunning_a_provincial_batch_inserts_nothing_the_second_time(
+    seeded_session: Session, make_observation
+) -> None:  # type: ignore[no-untyped-def]
+    batch = [
+        make_observation(
+            "2023",
+            "9.6",
+            country_iso3="PAN",
+            indicator_code="ni_cpi_inflation_annual",
+            administrative_area_code="01",
+        )
+    ]
+    _write(seeded_session, batch)
+    second = _write(seeded_session, batch)
+    assert (second.inserted, second.updated, second.unchanged) == (0, 0, 1)
+    assert _count(seeded_session) == 1
+
+
+def test_an_unregistered_administrative_area_code_raises(
+    seeded_session: Session, make_observation
+) -> None:  # type: ignore[no-untyped-def]
+    """A code the registry doesn't have must fail loudly, not mint a new area."""
+    with pytest.raises(UnknownReferenceError, match="not registered"):
+        _write(
+            seeded_session,
+            [
+                make_observation(
+                    "2023",
+                    "1",
+                    country_iso3="PAN",
+                    indicator_code="ni_cpi_inflation_annual",
+                    administrative_area_code="99",
+                )
+            ],
+        )
 
 
 def test_database_constraint_blocks_duplicate_natural_keys(
