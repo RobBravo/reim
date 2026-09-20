@@ -30,8 +30,29 @@ REQUIRED = re.compile(r"^\$\{(REIM_[A-Z0-9_]+):\?(.*)\}$")
 #: The shortest exclusion or pinning reason a reader could act on. Crude, and
 #: deliberately so: no test can judge prose, but ``"TODO"`` is not a decision.
 MIN_REASON = 40
-#: ``REIM_X=`` at the start of a line in ``.env.prod.example``, commented or not.
-ENV_EXAMPLE_ASSIGNMENT = re.compile(r"^#?\s*(REIM_[A-Z0-9_]+)=", re.MULTILINE)
+#: ``REIM_X=`` at the start of a line in ``.env.prod.example``, commented or not
+#: — an *entry*, meaning a line that is (or becomes, by deleting exactly one
+#: ``#`` and at most one space) the assignment itself.
+#:
+#: The anchoring is the whole point and was learned the hard way. The earlier
+#: ``^#?\s*`` swallowed any indentation, so the two illustrative lines under
+#: "Measured with `caddy adapt`" in ``.env.prod.example`` —
+#:
+#:     #   REIM_ACME_EMAIL=            -> one issuer   (ACME / Let's Encrypt)
+#:     #   REIM_ACME_EMAIL=<an address> -> two issuers (that, plus ZeroSSL)
+#:
+#: counted as documentation of ``REIM_ACME_EMAIL``. Deleting the real
+#: ``# REIM_ACME_EMAIL=`` entry from the file then failed nothing: prose beside
+#: a test had disarmed it. Prose is indented under its comment marker; an entry
+#: is not. That difference is the discriminator, and it is the file's own
+#: convention rather than a rule invented here — an uncommented assignment has
+#: to start at column 0 to be a legal dotenv line in the first place.
+#:
+#: ``test_only_a_real_assignment_line_counts_as_documentation`` pins both
+#: directions — prose is not an entry, a commented entry still is one — and
+#: pins them against the real file too, so neither loosening this pattern nor
+#: re-indenting that file's prose flush can quietly widen what counts.
+ENV_EXAMPLE_ASSIGNMENT = re.compile(r"^(?:#[ \t]?)?(REIM_[A-Z0-9_]+)=", re.MULTILINE)
 #: ``{$REIM_X}`` — Caddy's own environment substitution, read at config-load
 #: time from the caddy container's environment, not from compose's.
 CADDYFILE_SUBSTITUTION = re.compile(r"\{\$(REIM_[A-Z0-9_]+)\}")
@@ -81,12 +102,25 @@ EXCLUDED_FROM_COMPOSE: dict[str, str] = {
     ),
 }
 
-#: Variables that *are* in the api service's environment block but fixed there,
-#: so an operator cannot change them from ``deploy/.env``, each with the reason.
+#: Variables that *are* in some service's environment block but fixed there, so
+#: an operator cannot change them from ``deploy/.env``, each with the reason.
 #:
 #: ``test_the_pinned_settings_are_not_reachable_from_env`` checks both
-#: directions: that each of these really is fixed, and that nothing else in the
-#: block is fixed without a reason recorded here.
+#: directions: that each of these really is fixed, and that nothing else any
+#: service sets is fixed without a reason recorded here.
+#:
+#: Every member happens to live on the api service today, and for a while the
+#: test read that one block — which made this class structurally unreachable
+#: for every other service while
+#: ``test_the_compose_block_is_a_partition_too`` demanded that *every*
+#: service's keys land in one of the four. A literal pinned on caddy could
+#: therefore be classified nowhere: naming it here failed on "not in the
+#: block", and leaving it out failed on "belongs to none of the four classes".
+#: The partition is now read over every service (see ``_reim_environment``),
+#: because nothing about pinning is an api-only idea — "fixed in the file we
+#: shipped, so .env cannot reach it" is a property of a compose value, not of
+#: a container, and a hardcoded caddy value is exactly the failure
+#: ``test_operator_settable_variables_really_read_from_env`` exists for.
 PINNED_IN_COMPOSE: dict[str, str] = {
     "REIM_DATABASE_URL": (
         "Composed from POSTGRES_USER/PASSWORD/DB and pointed at the postgres "
@@ -383,38 +417,55 @@ def test_the_pinned_settings_are_not_reachable_from_env(production: dict) -> Non
     rate limiter can be bypassed, and ``deploy/.env`` is the file the guide
     invites operators to edit. A literal value with no ``${...}`` around it is
     what makes it unreachable — the ``environment:`` block is the only channel
-    by which any variable reaches this container, since the service declares no
-    ``env_file:``, and ``--env-file deploy/.env`` feeds compose's own
-    interpolation rather than the container's environment.
+    by which any variable reaches these containers, since no service declares
+    an ``env_file:``, and ``--env-file deploy/.env`` feeds compose's own
+    interpolation rather than a container's environment.
 
     Checked in both directions, so that neither a pin that quietly becomes
     settable nor a new pin nobody justified passes silently.
+
+    Read over **every** service, like ``test_the_compose_block_is_a_partition_too``
+    and for the same reason. Scoped to api, this was the one class of that
+    partition a non-api key could not enter — a literal on caddy was rejected
+    here as "not in the block" and rejected there as belonging to no class, so
+    the only way to make the suite green was to stop pinning it. See
+    ``PINNED_IN_COMPOSE``.
     """
-    environment = production["services"]["api"]["environment"]
-    assert "env_file" not in production["services"]["api"], (
-        "the api service now declares env_file:, which is a second channel into the "
+    reachable = _reim_environment(production)
+    with_env_file = sorted(
+        name for name, service in production["services"].items() if "env_file" in service
+    )
+    assert not with_env_file, (
+        f"{with_env_file} now declare env_file:, which is a second channel into a "
         "container's environment that this test cannot see; the pins below are only "
         "unreachable while the environment: block is the only one"
     )
 
     assert_reasons_are_usable(PINNED_IN_COMPOSE, "PINNED_IN_COMPOSE")
     for key in PINNED_IN_COMPOSE:
-        assert key in environment, f"{key} is recorded as pinned but is not in the block"
-        assert f"${{{key}" not in str(environment[key]), (
+        assert key in reachable, (
+            f"{key} is recorded as pinned, but no service in docker-compose.prod.yml "
+            f"sets it at all, so the recorded reason is about a variable that reaches "
+            f"no container"
+        )
+        service, value = reachable[key]
+        assert f"${{{key}" not in value, (
             f"{key} is recorded as pinned, with a reason it must not be settable from "
-            f".env, but its value now interpolates {key}: {environment[key]!r}"
+            f".env, but its value on the {service} service now interpolates {key}: "
+            f"{value!r}"
         )
 
-    unrecorded = sorted(
-        key
-        for key, value in environment.items()
-        if key.startswith("REIM_")
-        and f"${{{key}" not in str(value)
-        and key not in PINNED_IN_COMPOSE
-    )
+    unrecorded = {
+        key: service
+        for key, (service, value) in sorted(reachable.items())
+        if f"${{{key}" not in value and key not in PINNED_IN_COMPOSE
+    }
     assert not unrecorded, (
         f"these variables are fixed in the compose file, so no .env can change them, "
-        f"but no reason for that is recorded in PINNED_IN_COMPOSE: {unrecorded}"
+        f"but no reason for that is recorded in PINNED_IN_COMPOSE: {unrecorded}. If one "
+        f"of them is meant to be tunable instead, the fix is the ${{VAR:-default}} form "
+        f"in the compose file, not an entry here — a name in OPERATOR_SETTABLE holding "
+        f"a literal is a contradiction, not a missing reason."
     )
 
 
@@ -652,7 +703,15 @@ def test_every_caddyfile_substitution_is_wired_and_documented(production: dict) 
         f"but deploy/.env.prod.example — the file they copy — never mentions them"
     )
 
-    orphaned = sorted(set(caddy_environment) - substituted)
+    # Scoped to REIM_* names. The Caddyfile is the authority for the variables
+    # this project invented, and for nothing else: a service may legitimately
+    # carry TZ, PATH or an image's own knob, and reporting one of those as a
+    # Caddyfile name drift sends a maintainer to a file that was never going to
+    # mention it. The genuine orphan — a REIM_* the Caddyfile stopped
+    # substituting — still fails here, by name.
+    orphaned = sorted(
+        key for key in caddy_environment if key.startswith("REIM_") and key not in substituted
+    )
     assert not orphaned, (
         f"{orphaned} are set on the caddy service but deploy/Caddyfile substitutes "
         f"none of them, so nothing reads them; either the Caddyfile stopped using "
@@ -855,3 +914,175 @@ def test_the_production_command_keeps_uvicorn_out_of_the_identity_decision(
             f"--proxy-headers comes after --no-proxy-headers in {uvicorn_args!r}, so "
             "uvicorn would actually run with proxy headers enabled"
         )
+
+
+def test_operator_settable_variables_really_read_from_env(production: dict) -> None:
+    """A member of ``OPERATOR_SETTABLE`` that is hardcoded is settable in name only.
+
+    ``test_the_settings_an_operator_tunes_reach_the_container`` checks that class
+    for *presence* — that some service's environment block mentions the name —
+    and says nothing about form. So ``REIM_ACME_EMAIL: ops@example.org``, a
+    literal where the ``${REIM_ACME_EMAIL:-}`` form belongs, satisfies it while
+    an operator's ``deploy/.env`` value silently never reaches the container.
+
+    Not the only test that would notice today, and saying otherwise would be a
+    lie the next reader has to discover: widening
+    ``test_the_pinned_settings_are_not_reachable_from_env`` to every service, in
+    this same change, makes such a literal fail there too — as a pin with no
+    recorded reason — and recording a reason to quiet it then fails
+    ``test_the_compose_block_is_a_partition_too`` for naming one variable in two
+    classes. What this adds is the message that states the contradiction
+    directly, rather than reporting it as a missing reason or a double
+    classification, and a check that does not depend on either of those two
+    keeping its present scope.
+
+    The predicate is "interpolates its own name", not "contains a ``${``":
+    ``${SOMETHING_ELSE:-x}`` is not a literal, but the documented name set in
+    ``deploy/.env`` would reach it just as little.
+    """
+    environment = _reim_environment(production)
+
+    hardcoded = {
+        name: environment[name][1]
+        for name in sorted(OPERATOR_SETTABLE)
+        if name in environment and f"${{{name}" not in environment[name][1]
+    }
+
+    assert not hardcoded, (
+        f"these are named in OPERATOR_SETTABLE but their compose values never "
+        f"interpolate them: {hardcoded}. An operator setting one in deploy/.env would "
+        f"see no effect. Either restore the ${{VAR:-default}} form, or move the name "
+        f"into PINNED_IN_COMPOSE with the reason it is fixed — it cannot be both."
+    )
+
+
+def test_a_non_reim_variable_on_any_service_is_not_reported_as_name_drift(
+    production: dict,
+) -> None:
+    """A service may legitimately carry ``TZ``, ``PATH`` or an image's own knob.
+
+    The orphan half of ``test_every_caddyfile_substitution_is_wired_and_documented``
+    rejected *any* key on the caddy service that the Caddyfile does not
+    substitute, and blamed a name drift — sending whoever set ``TZ`` to a file
+    that was never going to mention it. The Caddyfile is the authority for the
+    names this project invented, and for nothing else.
+
+    Both directions, because narrowing a check is how a check stops checking: a
+    non-``REIM_`` key is ignored, and a genuine ``REIM_*`` orphan still fails
+    there by name, with the drift named as the likely cause.
+    """
+    caddy_environment = production["services"]["caddy"]["environment"]
+
+    caddy_environment["TZ"] = "UTC"
+    caddy_environment["PATH"] = "/usr/local/bin:/usr/bin"
+    test_every_caddyfile_substitution_is_wired_and_documented(production)
+
+    caddy_environment["REIM_GONE"] = "x"
+    with pytest.raises(AssertionError, match=r"REIM_GONE.*the name drifted"):
+        test_every_caddyfile_substitution_is_wired_and_documented(production)
+
+
+def test_pinning_is_available_to_every_service_not_only_api(
+    production: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``PINNED_IN_COMPOSE`` must reach every service the partition covers.
+
+    ``test_the_compose_block_is_a_partition_too`` demands that every ``REIM_*``
+    any service sets land in exactly one of the four classes. While
+    ``test_the_pinned_settings_are_not_reachable_from_env`` read the api
+    service's block alone, one of those four was closed to every other service:
+    a literal pinned on caddy was rejected by the pins test as "not in the
+    block" when recorded, and by the partition test as belonging to no class
+    when not. Neither branch went green, so the only way out was to stop pinning
+    it — a contradiction between two tests, resolved by weakening the file.
+
+    This asserts the contradiction is gone rather than trusting the comment on
+    ``PINNED_IN_COMPOSE`` that says so. Both halves matter: the literal is
+    reported while unrecorded, and *both* tests accept it once a reason is
+    recorded. Drilled by re-narrowing the pins test to the api service, which
+    makes the caddy literal invisible to it — the first half then raises
+    nothing and this test fails on ``DID NOT RAISE``.
+    """
+    production["services"]["caddy"]["environment"]["REIM_PIN_PROBE"] = "fixed"
+
+    with pytest.raises(AssertionError, match="REIM_PIN_PROBE"):
+        test_the_pinned_settings_are_not_reachable_from_env(production)
+    with pytest.raises(AssertionError, match="REIM_PIN_PROBE"):
+        test_the_compose_block_is_a_partition_too(production)
+
+    monkeypatch.setitem(
+        PINNED_IN_COMPOSE,
+        "REIM_PIN_PROBE",
+        "A probe this test pins on the caddy service, so that a literal outside "
+        "the api service is shown to be classifiable at all.",
+    )
+    test_the_pinned_settings_are_not_reachable_from_env(production)
+    test_the_compose_block_is_a_partition_too(production)
+
+
+def test_no_two_services_set_the_same_reim_variable(production: dict) -> None:
+    """``_reim_environment()`` is last-wins, so assert it never has to choose.
+
+    It flattens every service's block into one ``name -> (service, value)``
+    mapping, and a second service setting a name the first already set would
+    overwrite it in silence — after which every classification test here would
+    judge one of the two values and never see the other, while reporting the
+    surviving service's name to whoever went looking.
+
+    No collision exists today, and none is obviously wrong to write in a compose
+    file, which is exactly why it has to fail here rather than wait to be
+    noticed. Built from the services directly rather than from
+    ``_reim_environment()``: the collapse is the thing that must not be trusted.
+    """
+    owners: dict[str, list[str]] = {}
+    for name, service in production["services"].items():
+        for key in service.get("environment") or {}:
+            if key.startswith("REIM_"):
+                owners.setdefault(key, []).append(name)
+
+    shared = {key: services for key, services in sorted(owners.items()) if len(services) > 1}
+    assert not shared, (
+        f"these REIM_* variables are set by more than one service: {shared}. "
+        f"_reim_environment() keeps only the last, so the four partition tests in this "
+        f"file would silently judge one of the two and never see the other. Give the "
+        f"second service its own name, or teach _reim_environment() to carry both."
+    )
+
+
+def test_only_a_real_assignment_line_counts_as_documentation() -> None:
+    """Prose that mentions ``VAR=`` must not stand in for the entry itself.
+
+    The two illustrative lines under "Measured with `caddy adapt`" in
+    ``deploy/.env.prod.example`` matched the old ``^#?\\s*`` anchoring, which
+    swallowed their indentation. Deleting the real ``# REIM_ACME_EMAIL=`` entry
+    from that file then failed nothing: prose written beside a check had
+    disarmed it. An entry is a line that is — or becomes, by deleting one ``#``
+    and at most one space — the assignment itself; prose is indented past that.
+
+    Pinned in both directions, and against the real file as well as a sample,
+    because a sample alone would survive the file's prose being re-indented
+    flush against the comment marker.
+    """
+    prose = (
+        "#   REIM_ACME_EMAIL=            -> one issuer   (ACME / Let's Encrypt)\n"
+        "#   REIM_ACME_EMAIL=<an address> -> two issuers (that, plus ZeroSSL)\n"
+    )
+    assert ENV_EXAMPLE_ASSIGNMENT.findall(prose) == [], (
+        "indented prose counts as documentation again, so deleting a real entry from "
+        "deploy/.env.prod.example would fail nothing that reads it"
+    )
+
+    entries = "REIM_DOMAIN=reim.example.org\n# REIM_LOG_LEVEL=INFO\n"
+    assert set(ENV_EXAMPLE_ASSIGNMENT.findall(entries)) == {"REIM_DOMAIN", "REIM_LOG_LEVEL"}, (
+        "an entry stopped counting as documentation; a commented-out entry is how "
+        "deploy/.env.prod.example documents every variable that has a default"
+    )
+
+    found = ENV_EXAMPLE_ASSIGNMENT.findall(ENV_EXAMPLE.read_text(encoding="utf-8"))
+    duplicated = sorted({name for name in found if found.count(name) > 1})
+    assert not duplicated, (
+        f"{duplicated} match more than once in deploy/.env.prod.example, where each "
+        f"variable has exactly one entry. A second match is prose being read as an "
+        f"entry again — which is what let the real entry be deleted with nothing "
+        f"failing."
+    )
