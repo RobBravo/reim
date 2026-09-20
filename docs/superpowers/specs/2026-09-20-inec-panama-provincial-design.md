@@ -147,13 +147,31 @@ resolves geography through `country_iso3` alone. It gains one optional field:
 administrative_area_code: str | None = None
 ```
 
-The runner, which already resolves `country_iso3 → country_id`,
-`indicator_code → indicator_id` and `source_key → source_id` before writing,
-gains the equivalent `(country_id, "province", administrative_area_code) →
-administrative_area_id` resolution — creating the row on first sight (from
-the connector's own `AdministrativeArea` name it supplies alongside the code,
-§5) rather than requiring a separate seed step. A connector never touches the
-ORM directly, so this resolution belongs in the runner, not in the connector.
+**Correction (this spec's own self-review caught a contradiction here — the
+first draft said the runner creates an `AdministrativeArea` on first sight,
+while §6 already specified a guard test that *rejects* an unrecognized code.
+The static-registry approach below is the one that actually holds, and
+matches how `Country` and `Organization` are already done — see D7a.)**
+
+`AdministrativeArea` is a static reference table, seeded the same way
+`Country` and `Organization` are: a frozen-dataclass registry
+(`reim/domain/geography/registry.py`, new — `AdministrativeAreaDefinition`,
+mirroring `CountryDefinition` in `reim/domain/countries/registry.py`),
+materialised by `reim db seed`. The ten rows for Panama's provinces are data
+written once during implementation (§2.2's still-to-be-confirmed code→name
+mapping lands here), not created at ingestion time.
+
+`reim/repositories/reference.py` gains `require_administrative_area_by_code(session, country_id, level, code)`,
+matching the shape of `require_country_by_iso3` / `require_indicator_by_code`
+/ `require_source_by_key` it sits beside — raises if the code is not seeded,
+exactly like its siblings. `reim/services/observation_writer.py`'s
+`_ReferenceCache` (`reim/services/observation_writer.py:74`) gains an
+`administrative_areas` cache dict and an `administrative_area()` lookup
+method following the existing `country()` / `indicator()` / `source()`
+pattern exactly, called from `write_observations()` only when
+`incoming.administrative_area_code is not None`. An unrecognized code raises
+the same way a source publishing for an unregistered country already does —
+this *is* §6's "closed set" guard test, not a separate mechanism.
 
 `compute_content_hash` and `natural_key`
 (`reim/domain/pipelines/models.py:69,83`) both fold in
@@ -234,6 +252,10 @@ rather than silently store a partial picture.
 
 ### 5.1 Catalog and registry entries
 
+- `reim/domain/geography/registry.py` (new module): `AdministrativeAreaDefinition`
+  (mirrors `CountryDefinition` — `country_iso2`, `level`, `code`, `name`) and
+  a `PANAMA_PROVINCES` tuple of ten entries, seeded by `reim db seed`
+  alongside `COUNTRIES` and `ORGANIZATIONS` (§3.3).
 - `reim/domain/sources/organizations.py`: one new `OrganizationDefinition`,
   `code="INEC_PA"`, `organization_type=OrganizationType.STATISTICS_OFFICE` —
   the same type already used for INIDE
@@ -264,10 +286,10 @@ New guard tests, beyond the connector's own transform tests:
   period coexist**: `administrative_area_id IS NULL` and a real UUID for the
   same `(country, indicator, source, period)` are different rows, not a
   collision.
-- **The province code set is closed**: a response row whose `id_provincia`
-  is not one of the ten codes REIM has resolved before is rejected by
-  `validate()` rather than silently minting a new `AdministrativeArea` — the
-  same "reject the unrecognized shape" instinct as
+- **The province code set is closed**: `require_administrative_area_by_code`
+  (§3.3) raises for a code that was not seeded, the same way an observation
+  for an unregistered country already fails loudly rather than silently
+  minting one — the same "reject the unrecognized shape" instinct as
   `test_only_a_real_assignment_line_counts_as_documentation` and similar
   guard tests elsewhere in this codebase.
 
@@ -291,6 +313,7 @@ is already tuned by hand.
 | **D5** | Three `Anual` variables (vehicles, residential/non-residential building counts), not the `Decenal` "businesses"/"municipal finance" ones the sources doc originally named | A `Decenal` variable is a cross-section republished roughly once a decade — not meaningfully a series REIM tracks — while the chosen three are genuinely annual and provably exercise the new shape end-to-end (§2.1) |
 | **D6** | The connector reads both the `is_total` and provincial rows from one request | The response already carries both; skipping the national row would throw away data the same request already paid for (§2.2) |
 | **D7** | Exact `id_provincia → name` mapping resolved during implementation, not in this spec | The code set (10 values) is confirmed stable across all three variables probed; the specific mapping is an implementation fixture question, not a design one (§2.2) |
+| **D7a** | `AdministrativeArea` is a seeded static registry (`require_*`, raises on an unknown code), not created on first sight during ingestion | Matches `Country`/`Organization`'s existing pattern exactly, and is the only reading consistent with §6's own "closed set" guard test — the first draft of §3.3 said "create on first sight," which directly contradicted that test; caught in this spec's self-review (§3.3) |
 
 ## 8. Out of scope
 
