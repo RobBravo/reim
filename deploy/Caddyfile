@@ -40,16 +40,18 @@
 	}
 
 	handle {
-		# Caddy does not add this by default. docs/deployment.md's "limit
-		# counts requests, not bytes" section points here for a byte budget;
-		# left commented because that trade-off is accepted, not fixed (see
-		# the spec's §3.2) — uncomment and pick a size to enable it.
-		#
-		# Read what it actually bounds before you do: max_size caps a request
-		# body a client SENDS, before Caddy forwards it upstream. It does not
-		# cap a response Caddy returns. export.csv is fetched with a bodiless
-		# GET, so uncommenting this caps nothing about that endpoint — this
-		# build ships no core directive that does (see docs/deployment.md).
+		# A cap on request bodies clients SEND, shipped commented out. Caddy
+		# does not add it by default, and it is not the byte budget anyone
+		# comes looking for: max_size bounds a body before Caddy forwards it
+		# upstream, never a response Caddy returns. export.csv is fetched
+		# with a bodiless GET, so uncommenting this caps nothing about that
+		# endpoint at any value. Nor does anything else here — `caddy
+		# list-modules` against this pinned build
+		# (docker.io/library/caddy:2.11.4-alpine) matches exactly one
+		# body- or size-related handler, http.handlers.request_body, which is
+		# this one. Uncomment and pick a size if you start accepting uploads;
+		# otherwise leave it, and see docs/deployment.md's "limit counts
+		# requests, not bytes" for the lever that does exist.
 		# request_body {
 		# 	max_size 10MB
 		# }

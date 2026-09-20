@@ -368,23 +368,45 @@ exec` invocation demonstrated above:
 0 15 * * * cd /path/to/reim && podman compose -f deploy/docker-compose.prod.yml --env-file deploy/.env exec -T api reim alert check
 ```
 
-This substitution was not itself run as a cron job during this guide's own
-verification — what was verified is each piece of it separately: the
-`pipeline schedule` output above (the timing fields and subcommands), the
-`/opt/venv` vs. `.venv` mismatch (read from `Dockerfile`), and the `exec api
-reim <subcommand>` form (run directly, for `pipeline run` and `alert check`,
-elsewhere in this guide). **Also untested here, and worth protecting against
-before you rely on it:** under rootless Podman, `crontab`'s own job
-environment is a bare one — no login session ran to set it up — and
-typically lacks `XDG_RUNTIME_DIR`, which is where `podman` looks for its API
-socket (`$XDG_RUNTIME_DIR/podman/podman.sock`). Without it, the `podman
-compose exec` line above fails with something like `unable to connect to
-Podman socket`, and cron's own behavior on a failing job is to mail the
-output to the crontab's owner rather than show it anywhere you would notice
-at the time. Set `XDG_RUNTIME_DIR=/run/user/<uid>` (your numeric UID) at the
-top of the crontab, or in each line before the command, so the job environment
-matches the one your interactive shell already has when `podman compose`
-works there.
+Both of those substituted lines have now been run, in an environment
+stripped barer than a cron job's: `env -i PATH=/usr/bin:/bin`, empty apart
+from `PATH`, where a cron job additionally gets `SHELL`, `LOGNAME` and
+`HOME` (`crontab(5)`). Both succeeded against this compose file's `api`
+container:
+
+```text
+env -i PATH=/usr/bin:/bin /bin/sh -c 'cd /path/to/reim && podman compose \
+  -f deploy/docker-compose.prod.yml --env-file deploy/.env \
+  exec -T api reim alert check'
+
+No alert conditions are firing.                              (exit 0)
+
+... the same, with: exec -T api reim pipeline run-all --frequency daily
+
+✓ bcn_exchange_rate      success  extracted=51    inserted=51
+✓ banguat_exchange_rate  success  extracted=26814 inserted=26814
+2/2 pipeline(s) succeeded                                    (exit 0)
+```
+
+**`XDG_RUNTIME_DIR` is not the trap it looks like.** It really is absent
+from that environment, and `podman` did not need it: unset, `podman info`
+still reported `RunRoot=/run/user/1000/containers` and
+`Socket=/run/user/1000/podman/podman.sock` — Podman 5.8.7 resolved the
+invoking UID's own runtime directory without being told where it was.
+Setting `XDG_RUNTIME_DIR=/run/user/<uid>` at the top of the crontab costs
+nothing, but it is not what makes these lines work, so it is not the fix
+if a job of yours fails — and cron's behavior on a failing job is to mail
+the output to the crontab's owner rather than show it anywhere you would
+notice at the time.
+
+**Two things this does not cover, and they are what to check first if one
+does fail.** The lines were run from a shell, not dispatched by `crond`,
+so nothing here measures what your own cron daemon's PAM stack hands a
+job. And the directory Podman fell back to, `/run/user/$UID`, is a login
+session's: on the host measured, `loginctl show-user` reported
+`Linger=yes`, so it was there whether or not anyone was logged in. Whether
+that fallback still finds it with lingering off and nobody logged in was
+not measured.
 
 ## Point alerting at a webhook
 
