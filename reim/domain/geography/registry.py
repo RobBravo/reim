@@ -23,8 +23,9 @@ class AdministrativeAreaDefinition:
 
 #: Panama's ten provinces, as INEC's own ``nivel_geografico=Provincia``
 #: choropleth endpoint codes them. Codes "10"-"12" are the three indigenous
-#: comarcas, a different administrative category, and never appear in a
-#: ``Provincia``-level response.
+#: comarcas, a different administrative category and not provinces. Some
+#: ``Provincia``-level responses include them; connectors reading this data
+#: must filter them out rather than assume they are absent.
 PANAMA_PROVINCES: tuple[AdministrativeAreaDefinition, ...] = (
     AdministrativeAreaDefinition(
         country_iso2="PA", level="province", code="01", name="Bocas del Toro"
