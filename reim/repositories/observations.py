@@ -12,7 +12,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from reim.core.constants import ObservationStatus, ValidationStatus
-from reim.database.models import Country, DataSource, Indicator, Observation
+from reim.database.models import AdministrativeArea, Country, DataSource, Indicator, Observation
 
 #: Columns callers may sort by, mapped to their ORM attributes.
 SORTABLE_COLUMNS = {
@@ -32,6 +32,7 @@ class ObservationFilters:
     indicator: str | None = None
     source: str | None = None
     category: str | None = None
+    administrative_area: str | None = None
     period_start_from: date | None = None
     period_start_to: date | None = None
     validation_status: ValidationStatus | None = None
@@ -44,6 +45,7 @@ def _base_query() -> Select[tuple[Observation]]:
         .join(Observation.country)
         .join(Observation.indicator)
         .join(Observation.source)
+        .outerjoin(Observation.administrative_area)
     )
 
 
@@ -59,6 +61,8 @@ def apply_filters[S: Select[Any]](statement: S, filters: ObservationFilters) -> 
         statement = statement.where(Indicator.category == filters.category)
     if filters.source:
         statement = statement.where(DataSource.source_key == filters.source)
+    if filters.administrative_area:
+        statement = statement.where(AdministrativeArea.code == filters.administrative_area)
     if filters.period_start_from:
         statement = statement.where(Observation.period_start >= filters.period_start_from)
     if filters.period_start_to:
@@ -78,6 +82,7 @@ def count_observations(session: Session, filters: ObservationFilters) -> int:
         .join(Observation.country)
         .join(Observation.indicator)
         .join(Observation.source)
+        .outerjoin(Observation.administrative_area)
     )
     return int(session.scalar(apply_filters(statement, filters)) or 0)
 
@@ -100,6 +105,7 @@ def list_observations(
             joinedload(Observation.country),
             joinedload(Observation.indicator),
             joinedload(Observation.source),
+            joinedload(Observation.administrative_area),
         )
         .order_by(order, Observation.id)
         .limit(limit)
@@ -152,6 +158,7 @@ def latest_observations(
             joinedload(Observation.country),
             joinedload(Observation.indicator),
             joinedload(Observation.source),
+            joinedload(Observation.administrative_area),
         )
         .distinct(Observation.country_id, Observation.indicator_id, Observation.source_id)
         .order_by(

@@ -331,6 +331,50 @@ def test_latest_respects_filters(client: TestClient) -> None:
     assert rows[0]["indicator_code"] == "ni_cpi_inflation_annual"
 
 
+def test_observations_filters_by_administrative_area(
+    client: TestClient, seeded_session: Session, make_observation
+) -> None:  # type: ignore[no-untyped-def]
+    from reim.services.observation_writer import write_observations
+
+    write_observations(
+        seeded_session,
+        [
+            make_observation(
+                "2023", "205.1", country_iso3="PAN", indicator_code="ni_cpi_inflation_annual"
+            ),
+            make_observation(
+                "2023",
+                "9.6",
+                country_iso3="PAN",
+                indicator_code="ni_cpi_inflation_annual",
+                administrative_area_code="01",
+            ),
+        ],
+        connector_version="1.0.0",
+    )
+    seeded_session.commit()
+
+    unfiltered = client.get(
+        "/api/v1/observations", params={"country": "PA", "indicator": "ni_cpi_inflation_annual"}
+    )
+    assert unfiltered.status_code == 200
+    assert unfiltered.json()["meta"]["total"] == 2
+
+    filtered = client.get(
+        "/api/v1/observations",
+        params={
+            "country": "PA",
+            "indicator": "ni_cpi_inflation_annual",
+            "administrative_area": "01",
+        },
+    )
+    assert filtered.status_code == 200
+    body = filtered.json()
+    assert body["meta"]["total"] == 1
+    assert body["data"][0]["administrative_area_code"] == "01"
+    assert body["data"][0]["administrative_area_name"] == "Bocas del Toro"
+
+
 # --------------------------------------------------------------------------
 # CSV export
 # --------------------------------------------------------------------------

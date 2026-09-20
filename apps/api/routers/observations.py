@@ -33,6 +33,13 @@ def observation_filters(
     indicator: Annotated[str | None, Query(description="REIM indicator code.")] = None,
     source: Annotated[str | None, Query(description="Catalog source key.")] = None,
     category: Annotated[str | None, Query(description="Indicator category.")] = None,
+    administrative_area: Annotated[
+        str | None,
+        Query(
+            description="Publisher's code for a subnational area. Unset returns both "
+            "national and subnational rows."
+        ),
+    ] = None,
     date_from: Annotated[
         date | None, Query(description="Earliest period start, inclusive (YYYY-MM-DD).")
     ] = None,
@@ -54,6 +61,7 @@ def observation_filters(
         indicator=indicator,
         source=source,
         category=category,
+        administrative_area=administrative_area,
         period_start_from=date_from,
         period_start_to=date_to,
         validation_status=validation_status,

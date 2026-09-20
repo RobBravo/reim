@@ -46,6 +46,13 @@ class ObservationRead(BaseModel):
     source_record_id: str | None
     content_hash: str
 
+    administrative_area_code: str | None = Field(
+        default=None, description="Publisher's code for a subnational area, e.g. a province."
+    )
+    administrative_area_name: str | None = Field(
+        default=None, description="Human-readable name of the administrative area."
+    )
+
     status: ObservationStatus
     validation_status: ValidationStatus
     revision_count: int = Field(description="How many times the source has revised this datapoint.")
@@ -78,6 +85,12 @@ class ObservationRead(BaseModel):
             source_url=observation.source_url,
             source_record_id=observation.source_record_id,
             content_hash=observation.content_hash,
+            administrative_area_code=(
+                observation.administrative_area.code if observation.administrative_area else None
+            ),
+            administrative_area_name=(
+                observation.administrative_area.name if observation.administrative_area else None
+            ),
             status=observation.status,
             validation_status=observation.validation_status,
             revision_count=observation.revision_count,
