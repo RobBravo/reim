@@ -173,11 +173,26 @@ pattern exactly, called from `write_observations()` only when
 the same way a source publishing for an unregistered country already does —
 this *is* §6's "closed set" guard test, not a separate mechanism.
 
-`compute_content_hash` and `natural_key`
-(`reim/domain/pipelines/models.py:69,83`) both fold in
-`administrative_area_code`, so a provincial and a national observation for
-the same indicator and period hash and key differently — required for the
-extended natural key in §3.2 to mean anything.
+**Only `NormalizedObservation.natural_key`** (`reim/domain/pipelines/models.py:83`,
+and its module-level counterpart `reim.domain.observations.hashing.natural_key`)
+folds in `administrative_area_code`. This is what
+`reim/domain/quality/checks.py:100`'s in-batch duplicate check
+(`Counter(obs.natural_key for obs in observations)`) uses to catch
+accidental duplicates *within one connector run* — without the change, ten
+provincial rows sharing a country/indicator/source/period would count as
+ten duplicates of the same key and the standard quality battery would flag
+the whole batch. `compute_content_hash`/`content_hash()` need **no
+change**: it is only ever compared against a single already-identified row
+returned by `get_by_natural_key` (§3.3 below, extended with
+`administrative_area_id`), so which row that is is the lookup's job, not
+the hash's — folding identity into a value hash would blur the distinction
+this module's own docstring draws between the two.
+
+`reim/repositories/observations.py:168`'s `get_by_natural_key` gains an
+`administrative_area_id: uuid.UUID | None = None` parameter, added to its
+`where(...)` clause, and `observation_writer.py`'s `_build_observation`
+(`reim/services/observation_writer.py:207`) sets
+`administrative_area_id=area.id if area else None` on the row it builds.
 
 ## 4. `/compare` must not see subnational rows
 
@@ -231,19 +246,25 @@ reads these new indicators unless a later increment points them there.
 covering all three variables (§2.1) — the same "one source, several
 indicators" shape as most existing connectors (e.g. the CEPALSTAT family).
 
-`extract()`: three requests, `GET {base_url}/data/choropleth?nivel_geografico=Provincia&id_variable={id}&anio={year}`
-for each of the three variable ids. `year` starts at 2023 (the only populated
-year today) and is not hardcoded past that — the connector reads whatever
-year the catalogue's `anio_referencia` names for each variable, so a future
-INEC update is picked up without a code change, the same principle SIECA's
-connector already applies to its quarter window.
+`extract()`: **four requests**, corrected from an earlier draft of this
+section that said three and did not account for discovering the year. One
+`GET {base_url}/meta/estructura-completa` (the catalogue, 94 KB, needs no
+parameters) to read each of the three variables' current `anio_referencia`
+— not hardcoded to 2023 past this point, so a future INEC republication is
+picked up without a code change, the same principle SIECA's connector
+already applies to its quarter window. Then one
+`GET {base_url}/data/choropleth?nivel_geografico=Provincia&id_variable={id}&anio={year}`
+per variable, using that variable's own discovered year (they are not
+guaranteed to move together, though they do today).
 
 `transform()`: for each response row, the `is_total: true` row becomes a
 `NormalizedObservation` with `administrative_area_code=None`; each
-`is_total: false` row becomes one with `administrative_area_code=id_provincia`
-and the row's own province name carried in `raw_metadata` for the runner's
-create-if-missing resolution (§3.3). `unidad_medida` from the row maps to
-`unit` directly — INEC's own unit strings, not re-derived.
+`is_total: false` row becomes one with `administrative_area_code=id_provincia`.
+The row's own province name is carried in `raw_metadata` for provenance —
+resolution against the seeded `AdministrativeArea` registry (§3.3) is by
+code, not by this name, and an unrecognized code is what makes
+`require_administrative_area_by_code` raise. `unidad_medida` from the row
+maps to `unit` directly — INEC's own unit strings, not re-derived.
 
 `validate()`: `min_observations` per variable is 11 (10 provinces + 1
 national) per run — a run that returns fewer is either a partial response or
