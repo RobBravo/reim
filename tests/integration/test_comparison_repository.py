@@ -172,6 +172,59 @@ def test_cells_carry_their_own_currency(
     assert {cell.currency_code for cell in cells} == {"USD"}
 
 
+def test_a_provincial_observation_is_invisible_to_compare(
+    seeded_session: Session, make_observation
+) -> None:  # type: ignore[no-untyped-def]
+    """/compare has no correct behaviour for a per-province row; it must not see one.
+
+    Plants a provincial observation for an indicator/country pair /compare
+    already reads, and confirms the comparison result is identical to what it
+    would be without that row — same cell count, same value, no error.
+
+    Asserts on ``fetch_comparison_cells``, not ``count_comparison_periods``:
+    both observations share one period_start, so the periods count is
+    ``DISTINCT``-deduplicated to 1 either way and can't see a second row for
+    the same period. The cell count can, and does.
+    """
+    from reim.services.observation_writer import write_observations
+
+    panama = get_country_by_iso3(seeded_session, "PAN")
+    assert panama is not None
+
+    national = make_observation(
+        "2023", "205.1", country_iso3="PAN", indicator_code="ni_cpi_inflation_annual"
+    )
+    write_observations(seeded_session, [national], connector_version="1.0.0")
+    seeded_session.flush()
+
+    query = ComparisonQuery(
+        indicator_code="ni_cpi_inflation_annual",
+        country_ids=(panama.id,),
+        period_start_from=None,
+        period_start_to=None,
+    )
+    before_periods = count_comparison_periods(seeded_session, query)
+    before_cells = fetch_comparison_cells(seeded_session, query, limit=10, offset=0)
+
+    provincial = make_observation(
+        "2023",
+        "9.6",
+        country_iso3="PAN",
+        indicator_code="ni_cpi_inflation_annual",
+        administrative_area_code="01",
+    )
+    write_observations(seeded_session, [provincial], connector_version="1.0.0")
+    seeded_session.flush()
+
+    after_periods = count_comparison_periods(seeded_session, query)
+    after_cells = fetch_comparison_cells(seeded_session, query, limit=10, offset=0)
+
+    assert after_periods == before_periods
+    assert after_cells == before_cells
+    assert len(after_cells) == 1
+    assert after_cells[0].value_numeric == Decimal("205.1")
+
+
 @pytest.fixture
 def nicaraguan_rates(seeded_session: Session, make_observation) -> None:  # type: ignore[no-untyped-def]
     """Two months of rates, so a page-scoped query can be seen to skip one."""

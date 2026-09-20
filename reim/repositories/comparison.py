@@ -78,6 +78,7 @@ def _restrict[S: Select[Any]](statement: S, query: ComparisonQuery) -> S:
         Indicator.code == query.indicator_code,
         Observation.country_id.in_(query.country_ids),
         Observation.status == ObservationStatus.ACTIVE,
+        Observation.administrative_area_id.is_(None),
     )
     if query.period_start_from is not None:
         statement = statement.where(Observation.period_start >= query.period_start_from)
@@ -264,6 +265,7 @@ def fetch_rates(
             Observation.period_start.in_(period_starts),
             Observation.status == ObservationStatus.ACTIVE,
             Observation.value_numeric.is_not(None),
+            Observation.administrative_area_id.is_(None),
         )
     )
 
