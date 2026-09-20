@@ -12,10 +12,17 @@ from reim.database.models.observation import (
     ObservationRevision,
 )
 from reim.database.models.pipeline import DataQualityCheck, PipelineRun
-from reim.database.models.reference import Country, DataSource, Indicator, Organization
+from reim.database.models.reference import (
+    AdministrativeArea,
+    Country,
+    DataSource,
+    Indicator,
+    Organization,
+)
 
 __all__ = [
     "NATURAL_KEY_COLUMNS",
+    "AdministrativeArea",
     "AlertState",
     "ApiKey",
     "Country",

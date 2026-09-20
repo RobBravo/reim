@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -43,8 +43,36 @@ class Country(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     organizations: Mapped[list[Organization]] = relationship(back_populates="country")
     data_sources: Mapped[list[DataSource]] = relationship(back_populates="country")
     observations: Mapped[list[Observation]] = relationship(back_populates="country")
+    administrative_areas: Mapped[list[AdministrativeArea]] = relationship(back_populates="country")
 
     __table_args__ = (Index("ix_countries_is_active", "is_active"),)
+
+
+class AdministrativeArea(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A geographic subdivision below the country level.
+
+    REIM's first geography below ``Country``. ``level`` names the kind of
+    subdivision ("province" is the only value today); ``code`` is the
+    publisher's own identifier, kept verbatim rather than re-derived, so a
+    connector's fixture and REIM's stored row are traceably the same thing.
+    """
+
+    __tablename__ = "administrative_areas"
+
+    country_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("countries.id", ondelete="RESTRICT"), nullable=False
+    )
+    level: Mapped[str] = mapped_column(String(40), nullable=False)
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+
+    country: Mapped[Country] = relationship(back_populates="administrative_areas")
+    observations: Mapped[list[Observation]] = relationship(back_populates="administrative_area")
+
+    __table_args__ = (
+        UniqueConstraint("country_id", "level", "code", name="uq_administrative_area_natural_key"),
+        Index("ix_administrative_areas_country_id", "country_id"),
+    )
 
 
 class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):

@@ -25,12 +25,21 @@ from reim.database.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from reim.database.types import EconomicNumeric, enum_column
 
 if TYPE_CHECKING:
-    from reim.database.models.reference import Country, DataSource, Indicator
+    from reim.database.models.reference import AdministrativeArea, Country, DataSource, Indicator
 
 #: Natural key of an observation. A source may publish exactly one value for a
-#: given indicator, country and reporting period; a second arrival for the same
-#: key is either a no-op (identical payload) or a revision.
-NATURAL_KEY_COLUMNS = ("country_id", "indicator_id", "source_id", "period_start", "period_end")
+#: given indicator, country, reporting period and administrative area; a
+#: second arrival for the same key is either a no-op (identical payload) or a
+#: revision. ``administrative_area_id`` is ``NULL`` for every national-level
+#: observation, which every observation was until this column existed.
+NATURAL_KEY_COLUMNS = (
+    "country_id",
+    "indicator_id",
+    "source_id",
+    "period_start",
+    "period_end",
+    "administrative_area_id",
+)
 
 
 class Observation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -52,6 +61,9 @@ class Observation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     source_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("data_sources.id", ondelete="RESTRICT"), nullable=False
+    )
+    administrative_area_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("administrative_areas.id", ondelete="RESTRICT")
     )
 
     # -- Reporting period -------------------------------------------------
@@ -93,6 +105,9 @@ class Observation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     country: Mapped[Country] = relationship(back_populates="observations")
     indicator: Mapped[Indicator] = relationship(back_populates="observations")
     source: Mapped[DataSource] = relationship(back_populates="observations")
+    administrative_area: Mapped[AdministrativeArea | None] = relationship(
+        back_populates="observations"
+    )
     revisions: Mapped[list[ObservationRevision]] = relationship(
         back_populates="observation",
         cascade="all, delete-orphan",
@@ -100,7 +115,11 @@ class Observation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     __table_args__ = (
-        UniqueConstraint(*NATURAL_KEY_COLUMNS, name="uq_observations_natural_key"),
+        UniqueConstraint(
+            *NATURAL_KEY_COLUMNS,
+            name="uq_observations_natural_key",
+            postgresql_nulls_not_distinct=True,
+        ),
         CheckConstraint("period_end >= period_start", name="period_range_valid"),
         CheckConstraint(
             "value_numeric IS NOT NULL OR value_text IS NOT NULL",
