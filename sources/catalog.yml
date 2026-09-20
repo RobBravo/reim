@@ -641,3 +641,33 @@ sources:
     license: cepal_terms_of_use
     official: true
     enabled: true
+
+  # ------------------------------------------------------------------------
+  # Panama — INEC provincial economic indicators
+  #
+  # Open, keyless JSON API recovered from the "Panamá en Cifras Digital" map
+  # application's own bundle (docs/sources.md). REIM's first subnational
+  # data: provincial-level figures, plus each response's own national total.
+  # ------------------------------------------------------------------------
+  - key: inec_pa_provincial
+    name: Panama provincial economic indicators (INEC)
+    description: >-
+      Provincial-level automobile registration and building-count figures
+      from INEC's Panamá en Cifras Digital, plus each variable's national
+      total. REIM's first subnational data.
+    country: PA
+    organization: INEC_PA
+    category: real_sector
+    access_type: http_api
+    frequency: annual
+    format: json
+    base_url: https://www.inec.gob.pa/m_2/api
+    documentation_url: https://www.inec.gob.pa
+    connector: reim.ingestion.connectors.panama.inec_provincial
+    indicators:
+      - pa_automobiles_per_1000_provincial_annual
+      - pa_residential_buildings_count_provincial_annual
+      - pa_nonresidential_buildings_count_provincial_annual
+    license: public_official_data
+    official: true
+    enabled: true

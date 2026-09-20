@@ -131,6 +131,30 @@ def sieca_balance_json() -> str:
 
 
 @pytest.fixture(scope="session")
+def inec_catalogue_excerpt_json() -> str:
+    """Real INEC Panama catalogue entries for the three variables this connector reads."""
+    return (FIXTURES / "inec_catalogue_excerpt.json").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
+def inec_choropleth_232_json() -> str:
+    """Real INEC choropleth response: automobiles per 1000 inhabitants, by province, 2023."""
+    return (FIXTURES / "inec_choropleth_232.json").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
+def inec_choropleth_206_json() -> str:
+    """Real INEC choropleth response: residential building count, by province, 2023."""
+    return (FIXTURES / "inec_choropleth_206.json").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
+def inec_choropleth_207_json() -> str:
+    """Real INEC choropleth response: non-residential building count, by province, 2023."""
+    return (FIXTURES / "inec_choropleth_207.json").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
 def cepalstat_gdp_2203_json() -> str:
     """CEPALSTAT indicator 2203, total GDP at current prices (stored gzipped)."""
     return gzip.decompress((FIXTURES / "cepalstat_gdp_2203.json.gz").read_bytes()).decode("utf-8")

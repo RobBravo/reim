@@ -1076,6 +1076,45 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         value_type=ValueType.LEVEL,
         methodology_url=f"{_CEPALSTAT_DASHBOARD}?indicator_id=547&lang=en",
     ),
+    IndicatorDefinition(
+        code="pa_automobiles_per_1000_provincial_annual",
+        name="Panama — automobiles in circulation per 1,000 inhabitants, by province",
+        description=(
+            "Registered automobiles per 1,000 inhabitants, by province and nationally, from "
+            "INEC's Panamá en Cifras Digital. Sourced from municipal treasury plate-sale records."
+        ),
+        category=IndicatorCategory.REAL_SECTOR,
+        frequency=Frequency.ANNUAL,
+        unit="automóviles",
+        value_type=ValueType.RATIO,
+        methodology_url="https://www.inec.gob.pa",
+    ),
+    IndicatorDefinition(
+        code="pa_residential_buildings_count_provincial_annual",
+        name="Panama — count of residential buildings, by province",
+        description=(
+            "Count of residential building permits/constructions, by province and nationally, "
+            "from INEC's Panamá en Cifras Digital."
+        ),
+        category=IndicatorCategory.REAL_SECTOR,
+        frequency=Frequency.ANNUAL,
+        unit="unidades",
+        value_type=ValueType.LEVEL,
+        methodology_url="https://www.inec.gob.pa",
+    ),
+    IndicatorDefinition(
+        code="pa_nonresidential_buildings_count_provincial_annual",
+        name="Panama — count of non-residential buildings, by province",
+        description=(
+            "Count of non-residential building permits/constructions, by province and "
+            "nationally, from INEC's Panamá en Cifras Digital."
+        ),
+        category=IndicatorCategory.REAL_SECTOR,
+        frequency=Frequency.ANNUAL,
+        unit="unidades",
+        value_type=ValueType.LEVEL,
+        methodology_url="https://www.inec.gob.pa",
+    ),
 )
 
 INDICATORS_BY_CODE: dict[str, IndicatorDefinition] = {i.code: i for i in INDICATORS}

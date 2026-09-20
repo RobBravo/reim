@@ -65,6 +65,14 @@ ORGANIZATIONS: tuple[OrganizationDefinition, ...] = (
         website_url="https://www.siboif.gob.ni",
         country_iso2="NI",
     ),
+    OrganizationDefinition(
+        code="INEC_PA",
+        name="Instituto Nacional de Estadística y Censo",
+        short_name="INEC",
+        organization_type=OrganizationType.STATISTICS_OFFICE,
+        website_url="https://www.inec.gob.pa",
+        country_iso2="PA",
+    ),
     # -- Regional ---------------------------------------------------------
     OrganizationDefinition(
         code="SIECA",

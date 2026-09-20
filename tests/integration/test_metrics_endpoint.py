@@ -47,7 +47,7 @@ def test_the_scrape_carries_both_the_process_and_the_pipeline_metrics(
 def test_every_catalog_pipeline_appears_in_the_scrape(client: TestClient) -> None:
     body = client.get("/metrics").text
 
-    assert body.count("reim_pipeline_enabled{") == 23
+    assert body.count("reim_pipeline_enabled{") == 24
 
 
 @requires_db

@@ -1,0 +1,44 @@
+[
+  {
+    "id": 206,
+    "nombre": "Cantidad de edificaciones residenciales",
+    "definicion": "Corresponde a la cantidad de edificaciones residenciales a construirse, al obtenerse la aprobación de los planos, en las oficinas de ingeniería municipal respectivas.\r\n",
+    "fuente": "Permisos  de construcción  concedidos por  la Dirección de Obras y  Construcciones del  Municipio de Panamá, y en  las oficinas de Ingeniería Municipal de los distritos restantes.",
+    "anio_referencia": 2023,
+    "is_porcentaje": false,
+    "es_general": false,
+    "unidad_medida": "unidades",
+    "display_order": 0,
+    "frecuencia_actualizacion": "Anual",
+    "nivel_geografico_minimo": "Provincia",
+    "comentarios": null
+  },
+  {
+    "id": 207,
+    "nombre": "Cantidad de edificaciones no residenciales",
+    "definicion": "Corresponde a la cantidad de edificaciones no residenciales a construirse, al obtenerse la aprobación de los planos, en las oficinas de ingeniería municipal respectivas.\r\n",
+    "fuente": "Permisos  de construcción  concedidos por  la Dirección de Obras y  Construcciones del  Municipio de Panamá, y en  las oficinas de Ingeniería Municipal de los distritos restantes.",
+    "anio_referencia": 2023,
+    "is_porcentaje": false,
+    "es_general": false,
+    "unidad_medida": "unidades",
+    "display_order": 0,
+    "frecuencia_actualizacion": "Anual",
+    "nivel_geografico_minimo": "Provincia",
+    "comentarios": null
+  },
+  {
+    "id": 232,
+    "nombre": "Automóviles en circulación por cada 1000 habitantes",
+    "definicion": "Automóviles en circulación por cada 1000 habitantes",
+    "fuente": "Registros de venta de placas en las Tesorerías Municipales de la República.",
+    "anio_referencia": 2023,
+    "is_porcentaje": true,
+    "es_general": false,
+    "unidad_medida": "automóviles",
+    "display_order": 3,
+    "frecuencia_actualizacion": "Anual",
+    "nivel_geografico_minimo": "Provincia",
+    "comentarios": null
+  }
+]

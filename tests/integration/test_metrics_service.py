@@ -58,7 +58,7 @@ def test_every_catalog_entry_gets_a_row_even_with_no_runs(seeded_session: Sessio
     snapshot = build_metrics_snapshot(seeded_session)
 
     assert snapshot.database_up is True
-    assert len(snapshot.pipelines) == 23
+    assert len(snapshot.pipelines) == 24
     never_ran = _for(snapshot, "worldbank_ni_cpi_inflation")
     assert never_ran.last_run_at is None
     assert never_ran.last_run_records is None

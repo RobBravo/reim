@@ -539,3 +539,29 @@ indicators:
 
   bop_reserve_assets_quarterly:
     <<: *balance_of_payments
+
+  # Panama — INEC provincial indicators -----------------------------------
+  # freshness_max_age_days is set loose (800, this file's widest precedent)
+  # because INEC's own declared cadence is "Anual" but the actual
+  # republication interval is unconfirmed: only one reference year has ever
+  # been observed for any of these three variables.
+  pa_automobiles_per_1000_provincial_annual:
+    min_value: 0
+    max_value: 2000
+    allow_negative: false
+    allow_zero: true
+    freshness_max_age_days: 800
+
+  pa_residential_buildings_count_provincial_annual:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: true
+    freshness_max_age_days: 800
+
+  pa_nonresidential_buildings_count_provincial_annual:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: true
+    freshness_max_age_days: 800

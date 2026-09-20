@@ -204,11 +204,11 @@ def client(session: Session) -> Iterator[TestClient]:
 
 @requires_db
 def test_every_catalog_source_appears(client: TestClient) -> None:
-    """All 23, not a page of them: this is a catalog, not a feed."""
+    """All 24, not a page of them: this is a catalog, not a feed."""
     body = client.get("/").text
 
     catalog = get_catalog()
-    assert len(catalog.sources) == 23
+    assert len(catalog.sources) == 24
     for entry in catalog.sources:
         assert entry.name in body, f"{entry.name} is missing from the page"
 
