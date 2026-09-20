@@ -2426,7 +2426,7 @@ declares its own API.
 | **Organization** | Instituto Nacional de Estadística y Censo (`INEC`) — Panama's statistics institute, **not a central bank** |
 | **Base URL** | `https://www.inec.gob.pa/m_2/api`, declared as `baseURL` in `/mapi/assets/index-*.js` |
 | **Auth** | **None** for the routes below. The bundle attaches a bearer token when one is in `localStorage`, and `POST /admin/login` exists, but the catalogue and the data answer without either |
-| **Status** | ⚠️ **Reachable and open, not ingested** — see the reason below |
+| **Status** | ✅ **Enabled** — 33 observations (3 national + 30 provincial), measured 2026-09-20 |
 
 The base URL was recovered the same way CEPALSTAT's was: by reading the
 portal's own JavaScript. The bundle calls twenty-one routes; these are the ones
@@ -2478,24 +2478,62 @@ DTIE."}` for every cause, so it never says what was wrong. A well-formed
 request that matches nothing returns `200` with `[]`, which is the only way to
 tell a bad parameter from an empty result.
 
-#### Why REIM does not ingest it: one year, not a series
+#### What ships: three `Anual` variables, provincial and national, REIM's first subnational data
 
 `anio=2023` returns data. **`anio=2022` and `anio=2021` return `[]`**, and the
-catalogue agrees — every variable carries a single `anio_referencia`. The
-`anio` and `mes` parameters exist, but only one year is populated.
+catalogue agrees — every variable carries a single `anio_referencia`. That is
+still true today: this remains one reference year, not a growing series. What
+changed is that REIM gained a reason to store a single cross-section anyway —
+a geographic dimension below the country, which no source had offered before.
+`Observation` gained a nullable `administrative_area_id`, and a new
+`AdministrativeArea` reference table holds Panama's ten provinces, seeded
+idempotently by `reim db seed`.
 
-This is a map viewer, not a statistical archive. REIM stores time series per
-country; a single cross-section, however open, has no series to store. Panama's
-GDP is also [already held](#cepal--annual-gross-domestic-product) annually at
-national level from CEPALSTAT, so the one economic variable that overlaps adds
-nothing.
+Of the 25 economic variables under the catalogue's `Económica` theme, most
+carry `frecuencia_actualizacion: Decenal` — tied to the population census,
+next due ~2033. A `Decenal` variable is not meaningfully a series REIM can
+track; it is one more cross-section, the same defect that keeps the rest of
+the catalogue out. A `Provincia`-level, genuinely `Anual` cluster exists
+under `Industriales` and `Transporte`, and these three are what the
+`inec_pa_provincial` connector reads:
 
-**What it would be good for is subnational data**, which `ROADMAP.md` places in
-v0.6.0. The 25 economic variables are provincial and district-level — building
-permits, businesses by size and activity, municipal revenue and spending,
-vehicles in circulation — none of which REIM holds at any resolution. If that
-line is ever taken up, this API is open, documented by its own catalogue, and
-the parameters are recorded above.
+| id | Name | REIM indicator | Unit |
+|---|---|---|---|
+| 232 | Automóviles en circulación por cada 1000 habitantes | `pa_automobiles_per_1000_provincial_annual` | automóviles |
+| 206 | Cantidad de edificaciones residenciales | `pa_residential_buildings_count_provincial_annual` | unidades |
+| 207 | Cantidad de edificaciones no residenciales | `pa_nonresidential_buildings_count_provincial_annual` | unidades |
+
+None duplicates data REIM already holds: Panama's GDP is already stored
+annually at national level from
+[CEPALSTAT](#cepal--annual-gross-domestic-product), and none of these three is
+GDP.
+
+**Each variable's `/data/choropleth` response is 11 rows**: ten carry a real
+`id_provincia` and `is_total: false`, and the eleventh carries
+`id_provincia: null` and `is_total: true` — Panama's own national figure for
+that variable and year, stored as-is rather than recomputed from the ten
+provincial rows. Three variables × 11 rows = **33 observations**: **3
+national, 30 provincial**, across the 10 provinces, all reference year 2023.
+Measured 2026-09-20 against the live API and confirmed in the database by an
+independent review. The connector reads each variable's `anio_referencia`
+from the catalogue at run time rather than hardcoding `2023`, so a future
+INEC republication is picked up without a code change — the same principle
+`sieca_services_trade.py`'s `extract()` applies to its quarter window.
+
+**Excluded, and recorded here rather than silently dropped** — the same
+"measured but not stored" treatment every other excluded item in this file
+gets:
+
+| Variable | id(s) | Why excluded |
+|---|---|---|
+| `Empresas según naturaleza jurídica` | 66/171 | `Decenal` — the census-derived "businesses" figure the sources doc originally described; not a series |
+| `Gastos`/`Ingresos de los municipios` | 210/209 | `Decenal` — the census-derived "municipal revenue and spending" figure the sources doc originally described; not a series |
+| Construction area and value | 202–205 | `Anual` and `Provincia`-level, the same shape as the three chosen variables — a reasonable second increment, left out here to keep the first connector to three variables |
+
+District (`Corregimiento`) level is also not ingested: `AdministrativeArea.level`
+carries it without a further schema change, but no district data is read by
+this connector. If either line is ever taken up, this API is open, documented
+by its own catalogue, and the parameters are recorded above.
 
 ---
 

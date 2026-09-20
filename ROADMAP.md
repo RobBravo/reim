@@ -121,11 +121,13 @@ and the tenth — the national central banks — has its first country.
 
   **INEC was probed on 2026-09-11 and does have an open API** — recovered from
   its map application's own JavaScript, with a 218-variable catalogue that
-  needs no authentication. It is not ingested because it carries **one
-  reference year, not a series**: `anio=2023` returns data and 2022 returns
-  nothing. Its value is subnational, which is a v0.6.0 concern, and the routes
-  and parameters are recorded so that increment starts from a measurement. See
-  `docs/sources.md`.
+  needs no authentication. It carries **one reference year, not a series**:
+  `anio=2023` returns data and 2022 returns nothing. Its value turned out to
+  be subnational — a v0.6.0 concern — and three of its variables are now
+  ingested there, ahead of this line's own place in the sequence, precisely
+  because the routes and parameters recorded here let that increment start
+  from a measurement. See `docs/sources.md` and the **Geospatial data** bullet
+  under v0.6.0.
 - ~~**SIECA** regional trade series~~ ✅ **done** — not the intra-regional
   merchandise trade this line originally imagined, which has no
   machine-readable endpoint today, but **quarterly trade in services**: 1,242
@@ -401,14 +403,28 @@ Economic figures become far more useful next to what happened around them.
   discipline applied to text.
 - **Event correlation**: link a datapoint to publications and policy events in
   its period. Correlation surfaced as *context*, never asserted as causation.
-- **Geospatial data** where it exists at subnational resolution. One route is
-  already measured: **INEC Panama** serves 218 variables — 25 of them economic
-  — at provincial and district level through an open, unauthenticated API,
-  recovered from its map application's JavaScript on 2026-09-11. It carries a
-  single reference year rather than a series, which is why it is not in v0.3.0;
-  for this line that matters far less. `docs/sources.md` records the base URL,
-  the routes and the two parameter traps that cost the probing most of its
-  time.
+- ~~**Geospatial data** where it exists at subnational resolution.~~ ✅ **done**
+  for its first route — REIM's first geographic dimension below the country: a
+  new `AdministrativeArea` reference table and a nullable FK from
+  `Observation` onto it, seeded idempotently with Panama's ten provinces.
+  **INEC Panama** ships three provincial economic indicators — automobiles in
+  circulation per 1,000 inhabitants, and counts of residential and
+  non-residential buildings — all genuinely `Anual` rather than `Decenal`,
+  none duplicating Panama's GDP, which REIM already holds nationally from
+  CEPALSTAT: **33 observations**, 3 national and 30 provincial, across the 10
+  provinces, reference year 2023, measured 2026-09-20 against the live API
+  and confirmed in the database by an independent review.
+  `GET /api/v1/observations` filters by `administrative_area` and returns
+  both national and provincial rows by default; `GET /api/v1/compare` is
+  unaffected by their presence, held by a guard test that plants one and
+  confirms the comparison result is unchanged. See `docs/sources.md`.
+
+  **Still open**: district (`Corregimiento`) level — `AdministrativeArea.level`
+  carries it without a further schema change, but no district data is
+  ingested; INEC's `Decenal` variables (`Empresas según naturaleza jurídica`,
+  municipal `Gastos`/`Ingresos`) and construction area/value (id 202–205),
+  all measured but excluded, same section of `docs/sources.md`; and any
+  subnational source besides INEC Panama, none of which is known.
 
 ## v0.7.0 — Interfaces
 
