@@ -403,7 +403,26 @@ and the tenth — the national central banks — has its first country.
   not bytes, so `/api/v1/observations/export.csv`'s row cap is a separate
   concern the guide states plainly.
 
-## v0.6.0 — Context
+## v0.6.0 — A modern web experience
+
+Replaces every server-rendered page (`apps/web`) with a statically-exported
+React frontend — an interactive WebGL map (MapLibre) choropleth of countries
+and Panama's provinces, and polished time-series charts, in place of the
+current no-JavaScript, server-drawn SVG pages. Reopens that "no JavaScript"
+decision on purpose, after `osirisai.live` (`github.com/simplifaisoul/osiris`)
+set the bar for interaction quality this project's own data deserved; the
+project's OSINT subject matter and real-time features do not transfer, only
+three of its libraries do (`maplibre-gl`, `lightweight-charts`,
+`tailwindcss`). `apps/api`'s JSON contract, rate limiter and provenance
+guarantees are untouched — this is a presentation-layer replacement, not a
+data-layer change. Design: `docs/superpowers/specs/2026-09-21-modern-web-frontend-design.md`.
+
+Not yet implemented. Its exact sequencing relative to the rest of v0.6.0's
+former geospatial work (now folded into v0.7.0 below, where district-level
+Panama data and the other geospatial gaps still wait) is an open decision,
+not a commitment this document makes.
+
+## v0.7.0 — Context
 
 Economic figures become far more useful next to what happened around them.
 
@@ -435,14 +454,14 @@ Economic figures become far more useful next to what happened around them.
   all measured but excluded, same section of `docs/sources.md`; and any
   subnational source besides INEC Panama, none of which is known.
 
-## v0.7.0 — Interfaces
+## v0.8.0 — Interfaces
 
 - **Python SDK** — typed client over the REST API.
 - **Distributable CLI** (`pipx install reim-cli`) for querying and exporting.
 - **MCP server** so assistants can query REIM's data with provenance intact.
 - Bulk export snapshots (Parquet), versioned and checksummed.
 
-## v0.8.0 — Analysis
+## v0.9.0 — Analysis
 
 Deliberately last, and deliberately constrained.
 
