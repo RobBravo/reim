@@ -16,12 +16,18 @@ from reim.domain.sources.catalog import load_catalog
 from reim.ingestion.connectors.panama.inec_provincial import INECProvincialConnector
 from tests.conftest import REPO_ROOT
 
-VARIABLE_IDS = (232, 206, 207)
+VARIABLE_IDS = (232, 206, 207, 202, 203, 204, 205)
 INDICATOR_CODES = {
     232: "pa_automobiles_per_1000_provincial_annual",
     206: "pa_residential_buildings_count_provincial_annual",
     207: "pa_nonresidential_buildings_count_provincial_annual",
+    202: "pa_residential_construction_area_provincial_annual",
+    203: "pa_nonresidential_construction_area_provincial_annual",
+    204: "pa_residential_construction_value_provincial_annual",
+    205: "pa_nonresidential_construction_value_provincial_annual",
 }
+#: The two variables whose unit is a currency ("balboas"), not a count or ratio.
+CURRENCY_VARIABLE_IDS = (204, 205)
 
 
 def build_connector() -> INECProvincialConnector:
@@ -29,9 +35,7 @@ def build_connector() -> INECProvincialConnector:
     return INECProvincialConnector(catalog.get("inec_pa_provincial"))
 
 
-def build_raw(
-    catalogue: str, choropleth_232: str, choropleth_206: str, choropleth_207: str
-) -> RawDataset:
+def build_raw(catalogue: str, choropleths: dict[int, str]) -> RawDataset:
     return RawDataset(
         source_key="inec_pa_provincial",
         retrieved_at=datetime(2026, 9, 20, 12, 0, tzinfo=UTC),
@@ -39,9 +43,7 @@ def build_raw(
         payload={
             "catalogue": json.loads(catalogue),
             "choropleth": {
-                232: json.loads(choropleth_232),
-                206: json.loads(choropleth_206),
-                207: json.loads(choropleth_207),
+                variable_id: json.loads(payload) for variable_id, payload in choropleths.items()
             },
         },
         content_type="application/json",
@@ -56,12 +58,22 @@ def raw(
     inec_choropleth_232_json: str,
     inec_choropleth_206_json: str,
     inec_choropleth_207_json: str,
+    inec_choropleth_202_json: str,
+    inec_choropleth_203_json: str,
+    inec_choropleth_204_json: str,
+    inec_choropleth_205_json: str,
 ) -> RawDataset:
     return build_raw(
         inec_catalogue_excerpt_json,
-        inec_choropleth_232_json,
-        inec_choropleth_206_json,
-        inec_choropleth_207_json,
+        {
+            232: inec_choropleth_232_json,
+            206: inec_choropleth_206_json,
+            207: inec_choropleth_207_json,
+            202: inec_choropleth_202_json,
+            203: inec_choropleth_203_json,
+            204: inec_choropleth_204_json,
+            205: inec_choropleth_205_json,
+        },
     )
 
 
@@ -72,7 +84,30 @@ def test_each_variable_yields_eleven_observations(raw: RawDataset) -> None:
     for obs in observations:
         by_indicator[obs.indicator_code] = by_indicator.get(obs.indicator_code, 0) + 1
     assert by_indicator == dict.fromkeys(INDICATOR_CODES.values(), 11)
-    assert len(observations) == 33
+    assert len(observations) == 77
+
+
+def test_only_the_value_variables_carry_a_currency(raw: RawDataset) -> None:
+    """202/203 (area, square metres) carry no currency; 204/205 (value, balboas) carry PAB.
+
+    Guards the connector's own "store what's published, never convert" rule:
+    balboas are pegged 1:1 to the dollar, but the source publishes balboas, so
+    the observation must say PAB, never USD.
+    """
+    observations = build_connector().transform(raw)
+
+    by_variable: dict[int, set[str | None]] = {}
+    for obs in observations:
+        variable_id = next(
+            vid for vid, code in INDICATOR_CODES.items() if code == obs.indicator_code
+        )
+        by_variable.setdefault(variable_id, set()).add(obs.currency_code)
+
+    for variable_id, currencies in by_variable.items():
+        if variable_id in CURRENCY_VARIABLE_IDS:
+            assert currencies == {"PAB"}, f"variable {variable_id}: {currencies}"
+        else:
+            assert currencies == {None}, f"variable {variable_id}: {currencies}"
 
 
 def test_exactly_one_national_observation_per_indicator(raw: RawDataset) -> None:
@@ -131,21 +166,12 @@ def test_the_year_comes_from_the_catalogue_not_a_constant(raw: RawDataset) -> No
         payload={
             "catalogue": catalogue,
             "choropleth": {
-                232: json.loads(
-                    (REPO_ROOT / "tests" / "fixtures" / "inec_choropleth_232.json").read_text(
-                        encoding="utf-8"
-                    )
-                ),
-                206: json.loads(
-                    (REPO_ROOT / "tests" / "fixtures" / "inec_choropleth_206.json").read_text(
-                        encoding="utf-8"
-                    )
-                ),
-                207: json.loads(
-                    (REPO_ROOT / "tests" / "fixtures" / "inec_choropleth_207.json").read_text(
-                        encoding="utf-8"
-                    )
-                ),
+                variable_id: json.loads(
+                    (
+                        REPO_ROOT / "tests" / "fixtures" / f"inec_choropleth_{variable_id}.json"
+                    ).read_text(encoding="utf-8")
+                )
+                for variable_id in VARIABLE_IDS
             },
         },
         content_type="application/json",

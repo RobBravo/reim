@@ -2426,7 +2426,7 @@ declares its own API.
 | **Organization** | Instituto Nacional de Estadística y Censo (`INEC`) — Panama's statistics institute, **not a central bank** |
 | **Base URL** | `https://www.inec.gob.pa/m_2/api`, declared as `baseURL` in `/mapi/assets/index-*.js` |
 | **Auth** | **None** for the routes below. The bundle attaches a bearer token when one is in `localStorage`, and `POST /admin/login` exists, but the catalogue and the data answer without either |
-| **Status** | ✅ **Enabled** — 33 observations (3 national + 30 provincial), measured 2026-09-20 |
+| **Status** | ✅ **Enabled** — 77 observations (7 national + 70 provincial), measured 2026-09-21 |
 
 The base URL was recovered the same way CEPALSTAT's was: by reading the
 portal's own JavaScript. The bundle calls twenty-one routes; these are the ones
@@ -2478,7 +2478,7 @@ DTIE."}` for every cause, so it never says what was wrong. A well-formed
 request that matches nothing returns `200` with `[]`, which is the only way to
 tell a bad parameter from an empty result.
 
-#### What ships: three `Anual` variables, provincial and national, REIM's first subnational data
+#### What ships: seven `Anual` variables, provincial and national, REIM's first subnational data
 
 `anio=2023` returns data. **`anio=2022` and `anio=2021` return `[]`**, and the
 catalogue agrees — every variable carries a single `anio_referencia`. That is
@@ -2494,7 +2494,7 @@ carry `frecuencia_actualizacion: Decenal` — tied to the population census,
 next due ~2033. A `Decenal` variable is not meaningfully a series REIM can
 track; it is one more cross-section, the same defect that keeps the rest of
 the catalogue out. A `Provincia`-level, genuinely `Anual` cluster exists
-under `Industriales` and `Transporte`, and these three are what the
+under `Industriales` and `Transporte`, and these seven are what the
 `inec_pa_provincial` connector reads:
 
 | id | Name | REIM indicator | Unit |
@@ -2502,23 +2502,35 @@ under `Industriales` and `Transporte`, and these three are what the
 | 232 | Automóviles en circulación por cada 1000 habitantes | `pa_automobiles_per_1000_provincial_annual` | automóviles |
 | 206 | Cantidad de edificaciones residenciales | `pa_residential_buildings_count_provincial_annual` | unidades |
 | 207 | Cantidad de edificaciones no residenciales | `pa_nonresidential_buildings_count_provincial_annual` | unidades |
+| 202 | Área de construcción de edificaciones residenciales | `pa_residential_construction_area_provincial_annual` | metros cuadrados |
+| 203 | Área de construcción de edificaciones no residenciales | `pa_nonresidential_construction_area_provincial_annual` | metros cuadrados |
+| 204 | Valor de las construcciones de edificaciones residenciales | `pa_residential_construction_value_provincial_annual` | balboas |
+| 205 | Valor de las construcciones de edificaciones no residenciales | `pa_nonresidential_construction_value_provincial_annual` | balboas |
+
+The last four were this connector's own excluded table's "reasonable second
+increment" — added here unchanged in shape, once confirmed live to still
+answer with the same 11-row response and `anio_referencia: 2023` as the
+original three. **204 and 205 are the connector's first monetary values**:
+published in balboas, stored with `currency_code="PAB"` — never converted to
+dollars, even though the two are pegged 1:1, because the source publishes
+balboas and REIM stores what is published.
 
 None duplicates data REIM already holds: Panama's GDP is already stored
 annually at national level from
-[CEPALSTAT](#cepal--annual-gross-domestic-product), and none of these three is
+[CEPALSTAT](#cepal--annual-gross-domestic-product), and none of these seven is
 GDP.
 
 **Each variable's `/data/choropleth` response is 11 rows**: ten carry a real
 `id_provincia` and `is_total: false`, and the eleventh carries
 `id_provincia: null` and `is_total: true` — Panama's own national figure for
 that variable and year, stored as-is rather than recomputed from the ten
-provincial rows. Three variables × 11 rows = **33 observations**: **3
-national, 30 provincial**, across the 10 provinces, all reference year 2023.
-Measured 2026-09-20 against the live API and confirmed in the database by an
-independent review. The connector reads each variable's `anio_referencia`
-from the catalogue at run time rather than hardcoding `2023`, so a future
-INEC republication is picked up without a code change — the same principle
-`sieca_services_trade.py`'s `extract()` applies to its quarter window.
+provincial rows. Seven variables × 11 rows = **77 observations**: **7
+national, 70 provincial**, across the 10 provinces, all reference year 2023.
+Measured 2026-09-21 against the live API. The connector reads each
+variable's `anio_referencia` from the catalogue at run time rather than
+hardcoding `2023`, so a future INEC republication is picked up without a
+code change — the same principle `sieca_services_trade.py`'s `extract()`
+applies to its quarter window.
 
 **Excluded, and recorded here rather than silently dropped** — the same
 "measured but not stored" treatment every other excluded item in this file
@@ -2528,12 +2540,11 @@ gets:
 |---|---|---|
 | `Empresas según naturaleza jurídica` | 66/171 | `Decenal` — the census-derived "businesses" figure the sources doc originally described; not a series |
 | `Gastos`/`Ingresos de los municipios` | 210/209 | `Decenal` — the census-derived "municipal revenue and spending" figure the sources doc originally described; not a series |
-| Construction area and value | 202–205 | `Anual` and `Provincia`-level, the same shape as the three chosen variables — a reasonable second increment, left out here to keep the first connector to three variables |
 
 District (`Corregimiento`) level is also not ingested: `AdministrativeArea.level`
 carries it without a further schema change, but no district data is read by
-this connector. If either line is ever taken up, this API is open, documented
-by its own catalogue, and the parameters are recorded above.
+this connector. If any of these lines is ever taken up, this API is open,
+documented by its own catalogue, and the parameters are recorded above.
 
 ---
 

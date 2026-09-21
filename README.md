@@ -61,7 +61,7 @@ See [ROADMAP.md](./ROADMAP.md).
 
 ### Data available
 
-**25 live pipelines feeding 69 indicators**, every one verified against its
+**25 live pipelines feeding 73 indicators**, every one verified against its
 source. Nothing here is a scrape of an aggregator.
 
 | Source | Countries | Frequency | Series | Coverage |
@@ -442,7 +442,7 @@ exists there — so an unreachable database or an unknown run renders as an
 explanatory page rather than the browser's fallback state.
 
 `/series` plots one indicator over time across the countries chosen from an
-ordinary `<form method="get">` — a `<select>` of all 69 indicators, a
+ordinary `<form method="get">` — a `<select>` of all 73 indicators, a
 multi-select of all 7 countries, and optional date bounds. The chart is
 server-rendered SVG with no JavaScript at all: the same no-build-step
 decision the catalog page made is not reopened for one page. Two countries'

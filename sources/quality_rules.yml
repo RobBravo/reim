@@ -568,6 +568,34 @@ indicators:
     allow_zero: true
     freshness_max_age_days: 1200
 
+  pa_residential_construction_area_provincial_annual:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: true
+    freshness_max_age_days: 1200
+
+  pa_nonresidential_construction_area_provincial_annual:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: true
+    freshness_max_age_days: 1200
+
+  pa_residential_construction_value_provincial_annual:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: true
+    freshness_max_age_days: 1200
+
+  pa_nonresidential_construction_value_provincial_annual:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: true
+    freshness_max_age_days: 1200
+
   # Nicaragua — SIBOIF banking system balance sheet -------------------------
   # Positive values only: none of these three totals can be zero or negative
   # for an operating banking system. Freshness threshold reflects genuine

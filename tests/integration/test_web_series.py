@@ -108,7 +108,7 @@ def test_the_form_offers_every_indicator_and_every_country() -> None:
 
     body = client.get("/series").text
 
-    assert len(INDICATORS) == 69
+    assert len(INDICATORS) == 73
     assert len(COUNTRIES) == 7
     for country in COUNTRIES:
         assert country.name in body, f"{country.name} is missing from the form"

@@ -40,5 +40,61 @@
     "frecuencia_actualizacion": "Anual",
     "nivel_geografico_minimo": "Provincia",
     "comentarios": null
+  },
+  {
+    "id": 202,
+    "nombre": "Área de construcción de edificaciones residenciales",
+    "definicion": "Se refiere al área residencial declarada en los permisos de construcción al obtenerse la aprobación de los planos, en las oficinas de ingeniería municipal respectivas.",
+    "fuente": "Permisos  de construcción  concedidos por  la Dirección de Obras y  Construcciones del  Municipio de Panamá, y en  las oficinas de Ingeniería Municipal de los distritos restantes.",
+    "anio_referencia": 2023,
+    "is_porcentaje": false,
+    "es_general": false,
+    "unidad_medida": "metros cuadrados",
+    "display_order": 0,
+    "frecuencia_actualizacion": "Anual",
+    "nivel_geografico_minimo": "Provincia",
+    "comentarios": null
+  },
+  {
+    "id": 203,
+    "nombre": "Área de construcción de edificaciones no residenciales",
+    "definicion": "Se refiere al área no residencial declarada en los permisos de construcción al obtenerse la aprobación de los planos, en las oficinas de ingeniería municipal respectivas.\r\n",
+    "fuente": "Permisos  de construcción  concedidos por  la Dirección de Obras y  Construcciones del  Municipio de Panamá, y en  las oficinas de Ingeniería Municipal de los distritos restantes.",
+    "anio_referencia": 2023,
+    "is_porcentaje": false,
+    "es_general": false,
+    "unidad_medida": "metros cuadrados",
+    "display_order": 0,
+    "frecuencia_actualizacion": "Anual",
+    "nivel_geografico_minimo": "Provincia",
+    "comentarios": null
+  },
+  {
+    "id": 204,
+    "nombre": "Valor de las construcciones de edificaciones residenciales",
+    "definicion": "Se refiere al valor residencial declarada en los permisos de construcción al obtenerse la aprobación de los planos, en las oficinas de ingeniería municipal respectivas.\r\n",
+    "fuente": "Permisos  de construcción  concedidos por  la Dirección de Obras y  Construcciones del  Municipio de Panamá, y en  las oficinas de Ingeniería Municipal de los distritos restantes.",
+    "anio_referencia": 2023,
+    "is_porcentaje": false,
+    "es_general": false,
+    "unidad_medida": "balboas",
+    "display_order": 0,
+    "frecuencia_actualizacion": "Anual",
+    "nivel_geografico_minimo": "Provincia",
+    "comentarios": null
+  },
+  {
+    "id": 205,
+    "nombre": "Valor de las construcciones de edificaciones no residenciales",
+    "definicion": "Se refiere al valor no residencial declarada en los permisos de construcción al obtenerse la aprobación de los planos, en las oficinas de ingeniería municipal respectivas.\r\n",
+    "fuente": "Permisos  de construcción  concedidos por  la Dirección de Obras y  Construcciones del  Municipio de Panamá, y en  las oficinas de Ingeniería Municipal de los distritos restantes.",
+    "anio_referencia": 2023,
+    "is_porcentaje": false,
+    "es_general": false,
+    "unidad_medida": "balboas",
+    "display_order": 0,
+    "frecuencia_actualizacion": "Anual",
+    "nivel_geografico_minimo": "Provincia",
+    "comentarios": null
   }
 ]

@@ -132,7 +132,7 @@ def sieca_balance_json() -> str:
 
 @pytest.fixture(scope="session")
 def inec_catalogue_excerpt_json() -> str:
-    """Real INEC Panama catalogue entries for the three variables this connector reads."""
+    """Real INEC Panama catalogue entries for the seven variables this connector reads."""
     return (FIXTURES / "inec_catalogue_excerpt.json").read_text(encoding="utf-8")
 
 
@@ -152,6 +152,30 @@ def inec_choropleth_206_json() -> str:
 def inec_choropleth_207_json() -> str:
     """Real INEC choropleth response: non-residential building count, by province, 2023."""
     return (FIXTURES / "inec_choropleth_207.json").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
+def inec_choropleth_202_json() -> str:
+    """Real INEC choropleth response: residential construction area, by province, 2023."""
+    return (FIXTURES / "inec_choropleth_202.json").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
+def inec_choropleth_203_json() -> str:
+    """Real INEC choropleth response: non-residential construction area, by province, 2023."""
+    return (FIXTURES / "inec_choropleth_203.json").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
+def inec_choropleth_204_json() -> str:
+    """Real INEC choropleth response: residential construction value, by province, 2023."""
+    return (FIXTURES / "inec_choropleth_204.json").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="session")
+def inec_choropleth_205_json() -> str:
+    """Real INEC choropleth response: non-residential construction value, by province, 2023."""
+    return (FIXTURES / "inec_choropleth_205.json").read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="session")

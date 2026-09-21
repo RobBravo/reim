@@ -1,12 +1,14 @@
 """INEC Panama — provincial economic indicators.
 
-REIM's first subnational data. Three variables from INEC's "Panamá en
+REIM's first subnational data. Seven variables from INEC's "Panamá en
 Cifras Digital" choropleth API, each yielding one national observation
 (the response's own ``is_total`` row) and ten provincial ones.
 
 See docs/sources.md's "INEC Panama" entry and
 docs/superpowers/specs/2026-09-20-inec-panama-provincial-design.md for the
-research this is built from.
+research this is built from. Variables 202-205 (construction area and
+value) were the "reasonable second increment" that design's own excluded
+table named; added here unchanged in shape from the original three.
 """
 
 from __future__ import annotations
@@ -22,13 +24,23 @@ from reim.ingestion.base import BaseConnector
 from reim.ingestion.http import ensure_ok, fetch, http_client
 
 #: Variable id -> REIM indicator code. Order doesn't matter; this is the
-#: authority on which three of INEC's 218 catalogue entries this connector
+#: authority on which seven of INEC's 218 catalogue entries this connector
 #: reads.
 VARIABLE_INDICATORS: dict[int, str] = {
     232: "pa_automobiles_per_1000_provincial_annual",
     206: "pa_residential_buildings_count_provincial_annual",
     207: "pa_nonresidential_buildings_count_provincial_annual",
+    202: "pa_residential_construction_area_provincial_annual",
+    203: "pa_nonresidential_construction_area_provincial_annual",
+    204: "pa_residential_construction_value_provincial_annual",
+    205: "pa_nonresidential_construction_value_provincial_annual",
 }
+
+#: Variable ids whose ``unidad_medida`` is a currency ("balboas") rather than
+#: a count or ratio. Their observations carry ``currency_code`` — the
+#: source's own stated currency, never converted, the same "store what's
+#: published" rule REIM applies everywhere else.
+_CURRENCY_VARIABLE_IDS: frozenset[int] = frozenset({204, 205})
 
 
 class INECProvincialConnector(BaseConnector):
@@ -41,11 +53,11 @@ class INECProvincialConnector(BaseConnector):
     async def extract(self) -> RawDataset:
         """Fetch the catalogue, then one choropleth payload per variable.
 
-        Four requests. The year comes from the catalogue's own
-        ``anio_referencia`` rather than a constant, so a future INEC
-        republication is picked up without a code change — the same
-        principle ``sieca_services_trade.py``'s ``extract()`` applies to its
-        quarter window.
+        Eight requests (one catalogue, seven choropleths). The year comes
+        from the catalogue's own ``anio_referencia`` rather than a constant,
+        so a future INEC republication is picked up without a code change —
+        the same principle ``sieca_services_trade.py``'s ``extract()``
+        applies to its quarter window.
 
         Raises:
             ExtractionError: The service was unreachable, kept failing, or
@@ -127,6 +139,7 @@ class INECProvincialConnector(BaseConnector):
                         administrative_area_code=(
                             None if row.get("is_total") else row.get("id_provincia")
                         ),
+                        currency_code=("PAB" if variable_id in _CURRENCY_VARIABLE_IDS else None),
                         raw_metadata={
                             "inec_variable_id": variable_id,
                             "is_total": row.get("is_total", False),

@@ -652,9 +652,9 @@ sources:
   - key: inec_pa_provincial
     name: Panama provincial economic indicators (INEC)
     description: >-
-      Provincial-level automobile registration and building-count figures
-      from INEC's Panamá en Cifras Digital, plus each variable's national
-      total. REIM's first subnational data.
+      Provincial-level automobile registration, building-count and
+      construction area/value figures from INEC's Panamá en Cifras Digital,
+      plus each variable's national total. REIM's first subnational data.
     country: PA
     organization: INEC_PA
     category: real_sector
@@ -668,6 +668,10 @@ sources:
       - pa_automobiles_per_1000_provincial_annual
       - pa_residential_buildings_count_provincial_annual
       - pa_nonresidential_buildings_count_provincial_annual
+      - pa_residential_construction_area_provincial_annual
+      - pa_nonresidential_construction_area_provincial_annual
+      - pa_residential_construction_value_provincial_annual
+      - pa_nonresidential_construction_value_provincial_annual
     license: public_official_data
     official: true
     enabled: true

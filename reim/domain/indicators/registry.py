@@ -1116,6 +1116,60 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         methodology_url="https://www.inec.gob.pa",
     ),
     IndicatorDefinition(
+        code="pa_residential_construction_area_provincial_annual",
+        name="Panama — residential construction area, by province",
+        description=(
+            "Area of residential building permits, by province and nationally, from INEC's "
+            "Panamá en Cifras Digital."
+        ),
+        category=IndicatorCategory.REAL_SECTOR,
+        frequency=Frequency.ANNUAL,
+        unit="metros cuadrados",
+        value_type=ValueType.LEVEL,
+        methodology_url="https://www.inec.gob.pa",
+    ),
+    IndicatorDefinition(
+        code="pa_nonresidential_construction_area_provincial_annual",
+        name="Panama — non-residential construction area, by province",
+        description=(
+            "Area of non-residential building permits, by province and nationally, from "
+            "INEC's Panamá en Cifras Digital."
+        ),
+        category=IndicatorCategory.REAL_SECTOR,
+        frequency=Frequency.ANNUAL,
+        unit="metros cuadrados",
+        value_type=ValueType.LEVEL,
+        methodology_url="https://www.inec.gob.pa",
+    ),
+    IndicatorDefinition(
+        code="pa_residential_construction_value_provincial_annual",
+        name="Panama — residential construction value, by province",
+        description=(
+            "Declared value of residential building permits, by province and nationally, "
+            "from INEC's Panamá en Cifras Digital, in balboas as published — never converted "
+            "to dollars even though the two are pegged 1:1."
+        ),
+        category=IndicatorCategory.REAL_SECTOR,
+        frequency=Frequency.ANNUAL,
+        unit="balboas",
+        value_type=ValueType.LEVEL,
+        methodology_url="https://www.inec.gob.pa",
+    ),
+    IndicatorDefinition(
+        code="pa_nonresidential_construction_value_provincial_annual",
+        name="Panama — non-residential construction value, by province",
+        description=(
+            "Declared value of non-residential building permits, by province and nationally, "
+            "from INEC's Panamá en Cifras Digital, in balboas as published — never converted "
+            "to dollars even though the two are pegged 1:1."
+        ),
+        category=IndicatorCategory.REAL_SECTOR,
+        frequency=Frequency.ANNUAL,
+        unit="balboas",
+        value_type=ValueType.LEVEL,
+        methodology_url="https://www.inec.gob.pa",
+    ),
+    IndicatorDefinition(
         code="ni_bank_system_total_assets_monthly",
         name="Nicaragua — banking system total assets",
         description=(
