@@ -10,6 +10,14 @@ this stack; every output shown was actually observed. Where the observation
 had to deviate from the real procedure, that is called out explicitly rather
 than folded silently into the instructions.
 
+This guide assumes a host with no existing services to fit around — its own
+Caddy, its own ports, its own domain. For a real deployment onto a host that
+already has its own reverse-proxy, container-management and database
+conventions, see [`docs/deployment-panda.md`](deployment-panda.md), which
+documents exactly that: `https://reim.panda.home.arpa`, running alongside four
+other services under a system-wide Caddy, Podman Quadlets, and a shared
+Postgres instance instead of the standalone stack below.
+
 ## Local deviations, disclosed once
 
 Standing this stack up to write this guide happened on a workstation running
