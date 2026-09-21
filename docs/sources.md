@@ -2541,10 +2541,21 @@ gets:
 | `Empresas según naturaleza jurídica` | 66/171 | `Decenal` — the census-derived "businesses" figure the sources doc originally described; not a series |
 | `Gastos`/`Ingresos de los municipios` | 210/209 | `Decenal` — the census-derived "municipal revenue and spending" figure the sources doc originally described; not a series |
 
-District (`Corregimiento`) level is also not ingested: `AdministrativeArea.level`
-carries it without a further schema change, but no district data is read by
-this connector. If any of these lines is ever taken up, this API is open,
-documented by its own catalogue, and the parameters are recorded above.
+**District (`Corregimiento`) level does not exist for these seven variables —
+measured, not merely unexplored.** `AdministrativeArea.level` carries it
+without a further schema change, but probing
+`nivel_geografico=Corregimiento` for all seven ids (2026-09-21) revealed a
+third response shape this API had not shown before: not the documented `500`
+for a broken request, and not `200` with `[]` for a well-formed request that
+matches nothing, but `200` with **one row**, `nivel_geografico: "País"`,
+`is_total: true`, `id_provincia`/`id_distrito`/`id_corregimiento` all `null`
+— the national total, silently returned in place of the district breakdown
+actually asked for. The catalogue's own `nivel_geografico_minimo: "Provincia"`
+for these variables is accurate, not merely a default; a caller that asked for
+a finer level and did not check `nivel_geografico` in the response could
+easily mistake this for one district's real figure. If a future INEC
+variable declares a finer minimum, this API is open, documented by its own
+catalogue, and the parameters are recorded above.
 
 ---
 

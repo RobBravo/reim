@@ -435,24 +435,33 @@ Economic figures become far more useful next to what happened around them.
   for its first route — REIM's first geographic dimension below the country: a
   new `AdministrativeArea` reference table and a nullable FK from
   `Observation` onto it, seeded idempotently with Panama's ten provinces.
-  **INEC Panama** ships three provincial economic indicators — automobiles in
-  circulation per 1,000 inhabitants, and counts of residential and
-  non-residential buildings — all genuinely `Anual` rather than `Decenal`,
-  none duplicating Panama's GDP, which REIM already holds nationally from
-  CEPALSTAT: **33 observations**, 3 national and 30 provincial, across the 10
-  provinces, reference year 2023, measured 2026-09-20 against the live API
-  and confirmed in the database by an independent review.
+  **INEC Panama** ships seven provincial economic indicators — automobiles in
+  circulation per 1,000 inhabitants, counts of residential and
+  non-residential buildings, and residential/non-residential construction
+  area and value — all genuinely `Anual` rather than `Decenal`, none
+  duplicating Panama's GDP, which REIM already holds nationally from
+  CEPALSTAT: **77 observations**, 7 national and 70 provincial, across the 10
+  provinces, reference year 2023, measured 2026-09-21 against the live API.
+  The two construction-value indicators are REIM's first monetary
+  observations in balboas, stored as published and never converted to
+  dollars despite the 1:1 peg.
   `GET /api/v1/observations` filters by `administrative_area` and returns
   both national and provincial rows by default; `GET /api/v1/compare` is
   unaffected by their presence, held by a guard test that plants one and
   confirms the comparison result is unchanged. See `docs/sources.md`.
 
-  **Still open**: district (`Corregimiento`) level — `AdministrativeArea.level`
-  carries it without a further schema change, but no district data is
-  ingested; INEC's `Decenal` variables (`Empresas según naturaleza jurídica`,
-  municipal `Gastos`/`Ingresos`) and construction area/value (id 202–205),
-  all measured but excluded, same section of `docs/sources.md`; and any
-  subnational source besides INEC Panama, none of which is known.
+  **District (`Corregimiento`) level was investigated and does not exist for
+  any of the seven variables** — `AdministrativeArea.level` carries it
+  without a further schema change, but a live probe of all seven ids
+  (2026-09-21) found the API silently returns the national total in place of
+  a district breakdown when asked for a finer level than its catalogue
+  declares, rather than erroring or returning an empty result. See
+  `docs/sources.md` for the exact response shape.
+
+  **Still open**: INEC's `Decenal` variables (`Empresas según naturaleza
+  jurídica`, municipal `Gastos`/`Ingresos`), which do not fit REIM's
+  time-series model without a design decision this increment does not make;
+  and any subnational source besides INEC Panama, none of which is known.
 
 ## v0.8.0 — Interfaces
 
