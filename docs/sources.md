@@ -2538,8 +2538,8 @@ gets:
 
 | Variable | id(s) | Why excluded |
 |---|---|---|
-| `Empresas según naturaleza jurídica` | 66/171 | `Decenal` — the census-derived "businesses" figure the sources doc originally described; not a series |
-| `Gastos`/`Ingresos de los municipios` | 210/209 | `Decenal` — the census-derived "municipal revenue and spending" figure the sources doc originally described; not a series |
+| `Empresas según naturaleza jurídica` | 66/171 | `Decenal` (`anio_referencia: 2022`), and not the connector's row shape at all — measured 2026-09-21: 71 rows, not 11. Each province is crossed with **eight legal business types** (`Sociedad anónima`, `Individual/Natural`, `Cooperativas`, `Sin fines de lucro`, `Sociedad civil`, `Sociedad limitada`, `Sociedad colectiva`, `Otra`), each with its own national total. Modelled at the same fidelity as everything else REIM stores, this is eight new indicators, not one — and arguably a business-registry statistic rather than the macroeconomic kind REIM otherwise carries |
+| `Gastos`/`Ingresos de los municipios` | 210/209 | `Decenal` (`anio_referencia: 2022`), and its `Provincia`-level response is not 10 clean provinces — measured 2026-09-21: 12 area rows plus one national total, `id_provincia` running `01`–`11` then `13`. `reim/domain/geography/registry.py`'s own `PANAMA_PROVINCES` comment already names codes `10`–`12` as the three indigenous comarcas, not provinces, and REIM's ten real provinces as `01`–`09` plus `13` — so this response mixes in **two of the three comarcas** (`10`, `11`) alongside the ten real provinces, and omits the third (`12`). The existing connector's eleven-rows-per-variable check would reject this batch outright (12 ≠ 11) rather than silently mis-storing a comarca as a province — the safety net already works, but storing this variable for real needs a decision about comarcas as their own `AdministrativeArea.level` first, not just a wider row-count tolerance |
 
 **District (`Corregimiento`) level does not exist for these seven variables —
 measured, not merely unexplored.** `AdministrativeArea.level` carries it

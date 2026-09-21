@@ -459,9 +459,13 @@ Economic figures become far more useful next to what happened around them.
   `docs/sources.md` for the exact response shape.
 
   **Still open**: INEC's `Decenal` variables (`Empresas según naturaleza
-  jurídica`, municipal `Gastos`/`Ingresos`), which do not fit REIM's
-  time-series model without a design decision this increment does not make;
-  and any subnational source besides INEC Panama, none of which is known.
+  jurídica`, municipal `Gastos`/`Ingresos`) — investigated 2026-09-21 and
+  found to be more than a frequency question: the first is an eight-way
+  legal-business-type breakdown needing eight new indicators, and the
+  second mixes two of Panama's three comarcas into its `Provincia`-level
+  response. Neither is a bounded extension; see the deferred mini-spec,
+  `docs/superpowers/specs/2026-09-21-inec-decennial-variables-design.md`.
+  And any subnational source besides INEC Panama, none of which is known.
 
 ## v0.8.0 — Interfaces
 
