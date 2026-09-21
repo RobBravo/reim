@@ -43,8 +43,15 @@ def capturing_runner(monkeypatch: pytest.MonkeyPatch) -> type[_CapturingRunner]:
 
 
 def test_run_all_accepts_a_frequency() -> None:
-    """``--help`` is enough: actually running it would hit the network."""
-    result = runner.invoke(app, ["pipeline", "run-all", "--help"])
+    """``--help`` is enough: actually running it would hit the network.
+
+    Typer renders ``--help`` through Rich, which wraps the option table to
+    whatever terminal width it detects — narrow enough (as seen in CI, where
+    no real terminal is attached) and it wraps ``--frequency`` across lines,
+    breaking this substring check. Force a wide, fixed width so the
+    assertion doesn't depend on the environment's terminal size.
+    """
+    result = runner.invoke(app, ["pipeline", "run-all", "--help"], env={"COLUMNS": "200"})
 
     assert result.exit_code == 0
     assert "--frequency" in result.stdout
