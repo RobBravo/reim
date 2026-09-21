@@ -97,6 +97,15 @@ aggregator rather than the Nicaraguan publisher itself.
   semiannual and irregular remain unexercised** — `Frequency` defines all three and the period model parses
   `YYYY-Wnn` and `YYYY-Hn`, but no source REIM reads publishes at those
   cadences.
+- ~~**SIBOIF banking-system balance sheet**~~ ✅ **done** — REIM's first data
+  from Nicaragua's banking supervisor: three system-wide indicators (assets,
+  liabilities, equity), monthly, **276 observations** from 2019-01 to
+  2026-08, verified to satisfy `Activo = Pasivo + Patrimonio` for every
+  period within the source's own ~0.0002 rounding artifact. The file's own
+  disclosed 2019 BANCORP dissolution shows up as the single largest
+  month-on-month move in the whole series (−3.21% at 2019-07); the earlier
+  Produzcamos consolidation predates REIM's window and has no effect. See
+  `docs/sources.md`.
 
 ## v0.3.0 — Central America
 
