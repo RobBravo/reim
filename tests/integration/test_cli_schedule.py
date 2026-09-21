@@ -21,6 +21,22 @@ from reim.domain.sources.catalog import get_catalog
 
 runner = CliRunner()
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI/SGR escape codes Rich adds when it thinks it has a terminal.
+
+    Typer's ``--help`` rendering forces terminal mode (and with it, markup
+    highlighting of things like ````--frequency````) whenever ``GITHUB_ACTIONS``
+    is set, regardless of whether a real terminal is attached. That highlighting
+    inserts a style-reset boundary between "-" and "-frequency" — same visible
+    text, but no longer a contiguous "--frequency" substring in the raw string.
+    Assertions on rendered CLI text should check the substance, not the styling,
+    so strip escape codes before comparing.
+    """
+    return _ANSI_RE.sub("", text)
+
 
 class _CapturingRunner:
     """Stands in for ``PipelineRunner``, recording what the CLI handed it."""
@@ -43,18 +59,11 @@ def capturing_runner(monkeypatch: pytest.MonkeyPatch) -> type[_CapturingRunner]:
 
 
 def test_run_all_accepts_a_frequency() -> None:
-    """``--help`` is enough: actually running it would hit the network.
-
-    Typer renders ``--help`` through Rich, which wraps the option table to
-    whatever terminal width it detects — narrow enough (as seen in CI, where
-    no real terminal is attached) and it wraps ``--frequency`` across lines,
-    breaking this substring check. Force a wide, fixed width so the
-    assertion doesn't depend on the environment's terminal size.
-    """
-    result = runner.invoke(app, ["pipeline", "run-all", "--help"], env={"COLUMNS": "200"})
+    """``--help`` is enough: actually running it would hit the network."""
+    result = runner.invoke(app, ["pipeline", "run-all", "--help"])
 
     assert result.exit_code == 0
-    assert "--frequency" in result.stdout
+    assert "--frequency" in _plain(result.stdout)
 
 
 def test_run_all_rejects_a_frequency_that_is_not_one() -> None:
