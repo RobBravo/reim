@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, ForeignKey, Index, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from reim.core.constants import (
@@ -39,6 +39,11 @@ class Country(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
     currency_name: Mapped[str | None] = mapped_column(String(80))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: GeoJSON Geometry (Polygon/MultiPolygon) for this country's outline, or
+    #: None if not yet recorded. Never a Feature — every other field a
+    #: Feature's properties would carry already exists on this row. Built
+    #: offline; see reim/domain/geography/boundaries/README.md.
+    geometry_geojson: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     organizations: Mapped[list[Organization]] = relationship(back_populates="country")
     data_sources: Mapped[list[DataSource]] = relationship(back_populates="country")
@@ -65,6 +70,10 @@ class AdministrativeArea(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     level: Mapped[str] = mapped_column(String(40), nullable=False)
     code: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: GeoJSON Geometry (Polygon/MultiPolygon) for this area's outline, or
+    #: None if not yet recorded. Same shape and provenance as
+    #: Country.geometry_geojson.
+    geometry_geojson: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     country: Mapped[Country] = relationship(back_populates="administrative_areas")
     observations: Mapped[list[Observation]] = relationship(back_populates="administrative_area")
