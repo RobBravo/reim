@@ -2567,16 +2567,24 @@ run, and not a real spreadsheet once fetched. The report series needs none
 of that: one stateless `GET` returns the workbook above, byte-identical
 across two fetches. That is what this connector reads.
 
-**One sheet of sixteen.** The workbook carries 14 named banks plus
-`SISTEMA_FINANCIERO` and `SISTEMA_BANCARIO`; only `SISTEMA_BANCARIO` — the
-banking-system aggregate the roadmap named — is read. That sheet is a
-95-row hierarchical balance sheet, column A holding each line item's
-description and one column per month-end date. Three rows are read, by
-their exact column-A text rather than a fixed row number — `Activo`,
-`Pasivo`, `PATRIMONIO` — so a future republication that adds or reorders a
-line item above them does not silently start reading the wrong row; a
-guard test pins this against a fixture whose rows have been moved, not just
-the real one.
+**One sheet of sixteen.** The workbook carries 13 institution sheets — nine
+banks (`BANPRO`, `BANCO_LAFISE_BANCENTRO`, `BAC`, `BDF`, `BANCO_FICOHSA`,
+`AVANZ`, `PRODUZCAMOS`, `BANCORP`, `BANCO_ATLÁNTIDA`) and four *financieras*
+(`FINANCIERA_FAMA`, `FINANCIERA_FINCA_NICARAGUA`, `FINANCIERA_FUNDESER`,
+`Financiera_FDL_SA`) — plus **three** system-wide aggregates:
+`SISTEMA_FINANCIERO`, `SISTEMA_BANCARIO` and `SISTEMA_FINANCIERO_NACIONAL`.
+Only `SISTEMA_BANCARIO` — the banking-system aggregate the roadmap named —
+is read. That sheet is a 95-row hierarchical balance sheet, column A holding
+each line item's description and one column per month-end date. Three rows
+are read, by their exact column-A text rather than a fixed row number —
+`Activo`, `Pasivo`, `PATRIMONIO` — so a future republication that adds or
+reorders a line item above them does not silently start reading the wrong
+row; a guard test pins this against a fixture whose rows have been moved,
+not just the real one. The sheet also declares its own scale above the
+header row (`(Expresado en miles de Córdobas)`, cell A8); the connector
+asserts that literal before applying the ×1,000 conversion, because the
+balance identity below holds under any uniform rescaling and so could never
+catch a republication in whole or in millions of córdobas.
 
 **Three indicators**, monthly, in whole córdobas. The source publishes
 thousands of NIO; REIM multiplies by 1,000 to store whole córdobas and keeps
@@ -2600,21 +2608,35 @@ code, to be a rounding artifact in SIBOIF's own published figures, not a
 defect in how this connector reads them. The tolerance is set to clear that.
 
 **Two irregularities the file discloses about itself**, worth carrying here
-rather than dropping silently: from January 2019, Banco Produzcamos
-consolidates into both the banking system and the national financial
-system; and Banco Corporativo, S.A. (BANCORP) requested voluntary
-dissolution from the Superintendencia in 2019, with the file's own note
-stating publication of its figures was suspended from July 2019. Neither
-affects the three system-wide rows this connector reads — they are
-already-consolidated totals — but both explain why a naive per-bank
-cross-check, if one is ever built, would not reconcile perfectly across
-2019.
+rather than dropping silently — and they do not affect the shipped series
+alike:
+
+* **Banco Produzcamos consolidates** into both the banking system and the
+  national financial system from January 2019. No effect inside this
+  connector's window: coverage starts 2019-01, so the consolidation
+  predates every observation REIM stores.
+* **Banco Corporativo, S.A. (BANCORP)** requested voluntary dissolution from
+  the Superintendencia in 2019, and the file's own note states publication
+  of its figures was suspended from July 2019. **This one does show up in
+  the aggregate.** Measured from the recording: the `BANCORP` sheet carries
+  exactly six dated columns, `31/01/2019` through `30/06/2019`, then stops;
+  its last reported `Activo` is 6,649,092.0425 thousand NIO (**≈ C$6.65
+  bn**, 3.07% of the banking system's 2019-06 total). `SISTEMA_BANCARIO`
+  `Activo` goes 216,264,349.9395 (2019-06) → 209,312,749.7161 (2019-07), a
+  fall of 6,951,600.2234 thousand NIO — **−3.21%, the largest
+  month-on-month move in all 92 months** (next largest: +2.70% at 2023-11,
+  and −0.95% among the falls), of which BANCORP's exit is 96%. These are
+  level series: **2019-06 and 2019-07 are not comparable as an economic
+  change**. The break is a change in the reporting universe.
+
+Both also explain why a naive per-bank cross-check, if one is ever built,
+would not reconcile perfectly across 2019.
 
 **Excluded, deliberately:**
 
-* `SISTEMA_FINANCIERO` and the 14 named banks' own figures. Same file, read
-  differently — a broader-scope or per-institution question this increment
-  does not answer.
+* `SISTEMA_FINANCIERO`, `SISTEMA_FINANCIERO_NACIONAL` and the 13 institution
+  sheets' own figures. Same file, read differently — a broader-scope or
+  per-institution question this increment does not answer.
 * The income statement (`ib_estado_resultados_0.xlsx`). Confirmed live, same
   `Content-Type`, sitting in the same file listing as the balance sheet — a
   real, same-effort follow-up, excluded here purely on scope grounds, not

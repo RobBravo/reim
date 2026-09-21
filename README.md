@@ -88,9 +88,9 @@ data below the country level: ten Panamanian provinces alongside each
 variable's own national figure, which is kept as INEC published it rather
 than summed from the provinces. The World Bank, IMF, SIECA and CEPAL series
 compile from national statistics and are one step removed from them; CEPAL's are its own harmonised estimates and need not match a country's
-official national accounts. **Three sources are not openly licensed** — the IMF,
-SIECA and CEPAL — and each carries its terms and its attribution requirement;
-see the limitations below.
+official national accounts. **Fourteen sources, from three publishers, are not
+openly licensed** — the IMF, SIECA and CEPAL — and each publisher carries its
+terms and its attribution requirement; see the limitations below.
 
 No connector currently ships disabled. When one does, it ships with its blocker
 documented rather than papered over — that has happened twice, and both times
@@ -784,20 +784,23 @@ python scripts/smoke_test_sources.py --source worldbank_ni_cpi_inflation
 
 Stated plainly, because a data platform that hides its gaps is worse than none:
 
-- **Three national primary sources, the rest multilateral.** INIDE's monthly
-  CPI — national, Managua and rest-of-country — the BCN's daily exchange rate
-  and Banguat's daily rate pair come straight from the publisher; the remaining
-  connectors read the World Bank, the IMF, SIECA and CEPAL, which compile from
-  national statistics and are one step removed from it. CEPAL's GDP figures are
-  a further step: they are its **own harmonised estimates**, built so countries
-  can be compared with each other, and need not match the national accounts each
-  statistics office publishes.
+- **Five national primary sources, the rest multilateral.** The BCN, Banguat,
+  INIDE, INEC and SIBOIF series — the same five named above — come straight
+  from the publisher: INIDE's monthly CPI (national, Managua and
+  rest-of-country), the BCN's daily exchange rate, Banguat's daily rate pair,
+  INEC's Panamanian provincial series and SIBOIF's banking-system balance
+  sheet. The remaining connectors read the World Bank, the IMF, SIECA and
+  CEPAL, which compile from national statistics and are one step removed from
+  it. CEPAL's GDP figures are a further step: they are its **own harmonised
+  estimates**, built so countries can be compared with each other, and need
+  not match the national accounts each statistics office publishes.
 - **Subnational coverage is two regions, not a geography model.** INIDE's
   Managua and rest-of-country breakdowns are separate indicator codes.
   `observations` has no region dimension, so this does not generalise to
   finer geography without a schema change.
-- **Three sources are not openly licensed, and they are not alike.** The IMF
-  merchandise-trade series carries "© International Monetary Fund. All Rights
+- **Fourteen sources, from three publishers, are not openly licensed, and the
+  three publishers are not alike.** The IMF merchandise-trade series carries
+  "© International Monetary Fund. All Rights
   Reserved", but its terms **do permit redistribution with attribution**: cite
   the IMF — every observation carries the Fund's suggested citation in
   `raw_metadata.imf_citation` — keep the figures exact, and declare any
@@ -959,8 +962,9 @@ Security issues: see [SECURITY.md](./SECURITY.md).
 
 REIM's **code** is Apache 2.0. The **data** it ingests remains subject to each
 publisher's terms — the World Bank Indicators API is CC-BY-4.0; BCN and INIDE
-material is public official data. Three sources are **not** openly licensed and
-carry attribution requirements you inherit if you redistribute:
+material is public official data. Fourteen sources, from the three publishers
+below, are **not** openly licensed and carry attribution requirements you
+inherit if you redistribute:
 
 | Source | Terms | Attribution REIM ships |
 |---|---|---|

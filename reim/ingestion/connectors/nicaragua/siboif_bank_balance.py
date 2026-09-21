@@ -45,6 +45,14 @@ ROW_INDICATORS: dict[str, str] = {
 #: precision the source claims.
 IDENTITY_TOLERANCE = Decimal("0.001")
 
+#: The scale the sheet declares for itself, above its own header row (cell A8
+#: in the recording measured on 2026-09-21: "(Expresado en miles de
+#: Córdobas)"). The x1,000 conversion to whole córdobas is only valid while
+#: that stays true, and nothing downstream would notice if it stopped: the
+#: balance identity holds under any uniform rescaling, ``max_value`` is null
+#: and no ``max_period_change_pct`` is declared. This literal is the guard.
+EXPECTED_UNIT_NOTE = "miles de Córdobas"
+
 
 class SIBOIFBankBalanceConnector(BaseConnector):
     """System-wide balance-sheet totals for Nicaragua's banking sector."""
@@ -96,7 +104,9 @@ class SIBOIFBankBalanceConnector(BaseConnector):
 
         Raises:
             TransformationError: The sheet, header row or one of the three
-                expected rows could not be found, or no observations resulted.
+                expected rows could not be found, the sheet no longer declares
+                its figures in thousands of córdobas, or no observations
+                resulted.
         """
         workbook = openpyxl.load_workbook(io.BytesIO(raw.payload), read_only=True, data_only=True)
         try:
@@ -106,6 +116,7 @@ class SIBOIFBankBalanceConnector(BaseConnector):
             raise TransformationError(msg) from exc
 
         header_row = _find_header_row(sheet)
+        self._assert_declared_unit(sheet, header_row)
         month_columns = _month_columns(sheet, header_row)
 
         observations: list[NormalizedObservation] = []
@@ -137,6 +148,24 @@ class SIBOIFBankBalanceConnector(BaseConnector):
             raise TransformationError(msg)
 
         return observations
+
+    def _assert_declared_unit(self, sheet: Any, header_row: int) -> None:
+        """Fail loudly unless the sheet still declares its own figures in thousands.
+
+        Guards the one silent-corruption mode ``validate()`` structurally
+        cannot see: the accounting identity holds under any uniform rescaling,
+        so a republication in whole córdobas or in millions would make every
+        stored value wrong by 1,000x without failing a single check.
+        """
+        for row in sheet.iter_rows(min_row=1, max_row=header_row, max_col=1, values_only=True):
+            if isinstance(row[0], str) and EXPECTED_UNIT_NOTE in row[0]:
+                return
+        msg = (
+            f"Sheet {SHEET_NAME} does not declare {EXPECTED_UNIT_NOTE!r} above its "
+            f"header row; the x1000 conversion to whole córdobas is only valid "
+            f"while the source publishes thousands of córdobas."
+        )
+        raise TransformationError(msg, source_key=self.source.key)
 
     def validate(self, observations: list[NormalizedObservation]) -> list[QualityResult]:
         """Assert Activo == Pasivo + Patrimonio for every period produced."""

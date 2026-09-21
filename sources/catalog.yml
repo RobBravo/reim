@@ -676,8 +676,10 @@ sources:
   # Nicaragua — SIBOIF banking system balance sheet
   #
   # Static .xlsx, refreshed in place, no session or query parameters. Holds
-  # 14 named banks plus two system-wide aggregate sheets; only the
-  # system-wide SISTEMA_BANCARIO sheet is read. Verified live 2026-09-20:
+  # 16 sheets: 13 institution sheets (nine banks and four financieras) plus
+  # three system-wide aggregates (SISTEMA_FINANCIERO, SISTEMA_BANCARIO,
+  # SISTEMA_FINANCIERO_NACIONAL); only SISTEMA_BANCARIO is read.
+  # Verified live 2026-09-20:
   # Activo = Pasivo + Patrimonio to four decimal places for the most recent
   # month; a handful of earlier months carry the source's own rounding
   # artifact of up to 0.0002 (thousands of NIO).
