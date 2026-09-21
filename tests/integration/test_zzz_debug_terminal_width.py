@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.metadata
 import os
 import shutil
 
@@ -13,9 +12,6 @@ from reim.cli.main import app
 
 def test_zzz_dump_terminal_width_diagnostics() -> None:
     lines = [
-        f"typer version: {importlib.metadata.version('typer')}",
-        f"rich version: {importlib.metadata.version('rich')}",
-        f"click version: {importlib.metadata.version('click')}",
         f"COLUMNS env: {os.environ.get('COLUMNS', '<unset>')!r}",
         f"LINES env: {os.environ.get('LINES', '<unset>')!r}",
         f"TERM env: {os.environ.get('TERM', '<unset>')!r}",
@@ -48,20 +44,6 @@ def test_zzz_dump_terminal_width_diagnostics() -> None:
         app, ["pipeline", "run-all", "--help"], env={"COLUMNS": "200"}
     )
     lines.append(f"has --frequency (COLUMNS=200 override): {'--frequency' in result_override.stdout}")
-    lines.append(f"--- override stdout repr ---\n{result_override.stdout!r}")
-
-    from rich.console import Console
-
-    lines.append(f"Console().size (fresh, no override): {Console().size}")
-    os.environ["COLUMNS"] = "200"
-    try:
-        lines.append(f"Console().size (COLUMNS=200 set directly): {Console().size}")
-    finally:
-        del os.environ["COLUMNS"]
-
-    from reim.core.constants import Frequency
-
-    lines.append(f"list(Frequency): {list(Frequency)}")
 
     dump = "\n".join(lines)
     # Force the report to show even under default capture, by failing.
