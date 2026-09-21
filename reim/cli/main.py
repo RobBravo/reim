@@ -165,6 +165,8 @@ def db_seed() -> None:
     typer.echo(
         f"    countries    +{report.countries_created} ~{report.countries_updated}\n"
         f"    organizations+{report.organizations_created} ~{report.organizations_updated}\n"
+        f"    admin areas  +{report.administrative_areas_created} "
+        f"~{report.administrative_areas_updated}\n"
         f"    indicators   +{report.indicators_created} ~{report.indicators_updated}\n"
         f"    sources      +{report.sources_created} ~{report.sources_updated}"
     )
@@ -312,7 +314,7 @@ def pipeline_run_all(
     ``--frequency`` restricts the run to one cadence, which is what the crontab
     emitted by ``pipeline schedule`` installs — and what an operator wants when
     re-running just the daily sources after a network problem, rather than
-    sweeping all 23.
+    sweeping all 24.
     """
     try:
         registry = ConnectorRegistry(load_catalog())

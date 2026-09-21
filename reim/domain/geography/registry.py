@@ -24,8 +24,15 @@ class AdministrativeAreaDefinition:
 #: Panama's ten provinces, as INEC's own ``nivel_geografico=Provincia``
 #: choropleth endpoint codes them. Codes "10"-"12" are the three indigenous
 #: comarcas, a different administrative category and not provinces. Some
-#: ``Provincia``-level responses include them; connectors reading this data
-#: must filter them out rather than assume they are absent.
+#: ``Provincia``-level responses include them — confirmed for other INEC
+#: variables, though not for the three this project's connector reads, which
+#: were measured twice and never carried one. Neither this registry nor the
+#: connector filters them out of an incoming response. A comarca row reaching
+#: the write path fails loudly instead: either the connector's own
+#: eleven-rows-per-variable check rejects the batch before anything is
+#: written, or ``require_administrative_area_by_code`` raises for the
+#: unrecognized code. Both abort the run rather than silently minting or
+#: mis-storing a row.
 PANAMA_PROVINCES: tuple[AdministrativeAreaDefinition, ...] = (
     AdministrativeAreaDefinition(
         country_iso2="PA", level="province", code="01", name="Bocas del Toro"

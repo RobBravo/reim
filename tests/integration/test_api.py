@@ -331,6 +331,56 @@ def test_latest_respects_filters(client: TestClient) -> None:
     assert rows[0]["indicator_code"] == "ni_cpi_inflation_annual"
 
 
+def test_latest_keeps_one_row_per_administrative_area(
+    client: TestClient, seeded_session: Session, make_observation
+) -> None:  # type: ignore[no-untyped-def]
+    """Provinces are separate series, so /latest returns each of them, not one.
+
+    Measured against the live database before this was fixed: the endpoint
+    answered with a single arbitrary province for an indicator that has a
+    national row and ten provincial ones, because they all share one
+    ``period_start``.
+    """
+    from reim.services.observation_writer import write_observations
+
+    write_observations(
+        seeded_session,
+        [
+            make_observation(
+                "2023",
+                value,
+                country_iso3="PAN",
+                indicator_code="pa_automobiles_per_1000_provincial_annual",
+                source_key="inec_pa_provincial",
+                unit="automóviles",
+                administrative_area_code=area_code,
+            )
+            for area_code, value in (
+                (None, "205.1"),
+                ("01", "9.6"),
+                ("08", "395.4"),
+                ("13", "58.3"),
+            )
+        ],
+        connector_version="1.0.0",
+    )
+    seeded_session.commit()
+
+    rows = client.get(
+        "/api/v1/observations/latest",
+        params={"indicator": "pa_automobiles_per_1000_provincial_annual"},
+    ).json()
+
+    assert len(rows) == 4
+    assert {row["administrative_area_code"] for row in rows} == {None, "01", "08", "13"}
+    assert {Decimal(str(row["value_numeric"])) for row in rows} == {
+        Decimal("205.1"),
+        Decimal("9.6"),
+        Decimal("395.4"),
+        Decimal("58.3"),
+    }
+
+
 def test_observations_filters_by_administrative_area(
     client: TestClient, seeded_session: Session, make_observation
 ) -> None:  # type: ignore[no-untyped-def]

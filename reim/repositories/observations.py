@@ -147,10 +147,18 @@ def iter_observations(
 def latest_observations(
     session: Session, filters: ObservationFilters, *, limit: int
 ) -> list[Observation]:
-    """Return the most recent observation per (country, indicator, source).
+    """Return the most recent observation per (country, indicator, source, area).
 
-    Implemented with ``DISTINCT ON``, which PostgreSQL evaluates efficiently
-    against the ``(country_id, indicator_id, period_start)`` index.
+    Implemented with ``DISTINCT ON``. A series is identified by its
+    administrative area as well as by country, indicator and source: two
+    provinces reporting the same indicator for the same source are different
+    series, not duplicates of one. Measured before this fourth column was
+    added, ``pa_automobiles_per_1000_provincial_annual`` returned
+    a single arbitrary province (Bocas del Toro, 9.6) in place of the eleven
+    rows it has — ten provinces plus the national figure — because every one
+    of them shares a ``period_start``. ``DISTINCT ON`` requires its columns to
+    lead the ``ORDER BY`` in PostgreSQL, so ``administrative_area_id`` is
+    listed there before ``period_start``.
     """
     statement = (
         apply_filters(_base_query(), filters)
@@ -160,11 +168,17 @@ def latest_observations(
             joinedload(Observation.source),
             joinedload(Observation.administrative_area),
         )
-        .distinct(Observation.country_id, Observation.indicator_id, Observation.source_id)
+        .distinct(
+            Observation.country_id,
+            Observation.indicator_id,
+            Observation.source_id,
+            Observation.administrative_area_id,
+        )
         .order_by(
             Observation.country_id,
             Observation.indicator_id,
             Observation.source_id,
+            Observation.administrative_area_id,
             Observation.period_start.desc(),
         )
         .limit(limit)

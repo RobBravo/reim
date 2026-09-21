@@ -61,7 +61,7 @@ See [ROADMAP.md](./ROADMAP.md).
 
 ### Data available
 
-**23 live pipelines feeding 63 indicators**, every one verified against its
+**24 live pipelines feeding 66 indicators**, every one verified against its
 source. Nothing here is a scrape of an aggregator.
 
 | Source | Countries | Frequency | Series | Coverage |
@@ -69,6 +69,7 @@ source. Nothing here is a scrape of an aggregator.
 | **BCN** — Banco Central de Nicaragua | Nicaragua | **daily** | official NIO/USD rate | 2012-01 onward |
 | **Banguat** — Banco de Guatemala | Guatemala | **daily** | official GTQ/USD rate, buy and sell | 1990-01 onward |
 | **INIDE** — national statistics office | Nicaragua | **monthly** | CPI index, month-on-month, year-on-year, each for the country, Managua and the rest of the country | 2007 onward |
+| **INEC** — Instituto Nacional de Estadística y Censo | Panama | annual | automobiles in circulation per 1,000 inhabitants, residential and non-residential building counts, each nationally and **by province** | 2023 |
 | **IMF** — International Merchandise Trade Statistics | all six | **monthly** | exports FOB, imports CIF, trade balance | 1990-01 onward |
 | **SIECA** — Secretaría de Integración Económica Centroamericana | six (not Belize) | **quarterly** | services exports, imports, balance | 2009-Q1 onward |
 | **CEPAL** — CEPALSTAT | **all seven** | annual | GDP and GDP per inhabitant, each at current and at constant 2018 prices | 1990 onward |
@@ -80,10 +81,12 @@ source. Nothing here is a scrape of an aggregator.
 | **CEPAL** — CEPALSTAT | **all seven** | **quarterly** | balance of payments: the six headline balances, four sub-balances and fifteen components | 1993-Q1 onward |
 | **World Bank** — Indicators API v2 | Nicaragua | annual | exchange rate, inflation, remittances, reserves, exports, imports | 1960 onward |
 
-The BCN, Banguat and INIDE series are **national primary sources** — the
-publisher itself, not a multilateral restatement. The World Bank, IMF, SIECA and
-CEPAL series compile from national statistics and are one step removed from
-them; CEPAL's are its own harmonised estimates and need not match a country's
+The BCN, Banguat, INIDE and INEC series are **national primary sources** — the
+publisher itself, not a multilateral restatement. INEC's are also REIM's only
+data below the country level: ten Panamanian provinces alongside each
+variable's own national figure, which is kept as INEC published it rather
+than summed from the provinces. The World Bank, IMF, SIECA and CEPAL series
+compile from national statistics and are one step removed from them; CEPAL's are its own harmonised estimates and need not match a country's
 official national accounts. **Three sources are not openly licensed** — the IMF,
 SIECA and CEPAL — and each carries its terms and its attribution requirement;
 see the limitations below.
@@ -419,7 +422,7 @@ REIM has three server-rendered web pages, served from the same application as
 the API: `make run-api`, then open <http://localhost:8000/>.
 
 The catalog browser at `/` answers what a new reader of the API docs cannot
-easily see for themselves — what REIM holds (all 23 sources, their
+easily see for themselves — what REIM holds (all 24 sources, their
 organization, frequency and indicators), which licences forbid
 redistribution, how fresh each source's data is, and what is disabled and
 why. No database is required for the catalog itself; freshness renders as
@@ -438,7 +441,7 @@ exists there — so an unreachable database or an unknown run renders as an
 explanatory page rather than the browser's fallback state.
 
 `/series` plots one indicator over time across the countries chosen from an
-ordinary `<form method="get">` — a `<select>` of all 63 indicators, a
+ordinary `<form method="get">` — a `<select>` of all 66 indicators, a
 multi-select of all 7 countries, and optional date bounds. The chart is
 server-rendered SVG with no JavaScript at all: the same no-build-step
 decision the catalog page made is not reopened for one page. Two countries'

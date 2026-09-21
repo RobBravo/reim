@@ -121,7 +121,7 @@ def test_the_catalog_lists_every_source_when_the_database_is_down(
 
 
 def test_the_disabled_block_states_its_own_emptiness() -> None:
-    """Nothing is disabled today: 23 sources, 23 enabled.
+    """Nothing is disabled today: 24 sources, 24 enabled.
 
     An empty section reads as a failed load. The page must say the absence
     out loud, so a reader can tell "none" from "did not render".

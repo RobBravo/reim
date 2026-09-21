@@ -14,6 +14,7 @@ from reim.core.constants import ValidationStatus
 from reim.core.exceptions import UnknownReferenceError
 from reim.database.models import Country, DataSource, Indicator, Observation, ObservationRevision
 from reim.domain.sources.catalog import SourceCatalog
+from reim.repositories.observations import ObservationFilters, latest_observations
 from reim.services.observation_writer import write_observations
 from reim.services.seeding import seed_all
 from tests.conftest import requires_db
@@ -112,6 +113,7 @@ def test_administrative_area_seeding_is_idempotent(seeded_session: Session, cata
     before = seeded_session.scalar(select(func.count(AdministrativeArea.id)))
     report = seed_all(seeded_session, catalog)
     assert report.administrative_areas_created == 0
+    assert report.administrative_areas_updated == 0
     assert seeded_session.scalar(select(func.count(AdministrativeArea.id))) == before
 
 
@@ -271,6 +273,63 @@ def test_an_unregistered_administrative_area_code_raises(
                 )
             ],
         )
+
+
+def test_latest_observations_returns_every_area_not_one_of_them(
+    seeded_session: Session, make_observation
+) -> None:  # type: ignore[no-untyped-def]
+    """A province is its own series, so all eleven INEC rows are "latest", not one.
+
+    Written after ``latest_observations`` was measured returning a single
+    arbitrary province (Bocas del Toro, 9.6) for
+    ``pa_automobiles_per_1000_provincial_annual`` against the live database:
+    its ``DISTINCT ON`` still named only country, indicator and source, and
+    every one of the eleven rows shares a ``period_start``, so ten of them
+    were collapsed away. The check lives at this level because that is where
+    the defect was — an API-layer assertion alone would have passed it
+    through unchanged.
+    """
+    values = {
+        None: "205.1",
+        "01": "9.6",
+        "02": "71.2",
+        "03": "61.6",
+        "04": "183.1",
+        "05": "1.8",
+        "06": "183.7",
+        "07": "190.8",
+        "08": "395.4",
+        "09": "121.3",
+        "13": "58.3",
+    }
+    _write(
+        seeded_session,
+        [
+            make_observation(
+                "2023",
+                value,
+                country_iso3="PAN",
+                indicator_code="pa_automobiles_per_1000_provincial_annual",
+                source_key="inec_pa_provincial",
+                unit="automóviles",
+                administrative_area_code=area_code,
+            )
+            for area_code, value in values.items()
+        ],
+    )
+    seeded_session.commit()
+
+    rows = latest_observations(
+        seeded_session,
+        ObservationFilters(indicator="pa_automobiles_per_1000_provincial_annual"),
+        limit=100,
+    )
+
+    assert len(rows) == 11
+    assert {
+        (row.administrative_area.code if row.administrative_area else None): row.value_numeric
+        for row in rows
+    } == {code: Decimal(value) for code, value in values.items()}
 
 
 def test_database_constraint_blocks_duplicate_natural_keys(
