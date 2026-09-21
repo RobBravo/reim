@@ -2557,6 +2557,28 @@ easily mistake this for one district's real figure. If a future INEC
 variable declares a finer minimum, this API is open, documented by its own
 catalogue, and the parameters are recorded above.
 
+#### A second subnational source: none found, in six probes
+
+Probed on 2026-09-21, the same map-JavaScript-reading technique that found
+INEC Panama's API, against every other Central American statistics
+institute REIM's countries have:
+
+| Institute | Measured state |
+|---|---|
+| **INIDE** (Nicaragua) | Reachable, no bot wall. Its `mapaSite` link is a sitemap, not a geographic map — a false lead. No subnational API found |
+| **INE** (Guatemala, `ine.gob.gt`) | **Behind Radware Bot Manager** (`__uzdbm_*` cookies, `perfdrive.com`) — the same vendor already blocking `www.bcn.gob.ni`. Not pursued, per this project's own policy against defeating an active access control |
+| **DIGESTYC** (El Salvador) | `digestyc.gob.sv` is **`NXDOMAIN`** — the domain does not resolve at all. Likely moved (possibly under `minec.gob.sv`); not relocated in this probe |
+| **INE** (Honduras) | The most promising dead end: a full public ArcGIS Online organisation (`server_ine`, org id `ftQEQGt3uNPDIBH7`, 123 public items), with real, unauthenticated REST Feature Services — confirmed live, e.g. `https://services7.arcgis.com/ftQEQGt3uNPDIBH7/arcgis/rest/services/DEPARTAMENTOS_CNPV/FeatureServer/0`. But every layer inspected carries only geographic boundaries (department/municipality codes and names, shape area/length) with **no economic or demographic figures attached** — census field-operation infrastructure (segments, recruitment points, ballot cartography), not published statistics. Worth remembering if this organisation ever publishes a data layer joined to these same boundaries |
+| **INEC** (Costa Rica, `inec.cr`) | **Behind an Akamai WAF** — `403`, `errors.edgesuite.net`. A different vendor from Guatemala's, same policy: not pursued |
+| **SIB** (Belize) | Reachable with a fuller browser header set. No statistical API — only WordPress's generic `wp-json` (blog content) and a "custom data" page that is a manual request form, not open data |
+
+Two of six are behind an active bot wall (this project's own line already
+drawn for `www.bcn.gob.ni`); one domain has gone dark; two expose nothing
+machine-readable; and Honduras's real, open API infrastructure has no
+economic data behind it today. Recorded so the next person does not repeat
+six probes to learn the same thing — and so Honduras's ArcGIS organisation
+is remembered rather than rediscovered, if it is ever worth checking again.
+
 ---
 
 ### SIBOIF — Nicaragua's banking-system balance sheet

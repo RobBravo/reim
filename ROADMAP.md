@@ -465,7 +465,12 @@ Economic figures become far more useful next to what happened around them.
   second mixes two of Panama's three comarcas into its `Provincia`-level
   response. Neither is a bounded extension; see the deferred mini-spec,
   `docs/superpowers/specs/2026-09-21-inec-decennial-variables-design.md`.
-  And any subnational source besides INEC Panama, none of which is known.
+  **A second subnational source was searched for and not found** — six
+  institutes probed 2026-09-21 (Nicaragua, Guatemala, El Salvador, Honduras,
+  Costa Rica, Belize), two behind an active bot wall (this project's
+  existing line, not crossed), one domain gone dark, two with nothing
+  machine-readable, and Honduras's real open ArcGIS infrastructure carrying
+  boundaries but no economic data. See `docs/sources.md`.
 
 ## v0.8.0 — Interfaces
 
