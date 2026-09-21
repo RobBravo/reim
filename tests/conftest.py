@@ -282,6 +282,13 @@ def cepalstat_bop_547_json() -> str:
     return gzip.decompress((FIXTURES / "cepalstat_bop_547.json.gz").read_bytes()).decode("utf-8")
 
 
+@pytest.fixture(scope="session")
+def siboif_balance_general_xlsx() -> bytes:
+    """Real SIBOIF banking-system balance sheet, gzipped to keep the repo small."""
+    with gzip.open(FIXTURES / "siboif_balance_general.xlsx.gz", "rb") as f:
+        return f.read()
+
+
 @pytest.fixture
 def inide_source(catalog: SourceCatalog) -> SourceEntry:
     """Catalog entry for the INIDE monthly CPI source."""

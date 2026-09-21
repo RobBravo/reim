@@ -671,3 +671,36 @@ sources:
     license: public_official_data
     official: true
     enabled: true
+
+  # ------------------------------------------------------------------------
+  # Nicaragua — SIBOIF banking system balance sheet
+  #
+  # Static .xlsx, refreshed in place, no session or query parameters. Holds
+  # 14 named banks plus two system-wide aggregate sheets; only the
+  # system-wide SISTEMA_BANCARIO sheet is read. Verified live 2026-09-20:
+  # Activo = Pasivo + Patrimonio to four decimal places for the most recent
+  # month; a handful of earlier months carry the source's own rounding
+  # artifact of up to 0.0002 (thousands of NIO).
+  # ------------------------------------------------------------------------
+  - key: siboif_bank_balance
+    name: Nicaragua banking system balance sheet (monthly)
+    description: >-
+      System-wide total assets, liabilities and equity for Nicaragua's
+      banking system, from SIBOIF's published balance sheet. Verified to
+      satisfy Activo = Pasivo + Patrimonio for every period.
+    country: NI
+    organization: SIBOIF
+    category: financial
+    access_type: file_download
+    frequency: monthly
+    format: xlsx
+    base_url: https://www.siboif.gob.ni
+    documentation_url: https://www.siboif.gob.ni/consultas/informes
+    connector: reim.ingestion.connectors.nicaragua.siboif_bank_balance
+    indicators:
+      - ni_bank_system_total_assets_monthly
+      - ni_bank_system_total_liabilities_monthly
+      - ni_bank_system_total_equity_monthly
+    license: public_official_data
+    official: true
+    enabled: true

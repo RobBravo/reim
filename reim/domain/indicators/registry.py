@@ -1115,6 +1115,49 @@ INDICATORS: tuple[IndicatorDefinition, ...] = (
         value_type=ValueType.LEVEL,
         methodology_url="https://www.inec.gob.pa",
     ),
+    IndicatorDefinition(
+        code="ni_bank_system_total_assets_monthly",
+        name="Nicaragua — banking system total assets",
+        description=(
+            "Total assets of Nicaragua's banking system (SISTEMA BANCARIO), monthly, from "
+            "SIBOIF's published balance sheet. Verified to satisfy Activo = Pasivo + Patrimonio "
+            "against the published liabilities and equity figures for the same period."
+        ),
+        category=IndicatorCategory.FINANCIAL,
+        frequency=Frequency.MONTHLY,
+        unit="current NIO",
+        value_type=ValueType.LEVEL,
+        methodology_url="https://www.siboif.gob.ni/consultas/informes",
+        currency_convertible=False,
+    ),
+    IndicatorDefinition(
+        code="ni_bank_system_total_liabilities_monthly",
+        name="Nicaragua — banking system total liabilities",
+        description=(
+            "Total liabilities of Nicaragua's banking system (SISTEMA BANCARIO), monthly, from "
+            "SIBOIF's published balance sheet."
+        ),
+        category=IndicatorCategory.FINANCIAL,
+        frequency=Frequency.MONTHLY,
+        unit="current NIO",
+        value_type=ValueType.LEVEL,
+        methodology_url="https://www.siboif.gob.ni/consultas/informes",
+        currency_convertible=False,
+    ),
+    IndicatorDefinition(
+        code="ni_bank_system_total_equity_monthly",
+        name="Nicaragua — banking system total equity",
+        description=(
+            "Total equity (PATRIMONIO) of Nicaragua's banking system (SISTEMA BANCARIO), "
+            "monthly, from SIBOIF's published balance sheet."
+        ),
+        category=IndicatorCategory.FINANCIAL,
+        frequency=Frequency.MONTHLY,
+        unit="current NIO",
+        value_type=ValueType.LEVEL,
+        methodology_url="https://www.siboif.gob.ni/consultas/informes",
+        currency_convertible=False,
+    ),
 )
 
 INDICATORS_BY_CODE: dict[str, IndicatorDefinition] = {i.code: i for i in INDICATORS}

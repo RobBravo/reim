@@ -567,3 +567,32 @@ indicators:
     allow_negative: false
     allow_zero: true
     freshness_max_age_days: 1200
+
+  # Nicaragua — SIBOIF banking system balance sheet -------------------------
+  # Positive values only: none of these three totals can be zero or negative
+  # for an operating banking system. Freshness threshold reflects genuine
+  # monthly publication (unlike INEC Panama's loose threshold, justified
+  # there by having only one observed reference year): the live file
+  # fetched 2026-09-20 was titled "Al 31 de Agosto del 2026" -- a 20-day
+  # observed lag from month-end to fetch -- so 75 days leaves ample margin
+  # without being so loose it would fail to warn on a genuine gap.
+  ni_bank_system_total_assets_monthly:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: false
+    freshness_max_age_days: 75
+
+  ni_bank_system_total_liabilities_monthly:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: false
+    freshness_max_age_days: 75
+
+  ni_bank_system_total_equity_monthly:
+    min_value: 0
+    max_value: null
+    allow_negative: false
+    allow_zero: false
+    freshness_max_age_days: 75

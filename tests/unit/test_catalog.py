@@ -193,14 +193,14 @@ def test_fourteen_of_the_catalog_sources_are_not_redistributable(catalog: Source
     closed = [entry for entry in catalog.sources if not entry.redistributable]
     closed_by_organization = sorted(entry.organization for entry in closed)
 
-    assert len(catalog.sources) == 24
+    assert len(catalog.sources) == 25
     assert len(closed) == 14
     assert closed_by_organization == ["CEPAL"] * 7 + ["IMF"] * 6 + ["SIECA"] * 1
 
     open_ = [entry for entry in catalog.sources if entry.redistributable]
-    assert len(open_) == 10
+    assert len(open_) == 11
     assert sum(1 for entry in open_ if entry.license == "CC-BY-4.0") == 6
-    assert sum(1 for entry in open_ if entry.license == "public_official_data") == 4
+    assert sum(1 for entry in open_ if entry.license == "public_official_data") == 5
 
 
 def test_open_licences_allowlist_is_exactly_the_two_slugs_in_use() -> None:

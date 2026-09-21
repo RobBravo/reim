@@ -39,6 +39,9 @@ dependencies = [
     "jinja2>=3.1",
     # INIDE publishes the IPC only as legacy BIFF .xls; xlrd is the reader.
     "xlrd>=2.0",
+    # SIBOIF publishes its banking statistics as modern OOXML .xlsx, which
+    # xlrd 2.0+ deliberately cannot read (it dropped .xlsx support entirely).
+    "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]
@@ -128,6 +131,13 @@ exclude = ["^alembic/versions/", "^\\.venv/"]
 # xlrd publishes no type stubs; its use is confined to the INIDE connector,
 # which wraps every call behind typed helpers.
 module = ["xlrd.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# openpyxl publishes no type stubs of its own (a third-party types-openpyxl
+# package exists but is not used here); its use is confined to the SIBOIF
+# connector, which wraps every call behind typed helpers.
+module = ["openpyxl.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

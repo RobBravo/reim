@@ -121,7 +121,7 @@ def test_the_catalog_lists_every_source_when_the_database_is_down(
 
 
 def test_the_disabled_block_states_its_own_emptiness() -> None:
-    """Nothing is disabled today: 24 sources, 24 enabled.
+    """Nothing is disabled today: 25 sources, 25 enabled.
 
     An empty section reads as a failed load. The page must say the absence
     out loud, so a reader can tell "none" from "did not render".
@@ -204,11 +204,11 @@ def client(session: Session) -> Iterator[TestClient]:
 
 @requires_db
 def test_every_catalog_source_appears(client: TestClient) -> None:
-    """All 24, not a page of them: this is a catalog, not a feed."""
+    """All 25, not a page of them: this is a catalog, not a feed."""
     body = client.get("/").text
 
     catalog = get_catalog()
-    assert len(catalog.sources) == 24
+    assert len(catalog.sources) == 25
     for entry in catalog.sources:
         assert entry.name in body, f"{entry.name} is missing from the page"
 
