@@ -38,10 +38,10 @@ PLACEHOLDER_HOSTS = ("example.invalid", "example.com", "example.org", "example.n
 #: see docs/sources.md for each non-open source's terms. Membership is the
 #: rule: a new licence slug is not open until it is added here deliberately.
 #:
-#: Measured against sources/catalog.yml: 14 of the catalog's 24 sources are
+#: Measured against sources/catalog.yml: 14 of the catalog's 25 sources are
 #: not redistributable, from three publishers — CEPAL (7), IMF (6) and
-#: SIECA (1). The other 10 are open: 6 under CC-BY-4.0 (the World Bank's
-#: Nicaragua series) and 4 under public_official_data.
+#: SIECA (1). The other 11 are open: 6 under CC-BY-4.0 (the World Bank's
+#: Nicaragua series) and 5 under public_official_data.
 OPEN_LICENCES: frozenset[str] = frozenset({"CC-BY-4.0", "public_official_data"})
 
 SourceKey = Annotated[str, Field(pattern=r"^[a-z0-9]+(?:_[a-z0-9]+)*$", max_length=120)]

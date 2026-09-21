@@ -2537,6 +2537,99 @@ by its own catalogue, and the parameters are recorded above.
 
 ---
 
+### SIBOIF — Nicaragua's banking-system balance sheet
+
+| | |
+|---|---|
+| **Organization** | Superintendencia de Bancos y de Otras Instituciones Financieras (`SIBOIF`) — Nicaragua's banking supervisor |
+| **File** | `https://www.siboif.gob.ni/sites/default/files/documentos/serie-informes-excel/bancos/ib_balance_general_0.xlsx` |
+| **Auth** | None |
+| **Format** | Genuine OOXML `.xlsx` (`Microsoft Excel 2007+`), ~1 MB, refreshed in place — no date or version in the URL |
+| **Frequency** | Monthly |
+| **Coverage** | 2019-01 – 2026-08, 92 consecutive months, no gaps found |
+| **Licence** | Public official data |
+| **Status** | ✅ **Enabled** — 276 observations (3 indicators × 92 months), measured 2026-09-21 |
+
+Closes the `SIBOIF` line of the "Registered but not yet implemented" table
+below. REIM's first data from Nicaragua's banking supervisor.
+
+**Two paths, one rejected.** SIBOIF publishes banking statistics both through
+an interactive filtered browser (`/consultas/estadisticas`) and a
+pre-generated report series (`/consultas/informes`). The browser's export
+goes through Drupal's batch-export protocol: a filtered request redirects
+into a polling loop that advances a few percent per request over roughly 25
+polls, then a second redirect to a token-authorized download — whose payload
+turns out to be an HTML `<table>` mislabelled `Content-Type:
+application/vnd.ms-excel`, 36 MB for one broad query. Reproduced once,
+end to end, to confirm the mechanism works, then rejected as this
+connector's source: multi-step, session-cookied, server-expensive on every
+run, and not a real spreadsheet once fetched. The report series needs none
+of that: one stateless `GET` returns the workbook above, byte-identical
+across two fetches. That is what this connector reads.
+
+**One sheet of sixteen.** The workbook carries 14 named banks plus
+`SISTEMA_FINANCIERO` and `SISTEMA_BANCARIO`; only `SISTEMA_BANCARIO` — the
+banking-system aggregate the roadmap named — is read. That sheet is a
+95-row hierarchical balance sheet, column A holding each line item's
+description and one column per month-end date. Three rows are read, by
+their exact column-A text rather than a fixed row number — `Activo`,
+`Pasivo`, `PATRIMONIO` — so a future republication that adds or reorders a
+line item above them does not silently start reading the wrong row; a
+guard test pins this against a fixture whose rows have been moved, not just
+the real one.
+
+**Three indicators**, monthly, in whole córdobas. The source publishes
+thousands of NIO; REIM multiplies by 1,000 to store whole córdobas and keeps
+the original thousands-value in `raw_metadata`, the same declared,
+reversible transformation SIECA already applies to its millions-to-whole-USD
+conversion:
+
+| REIM indicator | Column-A label |
+|---|---|
+| `ni_bank_system_total_assets_monthly` | `Activo` |
+| `ni_bank_system_total_liabilities_monthly` | `Pasivo` |
+| `ni_bank_system_total_equity_monthly` | `PATRIMONIO` |
+
+**Verified, not assumed.** `validate()` asserts `Activo = Pasivo +
+Patrimonio` for every period the connector produces, and a guard test checks
+the same identity against the real fixture, not a synthetic one. 20 of the
+92 published months differ from the identity by up to 0.0002 in the source's
+own thousands-of-córdobas scale — confirmed, by re-deriving the same 20
+mismatches directly from the raw workbook independent of this connector's
+code, to be a rounding artifact in SIBOIF's own published figures, not a
+defect in how this connector reads them. The tolerance is set to clear that.
+
+**Two irregularities the file discloses about itself**, worth carrying here
+rather than dropping silently: from January 2019, Banco Produzcamos
+consolidates into both the banking system and the national financial
+system; and Banco Corporativo, S.A. (BANCORP) requested voluntary
+dissolution from the Superintendencia in 2019, with the file's own note
+stating publication of its figures was suspended from July 2019. Neither
+affects the three system-wide rows this connector reads — they are
+already-consolidated totals — but both explain why a naive per-bank
+cross-check, if one is ever built, would not reconcile perfectly across
+2019.
+
+**Excluded, deliberately:**
+
+* `SISTEMA_FINANCIERO` and the 14 named banks' own figures. Same file, read
+  differently — a broader-scope or per-institution question this increment
+  does not answer.
+* The income statement (`ib_estado_resultados_0.xlsx`). Confirmed live, same
+  `Content-Type`, sitting in the same file listing as the balance sheet — a
+  real, same-effort follow-up, excluded here purely on scope grounds, not
+  because it is unreachable.
+* The other roughly 92 line items of the balance sheet (cash, loan
+  portfolio, deposits, and so on). Real and available in the same file, not
+  "aggregates."
+* Currency conversion (`currency_convertible`). REIM already has the NIO/USD
+  rate this would need, from BCN; which rate and what period-alignment to use
+  is a decision this increment defers rather than makes.
+* SIBOIF's other three regulated sectors — Seguros, Valores, Almacenes — same
+  site, same file-listing pattern, not investigated.
+
+---
+
 
 ## Registered but not yet implemented
 
@@ -2548,7 +2641,6 @@ catalog entries can reference them as soon as an endpoint is identified.
 | **INIDE** (beyond the IPC) | Employment, poverty, population projections | Not yet researched; the IPC is now automated (see above) |
 | **BCN** (beyond exchange rate) | Monthly monetary statistics, remittances, trade, reserves | Published as XLSX bulletins; layout stability not yet assessed |
 | **MHCP** (ministry of finance) | Fiscal execution, public debt | Not yet researched |
-| **SIBOIF** (banking supervisor) | Banking system aggregates | Not yet researched |
 | **BCIE** (regional development bank) | Regional financing flows | Not yet researched |
 | **IMF** | IFS monetary and external series | `dataservices.imf.org` was not reachable from the development environment; worth retrying |
 

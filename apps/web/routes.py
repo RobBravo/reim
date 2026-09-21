@@ -180,7 +180,7 @@ def catalog(request: Request, session: SessionDep) -> HTMLResponse:
     catalog entry is the authority for ``enabled``/``disabled_reason`` — not
     the ``PipelineSummary`` also carrying those two fields — because it needs
     no database, so this block renders identically whether or not the
-    database answers. Today that list is empty (24 sources, 24 enabled); the
+    database answers. Today that list is empty (25 sources, 25 enabled); the
     template states that absence explicitly rather than rendering nothing,
     for the same reason decision D5 does for the freshness notice: an empty
     section reads as a failed render, not as a fact about the catalog.

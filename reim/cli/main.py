@@ -314,7 +314,7 @@ def pipeline_run_all(
     ``--frequency`` restricts the run to one cadence, which is what the crontab
     emitted by ``pipeline schedule`` installs — and what an operator wants when
     re-running just the daily sources after a network problem, rather than
-    sweeping all 24.
+    sweeping all 25.
     """
     try:
         registry = ConnectorRegistry(load_catalog())
