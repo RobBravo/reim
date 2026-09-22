@@ -905,6 +905,28 @@ def test_each_api_handle_reverse_proxies_to_the_api_service(path: str) -> None:
     )
 
 
+def test_https_location_snippet_rewrites_http_to_https() -> None:
+    """The `https_location` snippet's own definition, not just its import.
+
+    The parametrized test above locks in that every api handle *imports*
+    `https_location` — it does not read the snippet's own body, so a diff
+    that deleted the `(https_location) { ... }` definition entirely, or
+    inverted the rewrite direction (`^https://` -> `http://`), would leave
+    every `import https_location` line intact and pass that test anyway.
+    `caddy validate` would catch the first case and be silent on the second;
+    neither runs in CI. This is the assertion that actually pins the rule.
+    """
+    text = CADDYFILE.read_text(encoding="utf-8")
+
+    assert "(https_location) {" in text, (
+        "the https_location snippet definition is missing from deploy/Caddyfile"
+    )
+    assert 'header_down Location "^http://" "https://"' in text, (
+        "the https_location snippet does not rewrite a dead http:// Location to "
+        "https:// — either the rule text changed or the direction was inverted"
+    )
+
+
 def test_default_handle_reverse_proxies_to_the_frontend_service() -> None:
     """The catch-all `handle` — everything none of ``API_HANDLE_PATHS`` matches
     — must reach the frontend container, not the api.
