@@ -138,6 +138,15 @@ services:
     networks:
       - reim
 
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+    restart: unless-stopped
+    # No published port: same reasoning as api — caddy is the only door in.
+    networks:
+      - reim
+
   caddy:
     # Pinned, not floating. The Caddyfile's own comment explains what was
     # measured: Caddy OVERWRITES X-Forwarded-For rather than appending to it,
@@ -155,6 +164,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      frontend:
+        condition: service_started
     environment:
       REIM_DOMAIN: ${REIM_DOMAIN:?set the domain this deployment serves}
       # Contact address the CA (Let's Encrypt by default) uses to warn about

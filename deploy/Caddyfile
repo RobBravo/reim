@@ -39,6 +39,26 @@
 		respond 404
 	}
 
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle /legacy* {
+		reverse_proxy api:8000
+	}
+
+	handle /static/* {
+		reverse_proxy api:8000
+	}
+
+	handle /health {
+		reverse_proxy api:8000
+	}
+
+	handle /ready {
+		reverse_proxy api:8000
+	}
+
 	handle {
 		# A cap on request bodies clients SEND, shipped commented out. Caddy
 		# does not add it by default, and it is not the byte budget anyone
@@ -56,6 +76,6 @@
 		# 	max_size 10MB
 		# }
 		header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		reverse_proxy api:8000
+		reverse_proxy frontend:8080
 	}
 }
