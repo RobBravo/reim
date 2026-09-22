@@ -37,7 +37,7 @@ existed.
 | Layer | panda's existing convention | What REIM uses |
 |---|---|---|
 | Reverse proxy | One native, system-wide Caddy (`caddy.service`, v2.11.4), one file per site under `/etc/caddy/sites/`, `tls internal` (Caddy's own local CA, not ACME) | `/etc/caddy/sites/reim.caddy` |
-| Containers | Rootless Podman, managed as **Quadlets** (`~/.config/containers/systemd/*.container`, `systemctl --user`) — not `docker compose` / `podman compose` | `~/.config/containers/systemd/reim-api.container` |
+| Containers | Rootless Podman, managed as **Quadlets** (`~/.config/containers/systemd/*.container`, `systemctl --user`) — not `docker compose` / `podman compose` | `~/.config/containers/systemd/reim-api.container`, `~/.config/containers/systemd/reim-frontend.container` |
 | Database | One shared `panda-postgres` instance; each app gets its own database and same-named role inside it (confirmed live for gitea and n8n before this deployment) | Database `reim`, role `reim`, inside `panda-postgres` |
 | App config | `/srv/containers/<app>/<app>.env`, plain `KEY=value`, outside git | `/srv/containers/reim/reim.env` |
 
@@ -55,9 +55,29 @@ reim.panda.home.arpa {
 		respond 404
 	}
 
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle /legacy* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle /static/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle /health {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle /ready {
+		reverse_proxy 127.0.0.1:8000
+	}
+
 	handle {
 		header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8080
 	}
 }
 ```
@@ -67,6 +87,12 @@ cares about — `/metrics` closed at the proxy, HSTS — out of
 [`deploy/Caddyfile`](../deploy/Caddyfile) and into this host's per-site shape,
 rather than losing them when the compose file's own `caddy` service is
 dropped.
+
+Updated for the frontend deployment (`docs/superpowers/specs/2026-09-21-frontend-deployment-integration-design.md`):
+the api container now answers only `/api/*`, `/legacy*` (`apps/web`, relocated
+there so the new frontend could take the root path), `/static/*`, `/health`
+and `/ready`; everything else — the default `handle` — goes to the new
+frontend container on `127.0.0.1:8080` instead of the api container.
 
 ### `~/.config/containers/systemd/reim-api.container`
 
@@ -100,6 +126,34 @@ else can), `Restart=always`. `Exec=` carries the same
 migrate-then-seed-then-serve command
 `deploy/docker-compose.prod.yml` already runs for the standalone case — only
 how the container is launched differs, not what it does once running.
+
+### `~/.config/containers/systemd/reim-frontend.container`
+
+```ini
+[Unit]
+Description=Panda REIM Frontend
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/reim-frontend:prod
+ContainerName=panda-reim-frontend
+Network=panda-net
+PublishPort=127.0.0.1:8080:8080
+
+[Service]
+Restart=always
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target
+```
+
+Same shape as `reim-api.container`, minus what it doesn't need: no
+`Requires=postgres.service` (the frontend has no database dependency), no
+`EnvironmentFile=` (a static export has nothing to configure at runtime), and
+`Exec=` is unset — the image's own `deploy/Caddyfile.frontend` is already its
+`CMD`.
 
 ### `/srv/containers/reim/reim.env`
 
@@ -183,6 +237,41 @@ original two-days-ago start time (a reload, not a restart — the other four
 sites' listeners and certificates were never interrupted), and the other four
 `sites/*.caddy` files' modification times were untouched.
 
+## Adding the frontend
+
+Built and started the same way as the api container, following the same
+Quadlet shape:
+
+```text
+podman build -t localhost/reim-frontend:prod -f deploy/Dockerfile.frontend .
+→ Successfully tagged localhost/reim-frontend:prod
+
+systemctl --user daemon-reload
+systemctl --user start reim-frontend.service
+→ active (running)
+```
+
+Then the same validate-before-touching-live discipline as the original
+`reim.caddy` rollout: a candidate copy edited and validated
+(`caddy validate --config <candidate-copy>/reim.caddy --adapter caddyfile` →
+`Valid configuration`) before `sudo cp` over the live file and
+`sudo systemctl reload caddy`.
+
+**A real gap, found by the verification below, not by inspection:** after
+the reload, `/legacy/*` 404'd — including hit directly against
+`127.0.0.1:8000`, bypassing Caddy entirely, which ruled out a routing
+mistake. `panda-reim-api` was still running the image built *before* the
+`/legacy` prefix change landed in `apps/web/routes.py` — deploying the
+frontend doesn't touch the api container at all, and nothing about that
+change alone would have told an operator the api image was now stale too.
+Fixed with the api container's own already-documented redeploy recipe below
+(`podman build` + `systemctl --user restart reim-api.service`), not a new
+procedure. The lesson: **a code change that lands in `apps/web` needs an api
+redeploy alongside any frontend routing change that starts depending on
+it** — the two are easy to treat as independent deploys because they build
+and ship as separate images, but here one's route contract was the other
+one's assumption.
+
 ## Verified
 
 ```text
@@ -194,6 +283,19 @@ curl -sk https://reim.panda.home.arpa/ready
 
 curl -sk -w '%{http_code}' https://reim.panda.home.arpa/metrics -o /dev/null
 → 404
+```
+
+Re-verified after adding the frontend, each path checked against the content
+it should actually serve, not just its status code:
+
+```text
+curl -sk https://reim.panda.home.arpa/          → 200, <title>REIM — Monitor Económico Regional de Centroamérica</title>
+curl -sk https://reim.panda.home.arpa/map/      → 200
+curl -sk https://reim.panda.home.arpa/legacy/   → 200, <title>Catalog · REIM</title>
+curl -sk https://reim.panda.home.arpa/legacy/runs    → 200
+curl -sk https://reim.panda.home.arpa/legacy/series  → 200
+curl -sk https://reim.panda.home.arpa/api/v1/countries → 200
+curl -sk https://reim.panda.home.arpa/static/reim.css  → 200
 ```
 
 **The rate-limit/proxy-identity measurement was re-run against this real
@@ -283,6 +385,14 @@ installing.
   podman build -t localhost/reim-api:prod -f Dockerfile .
   systemctl --user restart reim-api.service
   ```
+- **Redeploying the frontend:** same shape as the api container —
+  ```text
+  podman build -t localhost/reim-frontend:prod -f deploy/Dockerfile.frontend .
+  systemctl --user restart reim-frontend.service
+  ```
+  If the change also touched `apps/web` (or anything else the api container
+  serves), redeploy the api container too — see "Adding the frontend" above
+  for what happens when that's skipped.
 - **Changing `reim.env`:** edit `/srv/containers/reim/reim.env`, then
   `systemctl --user restart reim-api.service` to pick it up (Quadlets read the
   `EnvironmentFile=` fresh on each container start, same as compose's
