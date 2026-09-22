@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Map as MapLibreMap, GeoJSONSource } from "maplibre-gl";
+import type * as GeoJSON from "geojson";
 import { MapLibreWrapper } from "@/components/map/MapLibreWrapper";
 import { MapControls } from "@/components/map/MapControls";
 import { MapDetailCard } from "@/components/map/MapDetailCard";
