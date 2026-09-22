@@ -71,6 +71,11 @@ def list_countries(session: Session, *, active_only: bool = False) -> list[Count
     return list(session.scalars(statement))
 
 
+def list_administrative_areas(session: Session) -> list[AdministrativeArea]:
+    """Return every administrative area, ordered by name."""
+    return list(session.scalars(select(AdministrativeArea).order_by(AdministrativeArea.name)))
+
+
 def list_organizations(session: Session, *, country_iso2: str | None = None) -> list[Organization]:
     """Return organizations ordered by code, optionally filtered by country."""
     statement = select(Organization).order_by(Organization.code)

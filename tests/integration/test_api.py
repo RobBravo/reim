@@ -100,6 +100,35 @@ def test_list_countries(client: TestClient) -> None:
     assert {c["iso2"] for c in body["data"]} >= {"NI", "CR", "GT"}
 
 
+def test_country_level_returns_a_feature_per_registered_country(client: TestClient) -> None:
+    body = client.get("/api/v1/geo/boundaries", params={"level": "country"}).json()
+
+    assert body["type"] == "FeatureCollection"
+    iso2_codes = {feature["properties"]["iso2"] for feature in body["features"]}
+    assert iso2_codes == {"NI", "GT", "SV", "HN", "CR", "PA", "BZ"}
+    for feature in body["features"]:
+        assert feature["geometry"]["type"] in ("Polygon", "MultiPolygon")
+
+
+def test_administrative_area_level_returns_panamas_ten_provinces(client: TestClient) -> None:
+    body = client.get("/api/v1/geo/boundaries", params={"level": "administrative_area"}).json()
+
+    assert body["type"] == "FeatureCollection"
+    assert len(body["features"]) == 10
+    codes = {feature["properties"]["code"] for feature in body["features"]}
+    assert codes == {"01", "02", "03", "04", "05", "06", "07", "08", "09", "13"}
+
+
+def test_an_unsupported_level_is_rejected(client: TestClient) -> None:
+    response = client.get("/api/v1/geo/boundaries", params={"level": "district"})
+    assert response.status_code == 422
+
+
+def test_the_response_carries_a_long_cache_control_header(client: TestClient) -> None:
+    response = client.get("/api/v1/geo/boundaries", params={"level": "country"})
+    assert "max-age=" in response.headers["cache-control"]
+
+
 def test_active_only_filter(client: TestClient) -> None:
     """Belize was the one inactive country; CEPALSTAT's GDP activated it.
 

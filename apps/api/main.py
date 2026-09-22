@@ -19,6 +19,7 @@ from apps.api.ratelimit import FixedWindowLimiter
 from apps.api.routers import (
     comparison,
     countries,
+    geo,
     indicators,
     observations,
     organizations,
@@ -142,6 +143,7 @@ def create_app() -> FastAPI:
 
     app.include_router(system.router)
     app.include_router(countries.router)
+    app.include_router(geo.router)
     app.include_router(organizations.router)
     app.include_router(sources.router)
     app.include_router(indicators.router)
