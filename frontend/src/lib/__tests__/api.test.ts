@@ -83,6 +83,37 @@ describe("reimApi client", () => {
     expect(data).toEqual(mockCountries);
   });
 
+  it("loads catalog sources across bounded pages", async () => {
+    const page = (total: number, limit: number, offset: number, rows: unknown[]) => ({
+      data: rows,
+      meta: { total, limit, offset, returned: rows.length, has_more: offset + rows.length < total },
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(page(3, 2, 0, [{ source_key: "a" }, { source_key: "b" }])))
+      .mockResolvedValueOnce(jsonResponse(page(3, 2, 2, [{ source_key: "c" }])));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const sources = await reimApi.getSources();
+
+    expect(fetchMock.mock.calls.map(([url]) => new URL(url as string, "http://localhost").searchParams.get("offset")))
+      .toEqual(["0", "2"]);
+    expect(sources.map((source) => source.source_key)).toEqual(["a", "b", "c"]);
+  });
+
+  it("loads organizations and pipeline summaries from their API endpoints", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ data: [{ id: "org-1", name: "Instituto" }], meta: { total: 1, limit: 100, offset: 0, returned: 1, has_more: false } }))
+      .mockResolvedValueOnce(jsonResponse([{ source_key: "source_a", indicators: ["a", "b"] }]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const [organizations, pipelines] = await Promise.all([reimApi.getOrganizations(), reimApi.getPipelineSummaries()]);
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/organizations?limit=100&offset=0");
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/v1/pipelines");
+    expect(organizations[0].name).toBe("Instituto");
+    expect(pipelines[0].indicators).toEqual(["a", "b"]);
+  });
+
   it("throws on HTTP error response", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,

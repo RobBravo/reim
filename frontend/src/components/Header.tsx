@@ -6,17 +6,9 @@ import { usePathname } from "next/navigation";
 const NAV_LINKS = [
   { href: "/", label: "Inicio" },
   { href: "/map/", label: "Mapa" },
-  // Interim: apps/web hasn't been rewritten as a Next page yet, so this
-  // points at its relocated /legacy route until the downstream
-  // catalog/observability plan replaces it. Rendered as a plain <a> below,
-  // not next/link: trailingSlash: true makes next/link emit
-  // "/legacy/series/", but FastAPI's actual route is "/legacy/series" (no
-  // trailing slash) — Starlette's redirect from the slashed path is a
-  // plain http:// dead end behind Caddy (uvicorn runs --no-proxy-headers).
-  // A plain <a href> ships exactly this string, with no normalization.
   { href: "/series/", label: "Series" },
   { href: "/catalog/", label: "Catálogo" },
-  // Interim: same as Series above.
+  // The observability page remains under apps/web until its frontend rewrite.
   { href: "/legacy/runs", label: "Operaciones", interim: true },
 ];
 

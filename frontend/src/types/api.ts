@@ -11,6 +11,63 @@ export interface PageResponse<T> {
   meta: PageMeta;
 }
 
+export interface DataSource {
+  id: string;
+  source_key: string;
+  name: string;
+  description: string | null;
+  category: string;
+  access_type: string;
+  base_url: string;
+  frequency: string;
+  format: string;
+  connector_path: string | null;
+  license: string | null;
+  documentation_url: string | null;
+  is_official: boolean;
+  is_active: boolean;
+  disabled_reason: string | null;
+  organization_id: string;
+  country_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Organization {
+  id: string;
+  code: string;
+  name: string;
+  short_name: string | null;
+  organization_type: string;
+  website_url: string | null;
+  is_official: boolean;
+  country_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PipelineSummary {
+  pipeline_key: string;
+  source_key: string;
+  enabled: boolean;
+  disabled_reason: string | null;
+  frequency: string;
+  indicators: string[];
+  last_run_at: string | null;
+  last_run_status: string | null;
+  last_run_duration_ms: number | null;
+  last_success_at: string | null;
+  last_error_type: string | null;
+  last_error_message: string | null;
+  records_inserted_last_run: number | null;
+  records_updated_last_run: number | null;
+  records_rejected_last_run: number | null;
+  observation_count: number;
+  latest_period_end: string | null;
+  data_age_days: number | null;
+  is_stale: boolean | null;
+}
+
 export interface ComparisonIndicator {
   code: string;
   name: string;

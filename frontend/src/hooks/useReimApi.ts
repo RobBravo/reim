@@ -15,6 +15,27 @@ export function useIndicators() {
   });
 }
 
+export function useSources() {
+  return useQuery({
+    queryKey: ["sources"],
+    queryFn: reimApi.getSources,
+  });
+}
+
+export function useOrganizations() {
+  return useQuery({
+    queryKey: ["organizations"],
+    queryFn: reimApi.getOrganizations,
+  });
+}
+
+export function usePipelineSummaries() {
+  return useQuery({
+    queryKey: ["pipeline-summaries"],
+    queryFn: reimApi.getPipelineSummaries,
+  });
+}
+
 export function useBoundaries(level: "country" | "administrative_area") {
   return useQuery({
     queryKey: ["boundaries", level],

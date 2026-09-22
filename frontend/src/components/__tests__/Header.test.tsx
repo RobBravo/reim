@@ -21,7 +21,7 @@ describe("Header", () => {
     expect(screen.getByText("Operaciones").closest("a")).toHaveAttribute("href", "/legacy/runs");
   });
 
-  it("leaves Catálogo pointed at the not-yet-built page", () => {
+  it("points Catálogo at its static page", () => {
     render(<Header />);
     expect(screen.getByText("Catálogo").closest("a")).toHaveAttribute("href", "/catalog");
   });

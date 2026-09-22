@@ -5,10 +5,14 @@ import {
   GeoBoundariesCollection,
   PageResponse,
   ComparisonResponse,
+  DataSource,
+  Organization,
+  PipelineSummary,
 } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 const MAX_SERIES_PERIODS = 1500;
+const CATALOG_PAGE_SIZE = 100;
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(`${API_BASE}${url}`);
@@ -16,6 +20,27 @@ async function fetchJson<T>(url: string): Promise<T> {
     throw new Error(`API Error ${res.status}: ${res.statusText}`);
   }
   return res.json() as Promise<T>;
+}
+
+async function fetchAllPages<T>(path: string): Promise<T[]> {
+  const data: T[] = [];
+  let offset = 0;
+  let total = 1;
+
+  while (offset < total) {
+    const query = new URLSearchParams({ limit: String(CATALOG_PAGE_SIZE), offset: String(offset) });
+    const page = await fetchJson<PageResponse<T>>(`${path}?${query.toString()}`);
+    if (page.meta.returned !== page.data.length) {
+      throw new Error(`Catalog page returned count does not match data for ${path}`);
+    }
+    if (page.meta.total > offset && page.meta.returned === 0) {
+      throw new Error(`Catalog pagination made no progress for ${path}`);
+    }
+    data.push(...page.data);
+    total = page.meta.total;
+    offset += page.meta.returned;
+  }
+  return data;
 }
 
 export const reimApi = {
@@ -27,6 +52,9 @@ export const reimApi = {
     const page = await fetchJson<PageResponse<Indicator>>("/api/v1/indicators?limit=500");
     return page.data;
   },
+  getSources: () => fetchAllPages<DataSource>("/api/v1/sources"),
+  getOrganizations: () => fetchAllPages<Organization>("/api/v1/organizations"),
+  getPipelineSummaries: () => fetchJson<PipelineSummary[]>("/api/v1/pipelines"),
   getBoundaries: (level: "country" | "administrative_area") =>
     fetchJson<GeoBoundariesCollection>(`/api/v1/geo/boundaries?level=${level}`),
   getComparison: async (params: {
