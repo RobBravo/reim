@@ -8,11 +8,16 @@ const NAV_LINKS = [
   { href: "/map/", label: "Mapa" },
   // Interim: apps/web hasn't been rewritten as a Next page yet, so this
   // points at its relocated /legacy route until the downstream
-  // catalog/observability plan replaces it.
-  { href: "/legacy/series/", label: "Series" },
+  // catalog/observability plan replaces it. Rendered as a plain <a> below,
+  // not next/link: trailingSlash: true makes next/link emit
+  // "/legacy/series/", but FastAPI's actual route is "/legacy/series" (no
+  // trailing slash) — Starlette's redirect from the slashed path is a
+  // plain http:// dead end behind Caddy (uvicorn runs --no-proxy-headers).
+  // A plain <a href> ships exactly this string, with no normalization.
+  { href: "/legacy/series", label: "Series", interim: true },
   { href: "/catalog/", label: "Catálogo" },
   // Interim: same as Series above.
-  { href: "/legacy/runs/", label: "Operaciones" },
+  { href: "/legacy/runs", label: "Operaciones", interim: true },
 ];
 
 export function Header() {
@@ -36,16 +41,22 @@ export function Header() {
         <nav className="flex items-center gap-1 sm:gap-2">
           {NAV_LINKS.map((link) => {
             const isActive = pathname === link.href || (link.href !== "/" && pathname?.startsWith(link.href));
+            const className = `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              isActive
+                ? "bg-reim-surface text-reim-gold border border-reim-gold/30"
+                : "text-reim-muted hover:bg-reim-surface hover:text-reim-text"
+            }`;
+            if (link.interim) {
+              // Plain <a>, deliberately not next/link — see the comment on
+              // NAV_LINKS above.
+              return (
+                <a key={link.href} href={link.href} className={className}>
+                  {link.label}
+                </a>
+              );
+            }
             return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-reim-surface text-reim-gold border border-reim-gold/30"
-                    : "text-reim-muted hover:bg-reim-surface hover:text-reim-text"
-                }`}
-              >
+              <Link key={link.href} href={link.href} className={className}>
                 {link.label}
               </Link>
             );

@@ -23,8 +23,17 @@ export default function Home() {
             Visualización coroplética de indicadores nacionales y departamentales/provinciales.
           </p>
         </Link>
-        <Link
-          href="/series/"
+        {/* Interim: apps/web hasn't been rewritten as a Next page yet, so
+            this points at its relocated /legacy route until the downstream
+            catalog/observability plan replaces it. Plain <a>, not
+            next/link: trailingSlash: true would emit "/legacy/series/",
+            but FastAPI's actual route is "/legacy/series" (no trailing
+            slash) — Starlette's redirect from the slashed path is a plain
+            http:// dead end behind Caddy (uvicorn runs
+            --no-proxy-headers). A plain <a href> ships exactly this
+            string, with no normalization. Same treatment as Header.tsx. */}
+        <a
+          href="/legacy/series"
           className="group rounded-xl border border-reim-border bg-reim-surface p-6 transition-all hover:border-reim-gold/50"
         >
           <div className="text-xs font-semibold uppercase tracking-wider text-reim-gold">Series de Tiempo</div>
@@ -32,7 +41,7 @@ export default function Home() {
           <p className="mt-2 text-sm text-reim-muted">
             Evolución histórica y comparación multi-país con rigor de comparabilidad.
           </p>
-        </Link>
+        </a>
         <Link
           href="/catalog/"
           className="group rounded-xl border border-reim-border bg-reim-surface p-6 transition-all hover:border-reim-gold/50"
