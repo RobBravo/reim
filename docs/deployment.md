@@ -532,24 +532,27 @@ The rate limiter only inspects `/api/v1` — `LIMITED_PREFIX` in
 `apps/api/middleware.py` is that one prefix, and a request whose path does not
 start with it never reaches the limiter at all. Everything else Caddy
 proxies through is public and carries no allowance of REIM's own: the web
-pages under `apps/web/routes.py` (`/`, `/runs`, `/runs/{run_id}` and
-`/series`), `/static` (served by `StaticFiles`), and FastAPI's own docs
-endpoints. There are **four** of those, not two — `create_app()` disables
-none of FastAPI's defaults, so a route inventory of the built app shows
-`/openapi.json`, `/docs`, `/docs/oauth2-redirect` and `/redoc` outside
-`/api/v1`, and all four answer `200`. `/redoc` is a second, complete
-interactive rendering of the same schema.
+pages under `apps/web/routes.py`, now served under `/legacy` (`/legacy`,
+`/legacy/runs`, `/legacy/runs/{run_id}` and `/legacy/series` — `/` itself now
+serves the Next.js static frontend instead), `/static` (served by
+`StaticFiles`), and FastAPI's own docs endpoints. There are **four** of
+those, not two — `create_app()` disables none of FastAPI's defaults, so a
+route inventory of the built app shows `/openapi.json`, `/docs`,
+`/docs/oauth2-redirect` and `/redoc` outside `/api/v1`, and all four answer
+`200`. `/redoc` is a second, complete interactive rendering of the same
+schema.
 
 This is the documented design, not a gap — the web UI and the interactive
 API docs are meant to work without a key — but an operator reading only this
-section would not know it without being told here. If you do not want the
-docs published, close them at the proxy the same way `deploy/Caddyfile`
-already closes `/metrics`: add a `handle /docs*`, `/redoc`, `/openapi.json`
-(and `/static`, `/runs*`, `/series` if you want the API alone reachable)
-block that `respond`s `404` before the catch-all `reverse_proxy`. Closing
-`/docs` alone is the mistake to avoid: it leaves the same documentation
-served at `/redoc`, and the `/docs*` form is what also catches
-`/docs/oauth2-redirect`.
+section would not know it without being told here. `deploy/Caddyfile`
+already routes `/docs*`, `/redoc` and `/openapi.json` to the api service for
+exactly this reason (see the `handle` blocks near the top of the file). If
+you do not want the docs published, change those three `handle` blocks —
+and add ones for `/static` and `/legacy*` if you want the API alone
+reachable — from `reverse_proxy api:8000` to `respond 404`, the same way the
+existing `/metrics` block already closes that path. Closing `/docs` alone is
+the mistake to avoid: it leaves the same documentation served at `/redoc`,
+and the `/docs*` form is what also catches `/docs/oauth2-redirect`.
 
 `/health` and `/ready` are outside `/api/v1` too, and so also unlimited.
 That is deliberate — an uptime check that could be rate-limited into

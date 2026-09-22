@@ -152,8 +152,11 @@ WantedBy=default.target
 Same shape as `reim-api.container`, minus what it doesn't need: no
 `Requires=postgres.service` (the frontend has no database dependency), no
 `EnvironmentFile=` (a static export has nothing to configure at runtime), and
-`Exec=` is unset — the image's own `deploy/Caddyfile.frontend` is already its
-`CMD`.
+`Exec=` is unset — `deploy/Dockerfile.frontend` overrides no `CMD` of its
+own, so the runtime stage inherits the `caddy:2.11.4-alpine` base image's own
+`CMD` (which runs Caddy against `/etc/caddy/Caddyfile`); the Dockerfile just
+replaces which file that is with `deploy/Caddyfile.frontend`. No `Exec=`
+override is needed in the Quadlet for that reason.
 
 ### `/srv/containers/reim/reim.env`
 

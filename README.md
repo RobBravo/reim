@@ -420,28 +420,33 @@ hand.
 ## Web pages
 
 REIM has three server-rendered web pages, served from the same application as
-the API: `make run-api`, then open <http://localhost:8000/>.
+the API under a `/legacy` prefix (`apps/web/routes.py`'s `APIRouter` is
+mounted with `prefix="/legacy"`): `make run-api`, then open
+<http://localhost:8000/legacy>. In production, `/` itself now serves a
+separate static Next.js frontend (see `docs/deployment.md`); these three
+pages are an interim carry-over reachable at their `/legacy/...` paths until
+that frontend replaces them.
 
-The catalog browser at `/` answers what a new reader of the API docs cannot
-easily see for themselves — what REIM holds (all 25 sources, their
+The catalog browser at `/legacy` answers what a new reader of the API docs
+cannot easily see for themselves — what REIM holds (all 25 sources, their
 organization, frequency and indicators), which licences forbid
 redistribution, how fresh each source's data is, and what is disabled and
 why. No database is required for the catalog itself; freshness renders as
 "—" if PostgreSQL is unreachable, distinct from "Never run", which is
 reserved for a source that has genuinely never completed a run.
 
-The run history at `/runs` shows the most recent 100 pipeline runs — their
-source, status, duration and record counts — plus a 30-day trend of failed
-quality checks grouped by check name, so a recurring failure stands out
-rather than being buried among one-off ones. Following a run to
-`/runs/{run_id}` shows that run in full: every counter, its connector and
-pipeline versions, the connector-specific metadata it recorded, and every
+The run history at `/legacy/runs` shows the most recent 100 pipeline runs —
+their source, status, duration and record counts — plus a 30-day trend of
+failed quality checks grouped by check name, so a recurring failure stands
+out rather than being buried among one-off ones. Following a run to
+`/legacy/runs/{run_id}` shows that run in full: every counter, its connector
+and pipeline versions, the connector-specific metadata it recorded, and every
 quality check it ran, passed or failed. Unlike the catalog, this page has
 nothing to fall back to without a database — the history it shows only
 exists there — so an unreachable database or an unknown run renders as an
 explanatory page rather than the browser's fallback state.
 
-`/series` plots one indicator over time across the countries chosen from an
+`/legacy/series` plots one indicator over time across the countries chosen from an
 ordinary `<form method="get">` — a `<select>` of all 73 indicators, a
 multi-select of all 7 countries, and optional date bounds. The chart is
 server-rendered SVG with no JavaScript at all: the same no-build-step
@@ -498,12 +503,13 @@ anonymous fallback. Exhausting an allowance gets `429` (`rate_limited`) with a
 `Retry-After` header carrying the seconds until the current window resets.
 
 Only paths under `/api/v1` are limited, which exempts `/health`, `/ready`,
-`/metrics`, the web pages (`/`, `/runs`, `/series`), `/static`, `/docs` and
-`/openapi.json` without enumerating any of them — a limiter that can throttle
-a liveness probe can restart a healthy container. `/api/v1/status` **is**
-limited even though it lives in the same prefix-less router as `/health`,
-because it is a real query over the observations table, not a probe. A
-browser's CORS preflight (`OPTIONS`) is answered before the limiter ever sees
+`/metrics`, the web pages (`/legacy`, `/legacy/runs`, `/legacy/series`),
+`/static`, `/docs` and `/openapi.json` without enumerating any of them — a
+limiter that can throttle a liveness probe can restart a healthy container.
+`/api/v1/status` **is** limited even though it lives in the same prefix-less
+router as `/health`, because it is a real query over the observations
+table, not a probe. A browser's CORS preflight (`OPTIONS`) is answered
+before the limiter ever sees
 it, so sending `X-API-Key` from a browser never spends your allowance on the
 preflight it forces.
 
