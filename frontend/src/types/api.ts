@@ -1,3 +1,16 @@
+export interface PageMeta {
+  total: number;
+  limit: number;
+  offset: number;
+  returned: number;
+  has_more: boolean;
+}
+
+export interface PageResponse<T> {
+  data: T[];
+  meta: PageMeta;
+}
+
 export interface Country {
   id: string;
   name: string;
@@ -34,21 +47,25 @@ export interface Indicator {
 
 export interface Observation {
   id: string;
-  indicator_id: string;
-  country_id: string;
-  administrative_area_id?: string | null;
-  period: string;
-  value: number;
+  country_iso2: string;
+  country_iso3: string;
+  country_name: string;
+  indicator_code: string;
+  indicator_name: string;
+  period_label: string;
+  value_numeric: number | null;
+  unit: string;
   currency_code?: string | null;
-  unit?: string | null;
+  administrative_area_code?: string | null;
+  administrative_area_name?: string | null;
 }
 
 export interface BoundaryProperties {
   iso2?: string;
-  iso3?: string;
-  name?: string;
   code?: string;
-  id?: string;
+  name?: string;
+  fillColor?: string;
+  value?: number | null;
 }
 
 export interface GeoBoundariesCollection {

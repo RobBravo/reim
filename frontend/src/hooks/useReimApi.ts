@@ -23,11 +23,13 @@ export function useBoundaries(level: "country" | "administrative_area") {
   });
 }
 
-export function useObservations(indicatorId?: string) {
+export function useObservations(indicatorCode?: string, administrativeArea?: string) {
   return useQuery({
-    queryKey: ["observations", indicatorId],
+    queryKey: ["observations", indicatorCode, administrativeArea],
     queryFn: () =>
-      indicatorId ? reimApi.getObservations({ indicator_id: indicatorId }) : Promise.resolve([]),
-    enabled: Boolean(indicatorId),
+      indicatorCode
+        ? reimApi.getObservations({ indicator_code: indicatorCode, administrative_area: administrativeArea })
+        : Promise.resolve([]),
+    enabled: Boolean(indicatorCode),
   });
 }

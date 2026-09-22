@@ -3,6 +3,7 @@ import {
   Indicator,
   Observation,
   GeoBoundariesCollection,
+  PageResponse,
 } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
@@ -16,21 +17,28 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 export const reimApi = {
-  getCountries: () => fetchJson<Country[]>("/api/v1/countries"),
-  getIndicators: () => fetchJson<Indicator[]>("/api/v1/indicators"),
+  getCountries: async () => {
+    const page = await fetchJson<PageResponse<Country>>("/api/v1/countries?limit=100");
+    return page.data;
+  },
+  getIndicators: async () => {
+    const page = await fetchJson<PageResponse<Indicator>>("/api/v1/indicators?limit=500");
+    return page.data;
+  },
   getBoundaries: (level: "country" | "administrative_area") =>
     fetchJson<GeoBoundariesCollection>(`/api/v1/geo/boundaries?level=${level}`),
-  getObservations: (params: {
-    indicator_id: string;
-    start_date?: string;
-    end_date?: string;
+  getObservations: async (params: {
+    indicator_code: string;
+    administrative_area?: string;
   }) => {
     const query = new URLSearchParams({
-      indicator_id: params.indicator_id,
-      page_size: "1000",
+      indicator: params.indicator_code,
+      limit: "1000",
     });
-    if (params.start_date) query.set("start_date", params.start_date);
-    if (params.end_date) query.set("end_date", params.end_date);
-    return fetchJson<Observation[]>(`/api/v1/observations?${query.toString()}`);
+    if (params.administrative_area) {
+      query.set("administrative_area", params.administrative_area);
+    }
+    const page = await fetchJson<PageResponse<Observation>>(`/api/v1/observations?${query.toString()}`);
+    return page.data;
   },
 };

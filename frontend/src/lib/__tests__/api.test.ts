@@ -6,15 +6,18 @@ describe("reimApi client", () => {
     vi.restoreAllMocks();
   });
 
-  it("fetches countries successfully", async () => {
+  it("fetches and unwraps countries successfully", async () => {
     const mockCountries = [{ id: "1", iso2: "NI", name: "Nicaragua" }];
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => mockCountries,
+      json: async () => ({
+        data: mockCountries,
+        meta: { total: 1, limit: 100, offset: 0, returned: 1, has_more: false },
+      }),
     });
 
     const data = await reimApi.getCountries();
-    expect(fetch).toHaveBeenCalledWith("/api/v1/countries");
+    expect(fetch).toHaveBeenCalledWith("/api/v1/countries?limit=100");
     expect(data).toEqual(mockCountries);
   });
 
