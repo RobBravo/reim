@@ -14,4 +14,15 @@ describe("Header", () => {
     expect(screen.getByText("Series")).toBeInTheDocument();
     expect(screen.getByText("Catálogo")).toBeInTheDocument();
   });
+
+  it("points Series and Operaciones at the interim /legacy pages", () => {
+    render(<Header />);
+    expect(screen.getByText("Series").closest("a")).toHaveAttribute("href", "/legacy/series");
+    expect(screen.getByText("Operaciones").closest("a")).toHaveAttribute("href", "/legacy/runs");
+  });
+
+  it("leaves Catálogo pointed at the not-yet-built page", () => {
+    render(<Header />);
+    expect(screen.getByText("Catálogo").closest("a")).toHaveAttribute("href", "/catalog");
+  });
 });

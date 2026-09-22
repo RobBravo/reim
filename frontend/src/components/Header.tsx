@@ -6,9 +6,13 @@ import { usePathname } from "next/navigation";
 const NAV_LINKS = [
   { href: "/", label: "Inicio" },
   { href: "/map/", label: "Mapa" },
-  { href: "/series/", label: "Series" },
+  // Interim: apps/web hasn't been rewritten as a Next page yet, so this
+  // points at its relocated /legacy route until the downstream
+  // catalog/observability plan replaces it.
+  { href: "/legacy/series/", label: "Series" },
   { href: "/catalog/", label: "Catálogo" },
-  { href: "/runs/", label: "Operaciones" },
+  // Interim: same as Series above.
+  { href: "/legacy/runs/", label: "Operaciones" },
 ];
 
 export function Header() {
