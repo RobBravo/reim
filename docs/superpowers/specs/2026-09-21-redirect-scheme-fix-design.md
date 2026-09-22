@@ -83,9 +83,9 @@ every other place the two files already differ only by upstream address.)
 The frontend's own `handle { reverse_proxy frontend:8080 }` is **not**
 touched — measured directly against the live deployment before writing this
 spec: `curl -sk -D - -o /dev/null https://reim.panda.home.arpa/map` (no
-trailing slash) returns `308` with a scheme-correct `https://` `Location` —
-Caddy's own `file_server` directory-canonicalization redirect already knows
-it terminated TLS itself, so nothing there needs a rewrite (D1).
+trailing slash) returns `308` with a relative `Location` (`/map/`, no scheme
+at all) — Caddy's own `file_server` directory-canonicalization redirect
+emits no scheme to get wrong, so nothing there needs a rewrite (D1).
 
 ### 2.3 Test coverage
 
@@ -113,7 +113,7 @@ neither of which this fix alters.
 
 | | Decision | Rationale |
 |---|---|---|
-| **D1** | Only the 8 api-targeting `handle` blocks get the rewrite; the frontend's `handle` does not | Measured live: Caddy's own `file_server` redirects are already scheme-correct (it terminated the TLS connection itself), so there is nothing to fix there — adding the snippet would be inert but still unexplained clutter (§2.2) |
+| **D1** | Only the 8 api-targeting `handle` blocks get the rewrite; the frontend's `handle` does not | Measured live: Caddy's own `file_server` redirects emit a relative `Location`, with no scheme at all, so there is nothing to fix there — adding the snippet would be inert but still unexplained clutter (§2.2) |
 | **D2** | No changes to `tests/unit/test_deploy_artifacts.py`'s existing regex; one new assertion added to the same parametrized test instead of a new test function | Hand-traced: the existing `[^}]+` capture already stops inside the new `reverse_proxy { }` sub-block, so it already "sees" the `import https_location` line — writing a second, separate regex would duplicate matching logic for no reason (§2.3) |
 | **D3** | Fix ships as a Caddy `header_down` rewrite (Approach 1 of 3 considered), not app-level `X-Forwarded-Proto` trust middleware or disabling `redirect_slashes` | Zero changes to REIM's Python code or its measured proxy-trust model (`REIM_TRUSTED_PROXY_HOPS`, `--no-proxy-headers`); fixes the entire bug class (any route, any future redirect) in the one place — the Caddyfiles — that already carries every other piece of proxy-level hardening this deployment has (HSTS, `/metrics` closure, `/docs` reachability) |
 | **D4** | Both `deploy/Caddyfile` (generic) and panda's live `/etc/caddy/sites/reim.caddy` get the fix, in the same rollout | Same D6 established in the prior spec: the two Caddyfiles are meant to stay in sync as two answers to the same question, not let one drift |

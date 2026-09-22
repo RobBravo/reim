@@ -34,7 +34,8 @@
 # re-trust X-Forwarded-For and reopen the exact surface --no-proxy-headers
 # was set to close. Imported into every reverse_proxy block that targets the
 # api container; the frontend's own redirects (Caddy's file_server directory
-# canonicalization) are already scheme-correct and need no rewrite.
+# canonicalization) emit a relative Location, so there is no scheme to
+# rewrite.
 (https_location) {
 	header_down Location "^http://" "https://"
 }

@@ -163,8 +163,9 @@ reopen the exact surface `--no-proxy-headers` was set to close. The
 `(https_location)` snippet above (`header_down Location "^http://"
 "https://"`), imported into every `reverse_proxy` block that targets the api
 container, rewrites it in place; the frontend's own redirects (Caddy's
-`file_server` directory canonicalization) already carry the right scheme, so
-its `handle` needs no import. Confirmed after the fix:
+`file_server` directory canonicalization) emit a relative `Location`, so
+there is no scheme to rewrite and its `handle` needs no import. Confirmed
+after the fix:
 
 ```text
 curl -sk -D - https://reim.panda.home.arpa/legacy/series/
