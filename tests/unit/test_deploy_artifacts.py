@@ -863,6 +863,101 @@ def test_hsts_ships_on_and_its_policy_is_pinned() -> None:
     )
 
 
+#: Every path that must reach the api container rather than falling through to
+#: the frontend's default `handle`. `/legacy*` is deliberately included even
+#: though it slightly over-matches (e.g. `/legacyfoo`) — that is a separate,
+#: parked finding, not this test's concern.
+API_HANDLE_PATHS = (
+    "/api/*",
+    "/legacy*",
+    "/static/*",
+    "/health",
+    "/ready",
+    "/docs*",
+    "/redoc",
+    "/openapi.json",
+)
+
+
+@pytest.mark.parametrize("path", API_HANDLE_PATHS)
+def test_each_api_handle_reverse_proxies_to_the_api_service(path: str) -> None:
+    """Each of these must have its own `handle` block proxying to the api.
+
+    The routing split that introduced the frontend's default `handle` added
+    `/api/*`, `/legacy*`, `/static/*`, `/health` and `/ready` blocks, and a
+    later fix added `/docs*`, `/redoc` and `/openapi.json` after the api's own
+    interactive docs fell through to the frontend and 404'd. Table-driven so a
+    block silently dropped for any one of these paths fails by name instead of
+    only showing up as a live 404 nobody wrote a test for the first time.
+    """
+    text = CADDYFILE.read_text(encoding="utf-8")
+
+    match = re.search(rf"handle\s+{re.escape(path)}\s*\{{([^}}]+)\}}", text)
+    assert match, f"no `handle {path}` block found in deploy/Caddyfile"
+
+    assert "reverse_proxy api:8000" in match.group(1), (
+        f"`handle {path}` block does not reverse_proxy to api:8000: {match.group(1)!r}"
+    )
+
+
+def test_default_handle_reverse_proxies_to_the_frontend_service() -> None:
+    """The catch-all `handle` — everything none of ``API_HANDLE_PATHS`` matches
+    — must reach the frontend container, not the api.
+
+    Matched on ``handle {`` (a bare path-less handle) rather than
+    ``handle\\s+/\\S+\\s*\\{``, and specifically NOT with a ``[^}]+`` body
+    regex like the parametrized test above: this block's body contains a
+    commented-out ``request_body { ... }`` example, whose literal ``{`` and
+    ``}`` characters would close the capture early and hide whatever comes
+    after them, including the ``reverse_proxy`` line this test exists to
+    check. Everything from the bare ``handle {`` to end of file is the default
+    block's body, since it is Caddyfile's last handle.
+    """
+    text = CADDYFILE.read_text(encoding="utf-8")
+
+    default_start = text.index("handle {")
+    body = text[default_start:]
+
+    assert "reverse_proxy frontend:8080" in body, (
+        "the default `handle` block does not reverse_proxy to frontend:8080"
+    )
+    assert "reverse_proxy api:8000" not in body, (
+        "the default `handle` block reverse_proxies to api:8000, which would "
+        "send unmatched requests to the api instead of the frontend"
+    )
+
+
+def test_hsts_header_is_at_the_site_block_level() -> None:
+    """Fix 3: HSTS must cover every handle, not only the frontend's default one.
+
+    A previous version of this file nested the `header Strict-Transport-Security`
+    line inside the default catch-all `handle` block alongside the frontend's
+    `reverse_proxy`, which meant every api-routed response (`/api/*`,
+    `/legacy*`, `/health`, ...) shipped without it — despite
+    docs/deployment.md's hardening table claiming it applies "on every
+    proxied response". A directive placed at the site-block level, before any
+    `handle`, applies to the whole subroute Caddy builds from every `handle`
+    beneath it, which is what makes that claim true.
+    """
+    text = CADDYFILE.read_text(encoding="utf-8")
+
+    site_block_start = text.index("{$REIM_DOMAIN} {")
+    first_handle = text.index("handle", site_block_start)
+    hsts_positions = [m.start() for m in re.finditer(r"header\s+Strict-Transport-Security", text)]
+
+    assert hsts_positions, "no Strict-Transport-Security header found in deploy/Caddyfile"
+    assert len(hsts_positions) == 1, (
+        f"Strict-Transport-Security is set {len(hsts_positions)} times in "
+        "deploy/Caddyfile; it should be a single site-block-level directive, "
+        "not duplicated or reintroduced inside a handle block"
+    )
+    assert site_block_start < hsts_positions[0] < first_handle, (
+        "Strict-Transport-Security is not between the site block's opening "
+        "brace and its first `handle` block, so it is scoped to one handle "
+        "rather than applying to every response through this site"
+    )
+
+
 def _api_command_argv(production: dict) -> list[str]:
     """Return the argv the container's entrypoint would actually receive.
 

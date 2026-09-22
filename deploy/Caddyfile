@@ -27,6 +27,8 @@
 {$REIM_DOMAIN} {
 	encode zstd gzip
 
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
 	# The Prometheus scrape endpoint carries no authentication by design; the
 	# metrics design put that out of scope on the grounds that a scrape
 	# endpoint is restricted at the network. This is that restriction. Remove
@@ -59,6 +61,18 @@
 		reverse_proxy api:8000
 	}
 
+	handle /docs* {
+		reverse_proxy api:8000
+	}
+
+	handle /redoc {
+		reverse_proxy api:8000
+	}
+
+	handle /openapi.json {
+		reverse_proxy api:8000
+	}
+
 	handle {
 		# A cap on request bodies clients SEND, shipped commented out. Caddy
 		# does not add it by default, and it is not the byte budget anyone
@@ -75,7 +89,6 @@
 		# request_body {
 		# 	max_size 10MB
 		# }
-		header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		reverse_proxy frontend:8080
 	}
 }
