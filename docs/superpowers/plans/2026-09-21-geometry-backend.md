@@ -268,7 +268,7 @@ Verify it downloaded (world file, all countries):
 python3 -c "import json; print(len(json.load(open('/tmp/ne_countries_50m.geojson'))['features']))"
 ```
 
-Expected: `177`.
+Expected: `242`.
 
 Filter to REIM's seven countries and strip every property except `iso2`:
 
@@ -298,10 +298,13 @@ print('wrote', len(out['features']), 'features')
 Expected: `wrote 7 features`.
 
 Simplify with `mapshaper` (pinned version — this is a one-time build tool,
-never a project dependency):
+never a project dependency). **`keep-shapes` is mandatory and the retention
+ratio is deliberately light**: without `keep-shapes`, mapshaper drops small
+polygon parts as it simplifies, and there is no byte budget to trade against
+that — the *unsimplified* seven-country file is only 25688 bytes:
 
 ```bash
-npx --yes mapshaper@0.6.117 -i /tmp/ca7_bare.geojson -simplify 10% -o reim/domain/geography/boundaries/countries.geojson format=geojson
+npx --yes mapshaper@0.6.117 -i /tmp/ca7_bare.geojson -simplify 90% keep-shapes -o reim/domain/geography/boundaries/countries.geojson format=geojson
 ```
 
 Verify the result:
@@ -312,14 +315,26 @@ python3 -c "
 import json
 d = json.load(open('reim/domain/geography/boundaries/countries.geojson'))
 print(sorted(f['properties']['iso2'] for f in d['features']))
+for f in sorted(d['features'], key=lambda f: f['properties']['iso2']):
+    g = f['geometry']
+    parts = 1 if g['type'] == 'Polygon' else len(g['coordinates'])
+    print(f['properties']['iso2'], g['type'], 'parts=', parts)
 "
 ```
 
-Expected: file size close to `3449` bytes (mapshaper's simplification is
-deterministic for a given input and version, so this should match closely,
-not necessarily to the byte — if it differs by more than a few percent,
-re-check the input file matches the pinned commit above before trusting the
-output). Second command expected: `['BZ', 'CR', 'GT', 'HN', 'NI', 'PA', 'SV']`.
+Expected: file size `21178` bytes (mapshaper's simplification is
+deterministic for a given input and version — a rebuild is byte-identical;
+if it differs by more than a few percent, re-check the input file matches the
+pinned commit above before trusting the output). Second command expected:
+`['BZ', 'CR', 'GT', 'HN', 'NI', 'PA', 'SV']`, then one line per country whose
+part count matches the unsimplified source exactly — `BZ 3, CR 1, GT 1,
+HN 3, NI 1, PA 5, SV 1`. A part count of `1` for `BZ`, `HN` or `PA` means
+`keep-shapes` was omitted and real island territory was dropped (the original
+`-simplify 10%` build, at 3449 bytes, lost Honduras's Islas de la Bahía and
+Swan Islands, Belize's cayes and atolls, and four of Panama's five island
+groups). At this ratio every country's bounding box is identical to the
+unsimplified source's, so the simplification contributes no extent error.
+`tests/unit/test_geometry_assets.py` guards both properties.
 
 - [ ] **Step 2: Build `panama_provinces.geojson`**
 
@@ -431,7 +446,7 @@ exists on the `Country` row).
 - **Licence:** Public domain. No attribution required.
 - **Built:** 2026-09-21. Filtered to REIM's seven countries by `ADMIN` name,
   stripped to `iso2` + geometry, simplified with
-  `npx mapshaper@0.6.117 -simplify 10%`.
+  `npx mapshaper@0.6.117 -simplify 90% keep-shapes` → 21178 bytes.
 
 ## `panama_provinces.geojson`
 

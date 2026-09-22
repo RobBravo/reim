@@ -964,13 +964,14 @@ REIM's **code** is Apache 2.0. The **data** it ingests remains subject to each
 publisher's terms — the World Bank Indicators API is CC-BY-4.0; BCN and INIDE
 material is public official data. Fourteen sources, from the three publishers
 below, are **not** openly licensed and carry attribution requirements you
-inherit if you redistribute:
+inherit if you redistribute — as does one checked-in boundary geometry asset:
 
 | Source | Terms | Attribution REIM ships |
 |---|---|---|
 | **IMF** | © IMF, all rights reserved; redistribution permitted with attribution, commercial reuse needs `copyright@imf.org` | the Fund's suggested citation, in `raw_metadata.imf_citation` |
 | **SIECA** | All rights reserved; no licence grant and no terms page found | SIECA publishes no citation string; the catalog entry and `/api/v1/sources` name it as publisher |
 | **CEPAL** | Personal, non-commercial use only, expressly **without** the right to resell, redistribute or create derivative works | CEPALSTAT's own `credits` block, in `raw_metadata.cepalstat_credits` |
+| **geoBoundaries / OpenStreetMap** (Panama's province geometries on `/api/v1/geo/boundaries`) | Open Database License 1.0; reuse and derivative works permitted **with attribution** | "Contains data from geoBoundaries.org and OpenStreetMap contributors, ODbL 1.0.", in the API description's "Attribution and terms" section and in [`reim/domain/geography/boundaries/README.md`](./reim/domain/geography/boundaries/README.md) |
 
 Each source's licence is recorded in `sources/catalog.yml` and exposed through
 `/api/v1/sources`; [`docs/sources.md`](./docs/sources.md) quotes the terms

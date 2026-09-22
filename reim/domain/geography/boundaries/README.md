@@ -16,7 +16,31 @@ exists on the `Country` row).
 - **Licence:** Public domain. No attribution required.
 - **Built:** 2026-09-21. Filtered to REIM's seven countries by `ADMIN` name,
   stripped to `iso2` + geometry, simplified with
-  `npx mapshaper@0.6.117 -simplify 10%`.
+  `npx mapshaper@0.6.117 -simplify 90% keep-shapes` → 21178 bytes.
+
+  `keep-shapes` and the light 90% retention are both deliberate, and both
+  measured rather than guessed. Without `keep-shapes`, mapshaper drops small
+  polygon parts as it simplifies: an earlier `-simplify 10%` build collapsed
+  all seven countries to single `Polygon`s, losing Honduras's Islas de la
+  Bahía and Swan Islands, Belize's cayes and atolls, and four of Panama's
+  five island groups. At `90% keep-shapes` every country's part count matches
+  the unsimplified source exactly (BZ 3, CR 1, GT 1, HN 3, NI 1, PA 5, SV 1),
+  and every country's bounding box is identical to the unsimplified source's
+  — the simplification contributes no extent error at all. There is no byte
+  budget to trade against this: the unsimplified seven-country file is only
+  25688 bytes.
+
+  **Known, accepted limitation.** Panama's province geometries below come
+  from a different dataset (OpenStreetMap) than this country outline
+  (Natural Earth 1:50m), and the two disagree about Panama's coastline by up
+  to 0.033° (~3.6 km): the province union's bounding box extends marginally
+  past Panama's country bounding box on all four sides. That gap is inherent
+  to mixing the two sources — it is exactly the same with *zero*
+  simplification, and the finer Natural Earth 1:10m layer still leaves
+  0.0013° of it — so it is not a simplification artifact and cannot be
+  simplified away. `tests/unit/test_geometry_assets.py` pins it below 0.05°,
+  which is loose enough for that dataset disagreement and tight enough to
+  fail the 0.112° overhang the old `-simplify 10%` build produced.
 
 ## `panama_provinces.geojson`
 

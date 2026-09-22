@@ -64,6 +64,13 @@ exact and unaltered, declare any material transformation you apply, and note
 that **commercial reuse requires permission from copyright@imf.org**. The full
 terms are at <https://www.imf.org/external/terms.htm>.
 
+The boundary geometries on `/api/v1/geo/boundaries` carry their own terms.
+Panama's province outlines come from [geoBoundaries.org](https://www.geoboundaries.org),
+sourced from OpenStreetMap, under the Open Database License 1.0, which also
+**requires attribution**: any map or page drawing them must state "Contains
+data from geoBoundaries.org and OpenStreetMap contributors, ODbL 1.0." The
+country outlines are Natural Earth, public domain, and require none.
+
 REIM itself alters nothing: it never converts currencies, never rounds a
 published figure and never fills a gap.
 """
@@ -71,9 +78,11 @@ published figure and never fills a gap.
 TAGS_METADATA = [
     {"name": "system", "description": "Health, readiness and platform status."},
     {"name": "countries", "description": "Countries covered by REIM."},
+    {"name": "geo", "description": "Boundary geometries for countries and administrative areas."},
     {"name": "sources", "description": "Publishing organizations and registered data sources."},
     {"name": "indicators", "description": "Tracked economic concepts."},
     {"name": "observations", "description": "Economic datapoints and CSV export."},
+    {"name": "comparison", "description": "Cross-country comparison of a single indicator."},
     {"name": "pipelines", "description": "Ingestion runs, quality checks and data freshness."},
 ]
 

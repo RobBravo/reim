@@ -39,6 +39,12 @@ def boundaries(
     to match it to indicator data (``iso2`` for countries, ``code`` for
     administrative areas) — never the full metadata ``/countries`` or a
     future administrative-area listing endpoint already provides.
+
+    At ``administrative_area`` level, ``code`` alone is a safe join key only
+    because every administrative area REIM tracks today is one of Panama's
+    ten provinces; a second country's subnational areas would need this
+    response to carry a country qualifier too (see
+    ``reim.domain.geography.geometry.load_administrative_area_geometry``).
     """
     response.headers["Cache-Control"] = _CACHE_CONTROL
 
