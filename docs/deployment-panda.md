@@ -44,6 +44,10 @@ existed.
 ### `/etc/caddy/sites/reim.caddy`
 
 ```caddyfile
+(https_location) {
+	header_down Location "^http://" "https://"
+}
+
 reim.panda.home.arpa {
 	tls internal
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
@@ -57,35 +61,51 @@ reim.panda.home.arpa {
 	}
 
 	handle /api/* {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			import https_location
+		}
 	}
 
 	handle /legacy* {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			import https_location
+		}
 	}
 
 	handle /static/* {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			import https_location
+		}
 	}
 
 	handle /health {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			import https_location
+		}
 	}
 
 	handle /ready {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			import https_location
+		}
 	}
 
 	handle /docs* {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			import https_location
+		}
 	}
 
 	handle /redoc {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			import https_location
+		}
 	}
 
 	handle /openapi.json {
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			import https_location
+		}
 	}
 
 	handle {
@@ -124,6 +144,35 @@ whole-branch review, not by inspection:**
   `/docs*`, all of it — stopped carrying the header. Verified live before
   and after: `curl -sk -D - https://reim.panda.home.arpa/api/v1/countries`
   had no `strict-transport-security` line beforehand, has one after.
+
+**A third correction, found by the same final review:** uvicorn runs with
+`--no-proxy-headers` (deliberate — keeps client-identity trust in exactly one
+place, REIM's own `X-Forwarded-For` handling), so the app's ASGI scope always
+reports `scheme=http`. Any 307/308 Starlette's default `redirect_slashes`
+issues therefore built a `Location` starting `http://` — dead on this
+deployment, no port-80 listener. Reproduced live before the fix:
+
+```text
+curl -sk -D - https://reim.panda.home.arpa/legacy/series/
+→ 307, location: http://reim.panda.home.arpa/legacy/series
+```
+
+Fixed by rewriting the header at the proxy, not by re-enabling uvicorn's
+`ProxyHeadersMiddleware` — that would also re-trust `X-Forwarded-For` and
+reopen the exact surface `--no-proxy-headers` was set to close. The
+`(https_location)` snippet above (`header_down Location "^http://"
+"https://"`), imported into every `reverse_proxy` block that targets the api
+container, rewrites it in place; the frontend's own redirects (Caddy's
+`file_server` directory canonicalization) already carry the right scheme, so
+its `handle` needs no import. Confirmed after the fix:
+
+```text
+curl -sk -D - https://reim.panda.home.arpa/legacy/series/
+→ 307, location: https://reim.panda.home.arpa/legacy/series
+
+curl -sk -L -o /dev/null -w '%{http_code}\n' https://reim.panda.home.arpa/legacy/series/
+→ 200
+```
 
 ### `~/.config/containers/systemd/reim-api.container`
 
