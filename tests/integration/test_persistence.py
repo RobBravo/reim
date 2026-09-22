@@ -117,6 +117,24 @@ def test_administrative_area_seeding_is_idempotent(seeded_session: Session, cata
     assert seeded_session.scalar(select(func.count(AdministrativeArea.id))) == before
 
 
+def test_seeded_countries_carry_a_geometry(seeded_session: Session) -> None:
+    countries = seeded_session.scalars(select(Country)).all()
+    assert countries
+    for country in countries:
+        assert country.geometry_geojson is not None, country.iso2
+        assert country.geometry_geojson["type"] in ("Polygon", "MultiPolygon")
+
+
+def test_seeded_administrative_areas_carry_a_geometry(seeded_session: Session) -> None:
+    from reim.database.models import AdministrativeArea
+
+    areas = seeded_session.scalars(select(AdministrativeArea)).all()
+    assert areas
+    for area in areas:
+        assert area.geometry_geojson is not None, area.code
+        assert area.geometry_geojson["type"] in ("Polygon", "MultiPolygon")
+
+
 # --------------------------------------------------------------------------
 # Insert
 # --------------------------------------------------------------------------

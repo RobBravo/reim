@@ -17,6 +17,7 @@ from reim.core.exceptions import UnknownReferenceError
 from reim.core.logging import get_logger
 from reim.database.models import AdministrativeArea, Country, DataSource, Indicator, Organization
 from reim.domain.countries.registry import COUNTRIES
+from reim.domain.geography.geometry import load_administrative_area_geometry, load_country_geometry
 from reim.domain.geography.registry import ADMINISTRATIVE_AREAS
 from reim.domain.indicators.registry import INDICATORS
 from reim.domain.sources.catalog import SourceCatalog, get_catalog
@@ -85,6 +86,7 @@ def seed_countries(session: Session, report: SeedReport) -> None:
             "currency_code": definition.currency_code,
             "currency_name": definition.currency_name,
             "is_active": definition.is_active,
+            "geometry_geojson": load_country_geometry(definition.iso2),
         }
         current = existing.get(definition.iso2)
         if current is None:
@@ -146,7 +148,10 @@ def seed_administrative_areas(session: Session, report: SeedReport) -> None:
             )
             raise UnknownReferenceError(msg, administrative_area_code=definition.code)
 
-        values = {"name": definition.name}
+        values = {
+            "name": definition.name,
+            "geometry_geojson": load_administrative_area_geometry(definition.code),
+        }
         key = (country.id, definition.level, definition.code)
         current = existing.get(key)
         if current is None:
