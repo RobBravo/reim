@@ -8,6 +8,7 @@ if (typeof window !== "undefined") {
     window.URL.revokeObjectURL = () => {};
   }
   if (typeof HTMLCanvasElement !== "undefined") {
-    HTMLCanvasElement.prototype.getContext = (() => null) as any;
+    HTMLCanvasElement.prototype.getContext = (() =>
+      null) as typeof HTMLCanvasElement.prototype.getContext;
   }
 }

@@ -40,7 +40,7 @@ setup: ## Create the virtualenv and install dependencies
 
 .PHONY: clean
 clean: ## Remove caches and build artefacts
-	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage dist build
+	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage dist build frontend/.next frontend/out
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
 
 # --------------------------------------------------------------------------
@@ -138,6 +138,29 @@ catalog-validate: ## Validate the source catalog and quality rules
 .PHONY: quality-report
 quality-report: ## Summarise recent quality failures
 	$(PYTHON) -m reim.cli quality report
+
+# --------------------------------------------------------------------------
+# Frontend
+# --------------------------------------------------------------------------
+.PHONY: frontend-install
+frontend-install: ## Install frontend npm dependencies
+	cd frontend && npm install
+
+.PHONY: frontend-dev
+frontend-dev: ## Run the frontend in development mode
+	cd frontend && npm run dev
+
+.PHONY: frontend-build
+frontend-build: ## Build the static export of the frontend
+	cd frontend && npm run build
+
+.PHONY: frontend-test
+frontend-test: ## Run frontend test suite
+	cd frontend && npm run test
+
+.PHONY: frontend-check
+frontend-check: ## Run frontend typecheck, lint, test and build
+	cd frontend && npm run typecheck && npm run lint && npm run test && npm run build
 
 # --------------------------------------------------------------------------
 # Quality gates

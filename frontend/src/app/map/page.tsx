@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { Map as MapLibreMap } from "maplibre-gl";
+import { Map as MapLibreMap, GeoJSONSource } from "maplibre-gl";
 import { MapLibreWrapper } from "@/components/map/MapLibreWrapper";
 import { MapControls } from "@/components/map/MapControls";
 import { MapDetailCard } from "@/components/map/MapDetailCard";
@@ -152,11 +152,11 @@ export default function MapPage() {
     const fillLayerId = "reim-boundaries-fill";
     const lineLayerId = "reim-boundaries-line";
 
-    const source = mapInstance.getSource(sourceId) as any;
+    const source = mapInstance.getSource(sourceId) as GeoJSONSource | undefined;
     if (!source) {
       mapInstance.addSource(sourceId, {
         type: "geojson",
-        data: enrichedGeoJson as any,
+        data: enrichedGeoJson as GeoJSON.FeatureCollection,
       });
 
       mapInstance.addLayer({

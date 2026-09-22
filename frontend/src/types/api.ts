@@ -74,9 +74,6 @@ export interface GeoBoundariesCollection {
     type: "Feature";
     id?: string | number;
     properties: BoundaryProperties;
-    geometry: {
-      type: "Polygon" | "MultiPolygon";
-      coordinates: any;
-    };
+    geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
   }>;
 }

@@ -14,7 +14,6 @@ interface MapLibreWrapperProps {
 export function MapLibreWrapper({ onMapLoaded, children }: MapLibreWrapperProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
   const [hasWebGl, setHasWebGl] = useState(true);
 
   useEffect(() => {
@@ -56,7 +55,6 @@ export function MapLibreWrapper({ onMapLoaded, children }: MapLibreWrapperProps)
 
       map.on("load", () => {
         mapRef.current = map;
-        setIsLoaded(true);
         onMapLoaded?.(map);
       });
 
