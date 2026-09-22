@@ -46,6 +46,7 @@ existed.
 ```caddyfile
 reim.panda.home.arpa {
 	tls internal
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
 	handle /metrics {
 		respond 404
@@ -75,8 +76,19 @@ reim.panda.home.arpa {
 		reverse_proxy 127.0.0.1:8000
 	}
 
+	handle /docs* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle /redoc {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle /openapi.json {
+		reverse_proxy 127.0.0.1:8000
+	}
+
 	handle {
-		header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		reverse_proxy 127.0.0.1:8080
 	}
 }
@@ -90,9 +102,28 @@ dropped.
 
 Updated for the frontend deployment (`docs/superpowers/specs/2026-09-21-frontend-deployment-integration-design.md`):
 the api container now answers only `/api/*`, `/legacy*` (`apps/web`, relocated
-there so the new frontend could take the root path), `/static/*`, `/health`
-and `/ready`; everything else — the default `handle` — goes to the new
-frontend container on `127.0.0.1:8080` instead of the api container.
+there so the new frontend could take the root path), `/static/*`, `/health`,
+`/ready`, `/docs*`, `/redoc` and `/openapi.json`; everything else — the
+default `handle` — goes to the new frontend container on `127.0.0.1:8080`
+instead of the api container.
+
+**Two corrections applied after the initial rollout, both caught by a final
+whole-branch review, not by inspection:**
+
+- **`/docs`, `/docs/oauth2-redirect`, `/redoc` and `/openapi.json` were
+  missing from the first version of this file's routing split** — an
+  omission, not a decision; `docs/deployment.md` and `README.md` both
+  document these as intentionally open, and this file's five-`handle` first
+  draft simply didn't carry that forward. Added the three `handle` blocks
+  above (`/docs*`, not `/docs` alone — `docs/deployment.md` itself notes the
+  bare form misses `/docs/oauth2-redirect`).
+- **HSTS moved from inside the default `handle` to the site-block level.**
+  The first version left `header Strict-Transport-Security ...` nested only
+  in the catch-all `handle` (the one now pointing at the frontend), so every
+  api-routed response — `/api/*`, `/legacy*`, `/health`, the newly-restored
+  `/docs*`, all of it — stopped carrying the header. Verified live before
+  and after: `curl -sk -D - https://reim.panda.home.arpa/api/v1/countries`
+  had no `strict-transport-security` line beforehand, has one after.
 
 ### `~/.config/containers/systemd/reim-api.container`
 
@@ -300,6 +331,30 @@ curl -sk https://reim.panda.home.arpa/legacy/series  → 200
 curl -sk https://reim.panda.home.arpa/api/v1/countries → 200
 curl -sk https://reim.panda.home.arpa/static/reim.css  → 200
 ```
+
+Re-verified again after the two corrections above (restoring `/docs*`/`/redoc`/
+`/openapi.json`, hoisting HSTS):
+
+```text
+curl -sk https://reim.panda.home.arpa/docs                 → 200
+curl -sk https://reim.panda.home.arpa/docs/oauth2-redirect  → 200
+curl -sk https://reim.panda.home.arpa/redoc                  → 200
+curl -sk https://reim.panda.home.arpa/openapi.json             → 200
+curl -sk -D - https://reim.panda.home.arpa/                     → strict-transport-security present
+curl -sk -D - https://reim.panda.home.arpa/api/v1/countries      → strict-transport-security present
+curl -sk -D - https://reim.panda.home.arpa/legacy/                → strict-transport-security present
+```
+
+Also re-verified the frontend's own interim `/legacy` links no longer emit a
+trailing slash (the earlier rollout's actual bug — `apps/web`'s routes have
+none, so a trailing-slash request 307-redirected to a plain `http://` URL,
+which panda refuses with no port-80 listener): `grep -rn
+'href="/legacy/[^"]*/"' frontend/out/*.html` returns nothing after the fix,
+and `curl -sk https://reim.panda.home.arpa/legacy/series` (the unslashed form
+the frontend now actually links to) returns `200` directly, no redirect.
+Typing the trailing-slash form by hand still 307s to `http://` — that's
+`apps/web`'s own `redirect_slashes` behavior, unrelated to and unchanged by
+this fix; the fix was making sure nothing shipped ever asks for that form.
 
 **The rate-limit/proxy-identity measurement was re-run against this real
 deployment, not just cited from the pinned container image.** Same method
