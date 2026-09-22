@@ -24,6 +24,21 @@
 	email "{$REIM_ACME_EMAIL}"
 }
 
+# uvicorn runs with --no-proxy-headers (see Dockerfile's own comment on why:
+# it keeps client-identity trust in exactly one place, REIM's own
+# X-Forwarded-For handling in apps/api/middleware.py). That means the app's
+# ASGI scope always reports scheme=http — Caddy is the only thing that knows
+# this deployment actually terminates TLS — so any redirect_slashes 307/308
+# the app issues builds a Location starting with the wrong scheme. Rewritten
+# here, not by re-enabling uvicorn's ProxyHeadersMiddleware, which would also
+# re-trust X-Forwarded-For and reopen the exact surface --no-proxy-headers
+# was set to close. Imported into every reverse_proxy block that targets the
+# api container; the frontend's own redirects (Caddy's file_server directory
+# canonicalization) are already scheme-correct and need no rewrite.
+(https_location) {
+	header_down Location "^http://" "https://"
+}
+
 {$REIM_DOMAIN} {
 	encode zstd gzip
 
@@ -42,35 +57,51 @@
 	}
 
 	handle /api/* {
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			import https_location
+		}
 	}
 
 	handle /legacy* {
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			import https_location
+		}
 	}
 
 	handle /static/* {
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			import https_location
+		}
 	}
 
 	handle /health {
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			import https_location
+		}
 	}
 
 	handle /ready {
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			import https_location
+		}
 	}
 
 	handle /docs* {
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			import https_location
+		}
 	}
 
 	handle /redoc {
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			import https_location
+		}
 	}
 
 	handle /openapi.json {
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			import https_location
+		}
 	}
 
 	handle {

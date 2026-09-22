@@ -898,6 +898,11 @@ def test_each_api_handle_reverse_proxies_to_the_api_service(path: str) -> None:
     assert "reverse_proxy api:8000" in match.group(1), (
         f"`handle {path}` block does not reverse_proxy to api:8000: {match.group(1)!r}"
     )
+    assert "import https_location" in match.group(1), (
+        f"`handle {path}` block does not import the https_location snippet, so a "
+        f"redirect from this route would still carry a dead http:// Location: "
+        f"{match.group(1)!r}"
+    )
 
 
 def test_default_handle_reverse_proxies_to_the_frontend_service() -> None:
