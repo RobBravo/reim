@@ -41,3 +41,8 @@ coverage.xml
 /exports/
 *.csv
 !tests/fixtures/*.csv
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
