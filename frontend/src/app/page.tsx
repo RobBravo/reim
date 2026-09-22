@@ -32,8 +32,8 @@ export default function Home() {
             http:// dead end behind Caddy (uvicorn runs
             --no-proxy-headers). A plain <a href> ships exactly this
             string, with no normalization. Same treatment as Header.tsx. */}
-        <a
-          href="/legacy/series"
+        <Link
+          href="/series/"
           className="group rounded-xl border border-reim-border bg-reim-surface p-6 transition-all hover:border-reim-gold/50"
         >
           <div className="text-xs font-semibold uppercase tracking-wider text-reim-gold">Series de Tiempo</div>
@@ -41,7 +41,7 @@ export default function Home() {
           <p className="mt-2 text-sm text-reim-muted">
             Evolución histórica y comparación multi-país con rigor de comparabilidad.
           </p>
-        </a>
+        </Link>
         <Link
           href="/catalog/"
           className="group rounded-xl border border-reim-border bg-reim-surface p-6 transition-all hover:border-reim-gold/50"

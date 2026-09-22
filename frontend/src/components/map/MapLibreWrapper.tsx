@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, ReactNode } from "react";
-import maplibregl, { Map as MapLibreMap } from "maplibre-gl";
+import { addProtocol, Map as MapLibreMap, AttributionControl, NavigationControl } from "maplibre-gl";
 import { Protocol } from "pmtiles";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { getDarkBasemapStyle } from "@/lib/map-style";
@@ -23,17 +23,19 @@ export function MapLibreWrapper({ onMapLoaded, children }: MapLibreWrapperProps)
     const canvas = document.createElement("canvas");
     const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
     if (!gl) {
+      // This state reports an external browser capability discovered at mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHasWebGl(false);
       return;
     }
 
     try {
       const protocol = new Protocol();
-      maplibregl.addProtocol("pmtiles", protocol.tile);
+      addProtocol("pmtiles", protocol.tile);
 
       const style = getDarkBasemapStyle("/tiles/central-america.pmtiles");
 
-      const map = new maplibregl.Map({
+      const map = new MapLibreMap({
         container: containerRef.current,
         style,
         center: [-85.5, 12.8],
@@ -44,14 +46,14 @@ export function MapLibreWrapper({ onMapLoaded, children }: MapLibreWrapperProps)
       });
 
       map.addControl(
-        new maplibregl.AttributionControl({
+        new AttributionControl({
           compact: true,
           customAttribution: "Contains data from geoBoundaries.org and OpenStreetMap contributors, ODbL 1.0.",
         }),
         "bottom-right"
       );
 
-      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+      map.addControl(new NavigationControl({ showCompass: false }), "top-right");
 
       map.on("load", () => {
         mapRef.current = map;

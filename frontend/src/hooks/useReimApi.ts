@@ -33,3 +33,28 @@ export function useObservations(indicatorCode?: string, administrativeArea?: str
     enabled: Boolean(indicatorCode),
   });
 }
+
+export function useComparison(
+  indicatorCode?: string,
+  countries: string[] = [],
+  dateFrom?: string,
+  dateTo?: string
+) {
+  const enabled = Boolean(indicatorCode && countries.length > 0);
+
+  return useQuery({
+    queryKey: ["comparison", indicatorCode, countries, dateFrom, dateTo],
+    queryFn: () => {
+      if (!indicatorCode || countries.length === 0) {
+        throw new Error("An indicator and at least one country are required");
+      }
+      return reimApi.getComparison({
+        indicator_code: indicatorCode,
+        countries,
+        date_from: dateFrom,
+        date_to: dateTo,
+      });
+    },
+    enabled,
+  });
+}

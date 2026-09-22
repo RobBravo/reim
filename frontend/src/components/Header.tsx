@@ -14,7 +14,7 @@ const NAV_LINKS = [
   // trailing slash) — Starlette's redirect from the slashed path is a
   // plain http:// dead end behind Caddy (uvicorn runs --no-proxy-headers).
   // A plain <a href> ships exactly this string, with no normalization.
-  { href: "/legacy/series", label: "Series", interim: true },
+  { href: "/series/", label: "Series" },
   { href: "/catalog/", label: "Catálogo" },
   // Interim: same as Series above.
   { href: "/legacy/runs", label: "Operaciones", interim: true },

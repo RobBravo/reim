@@ -15,9 +15,9 @@ describe("Header", () => {
     expect(screen.getByText("Catálogo")).toBeInTheDocument();
   });
 
-  it("points Series and Operaciones at the interim /legacy pages", () => {
+  it("points Series at its page and keeps Operaciones on its interim route", () => {
     render(<Header />);
-    expect(screen.getByText("Series").closest("a")).toHaveAttribute("href", "/legacy/series");
+    expect(screen.getByText("Series").closest("a")).toHaveAttribute("href", "/series");
     expect(screen.getByText("Operaciones").closest("a")).toHaveAttribute("href", "/legacy/runs");
   });
 
