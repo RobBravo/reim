@@ -417,10 +417,18 @@ three of its libraries do (`maplibre-gl`, `lightweight-charts`,
 guarantees are untouched — this is a presentation-layer replacement, not a
 data-layer change. Design: `docs/superpowers/specs/2026-09-21-modern-web-frontend-design.md`.
 
-Not yet implemented. Its exact sequencing relative to the rest of v0.6.0's
-former geospatial work (now folded into v0.7.0 below, where district-level
-Panama data and the other geospatial gaps still wait) is an open decision,
-not a commitment this document makes.
+The scaffold, the interactive choropleth map (countries and Panama's
+provinces, with per-region detail cards), and the full production
+deployment — a containerized Next.js static export served by Caddy
+alongside `apps/api`, live on `reim.panda.home.arpa` — have shipped, through
+commits ending `ff2456d` on `main`. Still open: `/series` (time-series
+charts via `lightweight-charts`) and `/catalog` plus a full `/runs`
+rewrite. Both currently route through `/legacy/series` and `/legacy/runs`,
+interim links into `apps/web`'s server-rendered pages, which stay in place
+until this work reaches parity. Its exact sequencing relative to the rest
+of v0.6.0's former geospatial work (now folded into v0.7.0 below, where
+district-level Panama data and the other geospatial gaps still wait) is an
+open decision, not a commitment this document makes.
 
 ## v0.7.0 — Context
 
