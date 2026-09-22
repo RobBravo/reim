@@ -1,0 +1,9 @@
+# Internal Caddyfile baked into the frontend image. No TLS, no domain
+# matcher — this only ever receives traffic from the outer proxy (the
+# compose caddy service, or panda's host Caddy), over the container
+# network. See deploy/Caddyfile / /etc/caddy/sites/reim.caddy for the
+# outer routing that sends non-API, non-/legacy traffic here.
+:8080 {
+	root * /srv/frontend
+	file_server
+}

@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1
+#
+# Multi-stage build for the REIM static frontend. The runtime stage is
+# just Caddy plus the built static export — no Node.js in the final image.
+
+FROM node:20-alpine AS builder
+
+WORKDIR /build
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ ./
+RUN npm run build
+
+# caddy:2.11.4-alpine — the same pinned build deploy/Caddyfile's own
+# comment already measured for X-Forwarded-For behaviour, and the compose
+# caddy service uses. No new Caddy version to reason about.
+FROM caddy:2.11.4-alpine AS runtime
+
+COPY deploy/Caddyfile.frontend /etc/caddy/Caddyfile
+COPY --from=builder /build/out /srv/frontend
+
+EXPOSE 8080
