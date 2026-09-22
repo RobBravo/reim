@@ -59,7 +59,7 @@ def _add_run(
 def test_the_runs_page_is_served() -> None:
     client = TestClient(create_app())
 
-    response = client.get("/runs")
+    response = client.get("/legacy/runs")
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
@@ -76,7 +76,7 @@ def test_a_dead_database_is_said_out_loud_not_shown_as_an_empty_list(
     monkeypatch.setattr("apps.web.routes.run_repo.list_runs", _raise)
     client = TestClient(create_app())
 
-    body = client.get("/runs").text
+    body = client.get("/legacy/runs").text
 
     assert "database is not responding" in body.lower()
     assert "no pipeline has run yet" not in body.lower()
@@ -87,7 +87,7 @@ def test_an_empty_history_says_nothing_has_run_not_that_it_is_broken(
     client: TestClient,
 ) -> None:
     """State two of three, and the one a fresh install sees."""
-    body = client.get("/runs").text
+    body = client.get("/legacy/runs").text
 
     assert "No pipeline has run yet" in body
     assert "database is not responding" not in body.lower()
@@ -108,7 +108,7 @@ def test_a_run_shows_its_source_status_and_record_counts(
         records_rejected=1,
     )
 
-    body = client.get("/runs").text
+    body = client.get("/legacy/runs").text
 
     assert get_catalog().get("banguat_exchange_rate").name in body
     assert "partial" in body
@@ -123,7 +123,7 @@ def test_a_run_whose_pipeline_left_the_catalog_still_renders(
     """History outlives the catalog: a removed source must not 500 the page."""
     _add_run(session, pipeline_key="a_source_that_was_removed")
 
-    response = client.get("/runs")
+    response = client.get("/legacy/runs")
 
     assert response.status_code == 200
     assert "a_source_that_was_removed" in response.text
@@ -134,7 +134,7 @@ def test_the_page_says_it_is_showing_a_bounded_window(client: TestClient, sessio
     """100 runs is not "all runs", and a page that implies otherwise lies."""
     _add_run(session)
 
-    body = client.get("/runs").text
+    body = client.get("/legacy/runs").text
 
     assert "100" in body
 
@@ -143,7 +143,7 @@ def test_the_page_says_it_is_showing_a_bounded_window(client: TestClient, sessio
 def test_every_listed_run_links_to_its_detail_page(client: TestClient, session: Session) -> None:
     run = _add_run(session)
 
-    body = client.get("/runs").text
+    body = client.get("/legacy/runs").text
 
     assert f"/runs/{run.id}" in body
 
@@ -160,7 +160,7 @@ def test_no_runs_in_the_window_is_not_reported_as_no_failures(
     """
     _add_run(session, started_at=datetime.now(UTC) - timedelta(days=90))
 
-    body = client.get("/runs").text
+    body = client.get("/legacy/runs").text
 
     assert "No pipeline ran in the last 30 days" in body
     assert "no failed checks" not in body.lower()
@@ -172,7 +172,7 @@ def test_runs_without_failures_report_how_many_ran(client: TestClient, session: 
     _add_run(session, started_at=datetime.now(UTC) - timedelta(days=1))
     _add_run(session, started_at=datetime.now(UTC) - timedelta(days=2))
 
-    body = client.get("/runs").text
+    body = client.get("/legacy/runs").text
 
     assert "2 runs in the last 30 days" in body
     assert "no failed checks" in body.lower()
@@ -186,7 +186,7 @@ def test_a_single_run_without_failures_is_not_mispluralized(
     """The unpluralized "1 runs" reads as a rendering fault."""
     _add_run(session, started_at=datetime.now(UTC) - timedelta(days=1))
 
-    body = client.get("/runs").text
+    body = client.get("/legacy/runs").text
 
     assert "1 run in the last 30 days" in body
     assert "1 runs in the last 30 days" not in body
@@ -216,7 +216,7 @@ def test_a_failing_check_created_inside_the_window_wins_even_if_its_run_started_
     )
     session.flush()
 
-    body = client.get("/runs").text
+    body = client.get("/legacy/runs").text
 
     assert "freshness_within_threshold" in body
     assert "No pipeline ran in the last 30 days" not in body
@@ -240,7 +240,7 @@ def test_a_failing_check_is_named_counted_and_dated(client: TestClient, session:
         )
     session.flush()
 
-    body = client.get("/runs").text
+    body = client.get("/legacy/runs").text
 
     assert "freshness_within_threshold" in body
     assert "13" in body
@@ -253,7 +253,7 @@ def test_a_malformed_run_id_gets_a_page_not_a_json_envelope() -> None:
     """FastAPI would answer 422 JSON; a browser can do nothing with that."""
     client = TestClient(create_app())
 
-    response = client.get("/runs/not-a-uuid")
+    response = client.get("/legacy/runs/not-a-uuid")
 
     assert response.status_code == 404
     assert response.headers["content-type"].startswith("text/html")
@@ -277,7 +277,7 @@ def test_a_dead_database_is_said_out_loud_not_confused_with_not_found(
     monkeypatch.setattr("apps.web.routes.run_repo.get_run", _raise)
     client = TestClient(create_app())
 
-    response = client.get(f"/runs/{uuid.uuid4()}")
+    response = client.get(f"/legacy/runs/{uuid.uuid4()}")
 
     assert response.status_code == 200
     assert "this run cannot be read" in response.text.lower()
@@ -289,7 +289,7 @@ def test_a_dead_database_is_said_out_loud_not_confused_with_not_found(
 def test_an_unknown_run_gets_the_same_page(client: TestClient) -> None:
     unknown = uuid.uuid4()
 
-    response = client.get(f"/runs/{unknown}")
+    response = client.get(f"/legacy/runs/{unknown}")
 
     assert response.status_code == 404
     assert response.headers["content-type"].startswith("text/html")
@@ -311,7 +311,7 @@ def test_a_run_detail_shows_all_five_counters(client: TestClient, session: Sessi
         records_rejected=5,
     )
 
-    body = client.get(f"/runs/{run.id}").text
+    body = client.get(f"/legacy/runs/{run.id}").text
 
     for count in ("100", "60", "20", "15", "5"):
         assert count in body
@@ -326,7 +326,7 @@ def test_a_failed_run_shows_its_error(client: TestClient, session: Session) -> N
         error_message="Banguat did not answer within 30s",
     )
 
-    body = client.get(f"/runs/{run.id}").text
+    body = client.get(f"/legacy/runs/{run.id}").text
 
     assert "ConnectorTimeout" in body
     assert "Banguat did not answer within 30s" in body
@@ -336,7 +336,7 @@ def test_a_failed_run_shows_its_error(client: TestClient, session: Session) -> N
 def test_a_successful_run_shows_no_error_block(client: TestClient, session: Session) -> None:
     run = _add_run(session, status=PipelineStatus.SUCCESS)
 
-    body = client.get(f"/runs/{run.id}").text
+    body = client.get(f"/legacy/runs/{run.id}").text
 
     assert "<h3>Error</h3>" not in body
 
@@ -347,7 +347,7 @@ def test_run_metadata_is_shown_when_the_connector_recorded_any(
 ) -> None:
     run = _add_run(session, run_metadata={"connector_key": "banguat_exchange_rate"})
 
-    body = client.get(f"/runs/{run.id}").text
+    body = client.get(f"/legacy/runs/{run.id}").text
 
     assert "connector_key" in body
     assert "banguat_exchange_rate" in body
@@ -373,7 +373,7 @@ def test_the_checks_a_run_produced_are_listed(client: TestClient, session: Sessi
     )
     session.flush()
 
-    body = client.get(f"/runs/{run.id}").text
+    body = client.get(f"/legacy/runs/{run.id}").text
 
     assert "value_within_range" in body
     assert "gt_exchange_rate_official_daily" in body
@@ -385,7 +385,7 @@ def test_a_run_with_no_checks_says_so(client: TestClient, session: Session) -> N
     """An empty table reads as a broken page; the words read as a fact."""
     run = _add_run(session)
 
-    body = client.get(f"/runs/{run.id}").text
+    body = client.get(f"/legacy/runs/{run.id}").text
 
     assert "recorded no quality checks" in body.lower()
 
@@ -400,7 +400,7 @@ def test_both_pages_are_reachable_from_the_navigation() -> None:
     """
     client = TestClient(create_app())
 
-    for path in ("/", "/runs"):
+    for path in ("/legacy/", "/legacy/runs"):
         body = client.get(path).text
-        assert 'href="/runs"' in body
-        assert 'href="/"' in body
+        assert 'href="/legacy/runs"' in body
+        assert 'href="/legacy/"' in body

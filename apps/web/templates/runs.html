@@ -36,7 +36,7 @@
       <tbody>
         {% for run, source_name in rows %}
         <tr>
-          <td><a href="/runs/{{ run.id }}">{{ run.started_at | freshness }}</a></td>
+          <td><a href="/legacy/runs/{{ run.id }}">{{ run.started_at | freshness }}</a></td>
           <td>{{ source_name }}</td>
           <td class="status-{{ run.status.value }}">{{ run.status.value }}</td>
           <td>{{ run.duration_ms | duration }}</td>

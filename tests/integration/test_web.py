@@ -66,7 +66,7 @@ def test_the_catalog_page_renders() -> None:
     """The skeleton serves HTML at the site root, beside the API."""
     client = TestClient(create_app())
 
-    response = client.get("/")
+    response = client.get("/legacy/")
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
@@ -112,7 +112,7 @@ def test_the_catalog_lists_every_source_when_the_database_is_down(
     )
     client = TestClient(create_app())
 
-    body = client.get("/").text
+    body = client.get("/legacy/").text
 
     catalog = get_catalog()
     for entry in catalog.sources:
@@ -128,7 +128,7 @@ def test_the_disabled_block_states_its_own_emptiness() -> None:
     """
     client = TestClient(create_app())
 
-    body = client.get("/").text
+    body = client.get("/legacy/").text
 
     assert all(entry.enabled for entry in get_catalog().sources)
     assert "No source is disabled" in body
@@ -182,7 +182,7 @@ def test_a_disabled_source_renders_its_reason(monkeypatch: pytest.MonkeyPatch) -
     reset_catalog_cache()
     try:
         client = TestClient(create_app())
-        body = client.get("/").text
+        body = client.get("/legacy/").text
     finally:
         reset_catalog_cache()
 
@@ -205,7 +205,7 @@ def client(session: Session) -> Iterator[TestClient]:
 @requires_db
 def test_every_catalog_source_appears(client: TestClient) -> None:
     """All 25, not a page of them: this is a catalog, not a feed."""
-    body = client.get("/").text
+    body = client.get("/legacy/").text
 
     catalog = get_catalog()
     assert len(catalog.sources) == 25
@@ -216,7 +216,7 @@ def test_every_catalog_source_appears(client: TestClient) -> None:
 @requires_db
 def test_each_source_shows_its_organization_and_frequency(client: TestClient) -> None:
     """The two facts that say what a row actually is."""
-    body = client.get("/").text
+    body = client.get("/legacy/").text
 
     assert "CEPAL" in body
     assert "BANGUAT" in body
@@ -227,7 +227,7 @@ def test_each_source_shows_its_organization_and_frequency(client: TestClient) ->
 @requires_db
 def test_a_source_links_to_its_documentation(client: TestClient) -> None:
     """Every figure links back — the rule the project applies to charts."""
-    body = client.get("/").text
+    body = client.get("/legacy/").text
 
     entry = get_catalog().get("cepalstat_bop_quarterly")
     assert entry.documentation_url is not None
@@ -237,7 +237,7 @@ def test_a_source_links_to_its_documentation(client: TestClient) -> None:
 @requires_db
 def test_freshness_is_shown_per_source(client: TestClient) -> None:
     """A catalog that does not say how old its data is, is a list of promises."""
-    body = client.get("/").text
+    body = client.get("/legacy/").text
 
     assert "Last success" in body or "last success" in body.lower()
 
@@ -245,7 +245,7 @@ def test_freshness_is_shown_per_source(client: TestClient) -> None:
 @requires_db
 def test_a_source_that_never_ran_says_so(client: TestClient) -> None:
     """Never-run and ran-and-failed are different states and must read that way."""
-    body = client.get("/").text
+    body = client.get("/legacy/").text
 
     # The seeded fixture runs no pipelines, so every source is in this state.
     assert "Never" in body or "never" in body
@@ -254,7 +254,7 @@ def test_a_source_that_never_ran_says_so(client: TestClient) -> None:
 @requires_db
 def test_non_open_licences_are_marked(client: TestClient) -> None:
     """Three of REIM's sources forbid redistribution; the page says which."""
-    body = client.get("/").text
+    body = client.get("/legacy/").text
 
     imf = get_catalog().get("imf_imts_nicaragua")
     assert imf is not None
@@ -306,8 +306,11 @@ def test_the_pages_make_no_outbound_http_requests() -> None:
     """
     client = TestClient(create_app())
 
-    assert client.get("/").status_code == 200
-    assert client.get("/runs").status_code == 200
-    assert client.get(f"/runs/{uuid.uuid4()}").status_code in {200, 404}
-    assert client.get("/series").status_code == 200
-    assert client.get("/series?indicator=ni_cpi_inflation_annual&country=NIC").status_code == 200
+    assert client.get("/legacy/").status_code == 200
+    assert client.get("/legacy/runs").status_code == 200
+    assert client.get(f"/legacy/runs/{uuid.uuid4()}").status_code in {200, 404}
+    assert client.get("/legacy/series").status_code == 200
+    assert (
+        client.get("/legacy/series?indicator=ni_cpi_inflation_annual&country=NIC").status_code
+        == 200
+    )

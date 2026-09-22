@@ -93,7 +93,7 @@ def test_the_series_page_is_served_with_no_selection() -> None:
     """State 1: the first visit is a form, not an error and not an empty chart."""
     client = TestClient(create_app())
 
-    response = client.get("/series")
+    response = client.get("/legacy/series")
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
@@ -106,7 +106,7 @@ def test_the_form_offers_every_indicator_and_every_country() -> None:
 
     client = TestClient(create_app())
 
-    body = client.get("/series").text
+    body = client.get("/legacy/series").text
 
     assert len(INDICATORS) == 73
     assert len(COUNTRIES) == 7
@@ -120,7 +120,7 @@ def test_an_unregistered_indicator_gets_a_page_not_a_json_envelope() -> None:
     """State 3 — and it must not need a database to answer."""
     client = TestClient(create_app())
 
-    response = client.get("/series?indicator=no_such_indicator&country=NIC")
+    response = client.get("/legacy/series?indicator=no_such_indicator&country=NIC")
 
     assert response.status_code == 404
     assert response.headers["content-type"].startswith("text/html")
@@ -131,7 +131,7 @@ def test_an_unregistered_country_gets_the_same_page() -> None:
     """State 4, named separately from the indicator so the reader knows which."""
     client = TestClient(create_app())
 
-    response = client.get("/series?indicator=cpi_index_monthly&country=ZZZ")
+    response = client.get("/legacy/series?indicator=cpi_index_monthly&country=ZZZ")
 
     assert response.status_code == 404
     assert response.headers["content-type"].startswith("text/html")
@@ -147,7 +147,7 @@ def test_a_dead_database_is_said_out_loud(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr("apps.web.routes.comparison_repo.count_comparison_periods", _raise)
     client = TestClient(create_app())
 
-    body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
+    body = client.get("/legacy/series?indicator=cpi_index_monthly&country=NIC").text
 
     assert "database is not responding" in body.lower()
     assert "None of the countries you chose holds any data for" not in body
@@ -163,7 +163,7 @@ def test_an_inverted_date_range_gets_its_own_sentence() -> None:
     client = TestClient(create_app())
 
     body = client.get(
-        "/series?indicator=cpi_index_monthly&country=NIC&date_from=2021-01-01&date_to=2020-01-01"
+        "/legacy/series?indicator=cpi_index_monthly&country=NIC&date_from=2021-01-01&date_to=2020-01-01"
     ).text
 
     assert "date range is inverted" in body.lower()
@@ -181,7 +181,7 @@ def test_a_denser_range_than_the_limit_is_declined_not_downsampled(
             seeded_session, iso3="NIC", code="cpi_index_monthly", year=year, value="5.5"
         )
 
-    body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
+    body = client.get("/legacy/series?indicator=cpi_index_monthly&country=NIC").text
 
     # Collapsed whitespace: the sentence wraps across lines in the template
     # source, and only its words are the thing under test, not its layout.
@@ -201,7 +201,7 @@ def test_a_valid_selection_with_no_data_says_so(client: TestClient) -> None:
     data for {country}" — so a test for one state cannot be satisfied by the
     other's rendering.
     """
-    body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
+    body = client.get("/legacy/series?indicator=cpi_index_monthly&country=NIC").text
 
     assert "None of the countries you chose holds any data for" in body
     assert "database is not responding" not in body.lower()
@@ -214,7 +214,7 @@ def test_the_countries_holding_nothing_are_named_not_dropped(
     """State 6: a silently missing country reads as a country with a flat line."""
     _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2020, value="5.5")
 
-    body = client.get("/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
+    body = client.get("/legacy/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
 
     assert "No data for Guatemala" in body
 
@@ -231,7 +231,7 @@ def test_the_same_country_given_twice_collapses_to_one_column(
     """
     _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2020, value="5.5")
 
-    body = client.get("/series?indicator=cpi_index_monthly&country=NI&country=NIC").text
+    body = client.get("/legacy/series?indicator=cpi_index_monthly&country=NI&country=NIC").text
 
     assert body.count('<th scope="col">Nicaragua</th>') == 1
     # Not ``body.count("5.5") == 1``: with the chart drawn, "5.5" is also the
@@ -246,7 +246,7 @@ def test_the_table_carries_every_figure(client: TestClient, seeded_session: Sess
     _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2020, value="5.5")
     _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2021, value="7.25")
 
-    body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
+    body = client.get("/legacy/series?indicator=cpi_index_monthly&country=NIC").text
 
     assert "5.5" in body
     assert "7.25" in body
@@ -298,7 +298,7 @@ def test_a_comparable_selection_is_drawn_as_one_chart(
     """The SVG's title and description are content, and are what we assert."""
     _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2020, value="5.5")
 
-    body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
+    body = client.get("/legacy/series?indicator=cpi_index_monthly&country=NIC").text
 
     assert "<svg" in body
     title = _svg_tag_text(body, "title")
@@ -321,7 +321,7 @@ def test_the_chart_names_every_selected_country_not_only_the_drawn_ones(
     """
     _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2020, value="5.5")
 
-    body = client.get("/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
+    body = client.get("/legacy/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
 
     desc = _svg_tag_text(body, "desc")
     assert desc, f"no <desc> found in body: {body}"
@@ -335,7 +335,7 @@ def test_the_chart_says_what_it_is_for_a_screen_reader(
 ) -> None:
     _add_observation(seeded_session, iso3="NIC", code="cpi_index_monthly", year=2020, value="5.5")
 
-    body = client.get("/series?indicator=cpi_index_monthly&country=NIC").text
+    body = client.get("/legacy/series?indicator=cpi_index_monthly&country=NIC").text
 
     assert 'role="img"' in body
     assert "<desc>" in body
@@ -363,7 +363,9 @@ def test_a_gap_breaks_the_stroke_on_the_rendered_page(
         seeded_session, iso3="NIC", code="lending_rate_nominal_monthly", year=2022, value="6.0"
     )
 
-    body = client.get("/series?indicator=lending_rate_nominal_monthly&country=NIC&country=GTM").text
+    body = client.get(
+        "/legacy/series?indicator=lending_rate_nominal_monthly&country=NIC&country=GTM"
+    ).text
 
     svg_start = body.find("<svg")
     svg_end = body.find("</svg>", svg_start)
@@ -393,7 +395,9 @@ def test_incomparable_levels_are_never_put_on_one_axis(
             value=value,
         )
 
-    body = client.get("/series?indicator=lending_rate_nominal_monthly&country=PAN&country=GTM").text
+    body = client.get(
+        "/legacy/series?indicator=lending_rate_nominal_monthly&country=PAN&country=GTM"
+    ).text
 
     assert body.count("<svg") == 2, "levels are not comparable; one axis is wrong"
     # The real note from assess_comparability, not a phrase invented for the
@@ -411,7 +415,7 @@ def test_a_comparable_indicator_stays_on_one_axis(
             seeded_session, iso3=iso3, code="cpi_index_monthly", year=2020, value=value
         )
 
-    body = client.get("/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
+    body = client.get("/legacy/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
 
     assert body.count("<svg") == 1
 
@@ -441,7 +445,7 @@ def test_a_country_that_changes_unit_is_named_but_not_charted(
         unit="percent change",
     )
 
-    body = client.get("/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
+    body = client.get("/legacy/series?indicator=cpi_index_monthly&country=NIC&country=GTM").text
 
     # The full undrawable sentence, contiguous, the way the state-6 test
     # asserts "No data for Guatemala" contiguously: the country <select>
@@ -465,6 +469,6 @@ def test_the_nav_links_to_the_series_page() -> None:
     """
     client = TestClient(create_app())
 
-    for path in ("/", "/runs", "/series"):
+    for path in ("/legacy/", "/legacy/runs", "/legacy/series"):
         body = client.get(path).text
-        assert 'href="/series"' in body, f"{path} is missing the Series nav link"
+        assert 'href="/legacy/series"' in body, f"{path} is missing the Series nav link"

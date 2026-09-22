@@ -129,7 +129,7 @@ templates.env.filters["duration"] = _format_duration
 # assigned by request position never drift apart.
 templates.env.globals["chart_palette"] = CHART_PALETTE
 
-router = APIRouter(tags=["web"], include_in_schema=False)
+router = APIRouter(prefix="/legacy", tags=["web"], include_in_schema=False)
 
 
 def load_pipeline_summaries(session: Session) -> tuple[bool, dict[str, PipelineSummary]]:
