@@ -1,0 +1,5 @@
+.venv
+.git
+**/node_modules
+frontend/out
+frontend/.next
