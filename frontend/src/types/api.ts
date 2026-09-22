@@ -68,6 +68,50 @@ export interface PipelineSummary {
   is_stale: boolean | null;
 }
 
+export type PipelineRunStatus = "running" | "success" | "partial" | "failed" | "skipped";
+
+export interface PipelineRun {
+  id: string;
+  pipeline_key: string;
+  source_id: string | null;
+  connector_version: string | null;
+  pipeline_version: string | null;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+  status: PipelineRunStatus;
+  records_extracted: number;
+  records_inserted: number;
+  records_updated: number;
+  records_unchanged: number;
+  records_rejected: number;
+  error_type: string | null;
+  error_message: string | null;
+  run_metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export type QualityCheckStatus = "passed" | "failed" | "skipped";
+export type QualityCheckSeverity = "info" | "warning" | "error" | "critical";
+
+export interface QualityCheck {
+  id: string;
+  check_name: string;
+  check_type: string;
+  status: QualityCheckStatus;
+  severity: QualityCheckSeverity;
+  indicator_code: string | null;
+  period_label: string | null;
+  expected_value: string | null;
+  actual_value: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface PipelineRunDetail extends PipelineRun {
+  quality_checks: QualityCheck[];
+}
+
 export interface ComparisonIndicator {
   code: string;
   name: string;

@@ -8,8 +8,7 @@ const NAV_LINKS = [
   { href: "/map/", label: "Mapa" },
   { href: "/series/", label: "Series" },
   { href: "/catalog/", label: "Catálogo" },
-  // The observability page remains under apps/web until its frontend rewrite.
-  { href: "/legacy/runs", label: "Operaciones", interim: true },
+  { href: "/runs/", label: "Operaciones" },
 ];
 
 export function Header() {
@@ -38,15 +37,6 @@ export function Header() {
                 ? "bg-reim-surface text-reim-gold border border-reim-gold/30"
                 : "text-reim-muted hover:bg-reim-surface hover:text-reim-text"
             }`;
-            if (link.interim) {
-              // Plain <a>, deliberately not next/link — see the comment on
-              // NAV_LINKS above.
-              return (
-                <a key={link.href} href={link.href} className={className}>
-                  {link.label}
-                </a>
-              );
-            }
             return (
               <Link key={link.href} href={link.href} className={className}>
                 {link.label}

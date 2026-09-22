@@ -36,6 +36,24 @@ export function usePipelineSummaries() {
   });
 }
 
+export function useRuns() {
+  return useQuery({
+    queryKey: ["runs"],
+    queryFn: reimApi.getRuns,
+  });
+}
+
+export function useRun(runId?: string | null) {
+  return useQuery({
+    queryKey: ["run", runId],
+    queryFn: () => {
+      if (!runId) throw new Error("A run ID is required");
+      return reimApi.getRun(runId);
+    },
+    enabled: Boolean(runId),
+  });
+}
+
 export function useBoundaries(level: "country" | "administrative_area") {
   return useQuery({
     queryKey: ["boundaries", level],

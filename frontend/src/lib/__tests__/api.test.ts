@@ -114,6 +114,29 @@ describe("reimApi client", () => {
     expect(pipelines[0].indicators).toEqual(["a", "b"]);
   });
 
+  it("loads the latest 100 pipeline runs", async () => {
+    const body = { data: [{ id: "run-1", pipeline_key: "source_a" }], meta: { total: 1, limit: 100, offset: 0, returned: 1, has_more: false } };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(body));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await reimApi.getRuns();
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/pipelines/runs?limit=100&offset=0");
+    expect(result.data[0].id).toBe("run-1");
+    expect(result.meta.total).toBe(1);
+  });
+
+  it("loads a pipeline run detail with its quality checks", async () => {
+    const detail = { id: "run-1", pipeline_key: "source_a", quality_checks: [{ check_name: "not_empty", status: "passed" }] };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(detail));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await reimApi.getRun("run-1");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/pipelines/runs/run-1");
+    expect(result.quality_checks[0].check_name).toBe("not_empty");
+  });
+
   it("throws on HTTP error response", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,

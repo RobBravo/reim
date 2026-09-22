@@ -15,10 +15,10 @@ describe("Header", () => {
     expect(screen.getByText("Catálogo")).toBeInTheDocument();
   });
 
-  it("points Series at its page and keeps Operaciones on its interim route", () => {
+  it("points Series and Operaciones at their modern pages", () => {
     render(<Header />);
     expect(screen.getByText("Series").closest("a")).toHaveAttribute("href", "/series");
-    expect(screen.getByText("Operaciones").closest("a")).toHaveAttribute("href", "/legacy/runs");
+    expect(screen.getByText("Operaciones").closest("a")).toHaveAttribute("href", "/runs");
   });
 
   it("points Catálogo at its static page", () => {

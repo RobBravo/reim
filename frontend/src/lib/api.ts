@@ -8,6 +8,8 @@ import {
   DataSource,
   Organization,
   PipelineSummary,
+  PipelineRun,
+  PipelineRunDetail,
 } from "@/types/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
@@ -55,6 +57,8 @@ export const reimApi = {
   getSources: () => fetchAllPages<DataSource>("/api/v1/sources"),
   getOrganizations: () => fetchAllPages<Organization>("/api/v1/organizations"),
   getPipelineSummaries: () => fetchJson<PipelineSummary[]>("/api/v1/pipelines"),
+  getRuns: () => fetchJson<PageResponse<PipelineRun>>("/api/v1/pipelines/runs?limit=100&offset=0"),
+  getRun: (runId: string) => fetchJson<PipelineRunDetail>(`/api/v1/pipelines/runs/${encodeURIComponent(runId)}`),
   getBoundaries: (level: "country" | "administrative_area") =>
     fetchJson<GeoBoundariesCollection>(`/api/v1/geo/boundaries?level=${level}`),
   getComparison: async (params: {
