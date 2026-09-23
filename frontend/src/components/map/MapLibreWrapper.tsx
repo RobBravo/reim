@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, ReactNode } from "react";
-import { addProtocol, Map as MapLibreMap, AttributionControl, NavigationControl } from "maplibre-gl";
+import { addProtocol, Map as MapLibreMap, AttributionControl, NavigationControl, setWorkerUrl } from "maplibre-gl";
 import { Protocol } from "pmtiles";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { getDarkBasemapStyle } from "@/lib/map-style";
@@ -30,6 +30,7 @@ export function MapLibreWrapper({ onMapLoaded, children }: MapLibreWrapperProps)
     }
 
     try {
+      setWorkerUrl("/maplibre-gl-worker.mjs");
       const protocol = new Protocol();
       addProtocol("pmtiles", protocol.tile);
 
